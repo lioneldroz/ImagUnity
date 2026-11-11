@@ -59,7 +59,7 @@ public final class DicomStoreScp implements AutoCloseable {
     private final DicomInputConfig config;
     private final IncomingStore store;
     private final StudyAssembler assembler;
-    private final Device device = new Device("imagunity-box");
+    private Device device;
     private ExecutorService executor;
     private ScheduledExecutorService scheduler;
 
@@ -95,6 +95,8 @@ public final class DicomStoreScp implements AutoCloseable {
                     assembler.pendingStudies());
         }
 
+        // Appareil neuf à chaque démarrage : un redémarrage ne doit pas cumuler connexions et AE.
+        device = new Device("imagunity-box");
         Connection connection = new Connection();
         connection.setPort(config.port());
         if (config.bindAddress() != null && !config.bindAddress().isBlank()) {
@@ -119,8 +121,9 @@ public final class DicomStoreScp implements AutoCloseable {
         device.setScheduledExecutor(scheduler);
         try {
             device.bindConnections();
-        } catch (GeneralSecurityException e) {
-            throw new IOException("Ouverture du port DICOM impossible", e);
+        } catch (IOException | GeneralSecurityException e) {
+            stop(); // libère les fils d'exécution : un nouvel essai de démarrage reste possible
+            throw e instanceof IOException io ? io : new IOException("Ouverture du port DICOM impossible", e);
         }
         long period = Math.max(100, Math.min(1000, config.studyIdleTimeout().toMillis() / 4));
         scheduler.scheduleWithFixedDelay(assembler::flushIdle, period, period, TimeUnit.MILLISECONDS);

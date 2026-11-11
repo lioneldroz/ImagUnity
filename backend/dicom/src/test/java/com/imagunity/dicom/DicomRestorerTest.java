@@ -53,7 +53,7 @@ class DicomRestorerTest {
     private DicomStoreScp pacs(long minFreeSpace) throws IOException {
         DicomStoreScp scp = new DicomStoreScp(new DicomInputConfig("127.0.0.1", port, Set.of("IMAGUNITY_B"),
                 Map.of("ORTHANC_B", "pacs"), dir.resolve("pacs"), Duration.ofMillis(300), minFreeSpace), received::add);
-        scp.start();
+        TestPorts.start(scp);
         return scp;
     }
 
