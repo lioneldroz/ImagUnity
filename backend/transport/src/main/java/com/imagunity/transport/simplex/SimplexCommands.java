@@ -43,6 +43,11 @@ final class SimplexCommands {
         return "/freceive " + fileId + " " + path;
     }
 
+    /** CancelFile : pour un fichier envoyé par XFTP, supprime aussi ses morceaux des relais. */
+    static String cancelFile(long fileId) {
+        return "/fcancel " + fileId;
+    }
+
     /** APIListContacts : contacts du profil. */
     static String listContacts(long userId) {
         return "/_contacts " + userId;

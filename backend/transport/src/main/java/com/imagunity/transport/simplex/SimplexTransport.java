@@ -79,6 +79,12 @@ public final class SimplexTransport implements TransportPort {
         return fileId.asLong();
     }
 
+    /** {@code /fcancel} : simplex-chat supprime les morceaux du fichier sur les relais XFTP. */
+    @Override
+    public void discardSentFile(long fileId) {
+        expect(client.command(SimplexCommands.cancelFile(fileId)), "sndFileCancelled");
+    }
+
     @Override
     public void receiveFile(long fileId, Path target) {
         expect(client.command(SimplexCommands.receiveFile(fileId, target)), "rcvFileAccepted");

@@ -44,7 +44,8 @@ import java.util.stream.Stream;
  *
  * <p>L'accusé n'est retenu que s'il vient du partenaire destinataire du transfert, pour un transfert annoncé, et
  * si l'empreinte des paquets qu'il porte est celle des paquets déposés. Un accusé « restitué » vide le dossier
- * d'envoi du transfert ; après un accusé « en échec », les paquets sont gardés.
+ * d'envoi du transfert ; après un accusé « en échec », les paquets sont gardés. Dans les deux cas, le destinataire
+ * en a fini avec les paquets déposés : ils sont retirés des relais (une relance les redépose).
  *
  * <p>Un transfert {@code FAILED} empaqueté peut être {@link #retry relancé} : ses paquets, gardés dans le dossier
  * d'envoi, sont de nouveau confiés au transport ({@code FAILED → PACKAGED}), puis annoncés.
@@ -291,6 +292,7 @@ public final class SendOrchestrator {
             fail(transfer, "Accusé du destinataire incohérent : paquets différents de ceux envoyés");
             return;
         }
+        discardFromRelays(transfer);
         if (ack.result() != TransferAck.Result.RESTORED) {
             fail(transfer, "Échec chez le destinataire : " + sanitize(ack.reason()));
             return;
@@ -299,6 +301,21 @@ public final class SendOrchestrator {
         LOG.log(Level.INFO, "Transfert {0} confirmé par {1} : {2} instance(s) restituée(s)", transfer.id(),
                 transfer.destination(), ack.instances());
         deleteOutbox(transfer);
+    }
+
+    /** Retire des relais les paquets déposés ; un échec n'est que journalisé (ils expireront d'eux-mêmes). */
+    private void discardFromRelays(Transfer transfer) {
+        for (TransferPart part : transfers.parts(transfer.id())) {
+            if (part.transportFileId() == null) {
+                continue;
+            }
+            try {
+                transport.discardSentFile(part.transportFileId());
+            } catch (TransportException e) {
+                LOG.log(Level.WARNING, "Paquet {0}/{1} du transfert {2} non retiré des relais : {3}", part.index(),
+                        part.count(), transfer.id(), e.getMessage());
+            }
+        }
     }
 
     /** Cause d'échec venue du partenaire : bornée et sans caractère de contrôle avant d'être enregistrée. */

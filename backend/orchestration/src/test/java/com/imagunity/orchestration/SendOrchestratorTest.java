@@ -360,6 +360,19 @@ class SendOrchestratorTest {
         assertThat(acknowledged.errorMessage()).isNull();
         assertThat(outboxOf(transfer)).doesNotExist();
         assertThat(dir.resolve("outbox")).as("les autres envois restent").exists();
+        assertThat(transport.discarded).as("paquets retirés des relais")
+                .containsExactlyElementsOf(transport.files.stream().map(FakeTransport.SentFile::fileId).toList());
+    }
+
+    @Test
+    void relayCleanupFailureDoesNotBlockTheAcknowledgement() throws IOException {
+        Transfer transfer = announcedTransfer();
+        transport.failDiscard = true;
+
+        receive(BOX_B, ack(transfer, TransferAck.Result.RESTORED, null));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
+        assertThat(outboxOf(transfer)).doesNotExist();
     }
 
     @Test
@@ -372,6 +385,7 @@ class SendOrchestratorTest {
         assertThat(transfers.only().errorMessage())
                 .isEqualTo("Échec chez le destinataire : Restitution impossible : PACS injoignable");
         assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+        assertThat(transport.discarded).as("le destinataire n'en a plus besoin ; une relance redépose").isNotEmpty();
     }
 
     @Test
@@ -385,6 +399,7 @@ class SendOrchestratorTest {
         assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
         assertThat(transfers.only().errorMessage()).startsWith("Accusé du destinataire incohérent");
         assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+        assertThat(transport.discarded).as("accusé douteux : rien n'est retiré").isEmpty();
     }
 
     @Test
