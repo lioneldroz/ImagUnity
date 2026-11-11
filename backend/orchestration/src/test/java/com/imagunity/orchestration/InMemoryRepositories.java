@@ -87,6 +87,51 @@ final class InMemoryRepositories {
         }
     }
 
+    static final class Inbound implements com.imagunity.domain.inbound.InboundRepository {
+        final Map<Long, com.imagunity.domain.inbound.InboundFile> files = new LinkedHashMap<>();
+        final Map<String, com.imagunity.domain.inbound.InboundTransfer> transfers = new LinkedHashMap<>();
+
+        @Override
+        public void saveFile(com.imagunity.domain.inbound.InboundFile file) {
+            files.put(file.transportFileId(), file);
+        }
+
+        @Override
+        public Optional<com.imagunity.domain.inbound.InboundFile> findFile(long id) {
+            return Optional.ofNullable(files.get(id));
+        }
+
+        @Override
+        public List<com.imagunity.domain.inbound.InboundFile> findFiles(String peer, String name) {
+            List<com.imagunity.domain.inbound.InboundFile> list = new ArrayList<>(files.values().stream()
+                    .filter(f -> f.peerName().equals(peer) && f.fileName().equals(name)).toList());
+            java.util.Collections.reverse(list);
+            return list;
+        }
+
+        @Override
+        public void saveTransfer(com.imagunity.domain.inbound.InboundTransfer t) {
+            transfers.put(t.peerName() + "/" + t.transferId(), t);
+        }
+
+        @Override
+        public Optional<com.imagunity.domain.inbound.InboundTransfer> findTransfer(String peer, UUID id) {
+            return Optional.ofNullable(transfers.get(peer + "/" + id));
+        }
+
+        @Override
+        public Optional<com.imagunity.domain.inbound.InboundTransfer> findTransferByGroup(String peer, String group) {
+            return transfers.values().stream()
+                    .filter(t -> t.peerName().equals(peer) && t.packageGroupId().equals(group)).findFirst();
+        }
+
+        @Override
+        public List<com.imagunity.domain.inbound.InboundTransfer> findTransfers(
+                com.imagunity.domain.inbound.InboundTransfer.State state) {
+            return transfers.values().stream().filter(t -> t.state() == state).toList();
+        }
+    }
+
     static final class Peers implements PeerRepository {
         final Map<String, Peer> peers = new LinkedHashMap<>();
 

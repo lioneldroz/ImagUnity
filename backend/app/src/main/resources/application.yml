@@ -19,6 +19,15 @@ imagunity:
     pairing-timeout: 1h
     max-part-size: 900MB
     compression-level: 3
+  restore:
+    # PACS local qui reçoit les études restituées (C-STORE).
+    pacs-host: ${IMAGUNITY_PACS_HOST:localhost}
+    pacs-port: ${IMAGUNITY_PACS_PORT:4242}
+    pacs-aet: ${IMAGUNITY_PACS_AET:ORTHANC}
+    box-aet: ${IMAGUNITY_BOX_AET:IMAGUNITY}
+    inbox-dir: ${IMAGUNITY_DATA_DIR:./data}/inbox
+    max-inbound-file-size: 2GB
+    max-unpacked-size: 4GB
   transport:
     simplex:
       # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.

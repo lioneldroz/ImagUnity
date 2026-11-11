@@ -1,10 +1,16 @@
 package com.imagunity.config;
 
+import com.imagunity.dicom.DicomRestorer;
+import com.imagunity.domain.exam.StudyRestorer;
+import com.imagunity.domain.inbound.InboundRepository;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.domain.transfer.TransferRepository;
 import com.imagunity.orchestration.PairingService;
+import com.imagunity.orchestration.ReceiveOrchestrator;
 import com.imagunity.orchestration.SendOrchestrator;
+import com.imagunity.packaging.PackageReader;
 import com.imagunity.packaging.StudyPackager;
+import com.imagunity.persistence.JdbcInboundRepository;
 import com.imagunity.persistence.JdbcPeerRepository;
 import com.imagunity.persistence.JdbcTransferRepository;
 import com.imagunity.transport.TransportPort;
@@ -16,7 +22,7 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Persistance, orchestrateur des transferts et appairage. */
+/** Persistance, orchestrateurs d'envoi et de réception, appairage. */
 @Configuration(proxyBeanMethods = false)
 class OrchestrationConfiguration {
 
@@ -53,13 +59,33 @@ class OrchestrationConfiguration {
     }
 
     @Bean
+    InboundRepository inboundRepository(DataSource dataSource) {
+        return new JdbcInboundRepository(dataSource);
+    }
+
+    @Bean
+    StudyRestorer studyRestorer(RestoreProperties properties) {
+        return new DicomRestorer(properties.restoreConfig());
+    }
+
+    @Bean
+    ReceiveOrchestrator receiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
+                                            StudyRestorer restorer, RestoreProperties properties,
+                                            ExecutorService orchestrationExecutor, Clock clock) {
+        return new ReceiveOrchestrator(inbound, peers, transport, new PackageReader(properties.maxUnpackedSize().toBytes()),
+                restorer, properties.inboxDir(), properties.maxInboundFileSize().toBytes(), orchestrationExecutor,
+                clock);
+    }
+
+    @Bean
     PairingService pairingService(PeerRepository peers, TransportPort transport, OrchestrationProperties properties,
                                   Clock clock) {
         return new PairingService(peers, transport, clock, properties.pairingTimeout());
     }
 
     @Bean
-    SmartLifecycle orchestrationLifecycle(SendOrchestrator orchestrator, PairingService pairing) {
+    SmartLifecycle orchestrationLifecycle(SendOrchestrator orchestrator, ReceiveOrchestrator receiver,
+                                          PairingService pairing) {
         return new SmartLifecycle() {
             private volatile boolean running;
 
@@ -67,6 +93,7 @@ class OrchestrationConfiguration {
             public void start() {
                 pairing.start();
                 orchestrator.start();
+                receiver.start();
                 running = true;
             }
 

@@ -1,42 +1,57 @@
-name: CI
+name: CI    # Nom affiché dans l'onglet "Actions" de GitHub
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [main]    # Lance le workflow à chaque push sur main
+  pull_request:         # ...et sur toute pull request (quelle que soit la branche cible)
+
+# Le GITHUB_TOKEN n'a que les droits de lecture sur le dépôt
+permissions:
+  contents: read
+
+# Annule les runs obsolètes d'une même branche / PR quand un nouveau commit arrive
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
     name: Backend (Java 25)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Machine virtuelle Linux fournie par GitHub
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend  # Toutes les commandes `run` s'exécutent dans ./backend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@v7   # Récupère le code du dépôt sur la machine
+      - uses: actions/setup-java@v6 # Installe le JDK
         with:
-          distribution: temurin
+          distribution: temurin     # JDK Eclipse Temurin (build OpenJDK)
           java-version: '25'
-          cache: maven
+          cache: maven               # Met en cache ~/.m2 pour accélérer les builds suivants
       - run: sh ./mvnw -B -ntp verify
+        # mvnw  : Maven Wrapper (utilise la version de Maven définie dans le projet)
+        # sh    : évite les problèmes si le fichier n'a pas le bit exécutable
+        # -B    : mode batch (logs propres, sans couleurs ni interactivité)
+        # -ntp  : no-transfer-progress (n'affiche pas les barres de téléchargement)
+        # verify: compile, lance les tests unitaires ET d'intégration, vérifie le package
 
   frontend:
     name: Frontend (React)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Machine virtuelle Linux fournie par GitHub
     defaults:
       run:
-        working-directory: frontend
+        working-directory: frontend # Commandes exécutées dans ./frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7   # Récupère le code du dépôt sur la machine
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: npm
+          cache: npm                # Cache des dépendances npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
+          # Nécessaire car le lockfile n'est pas à la racine du dépôt
+      - run: npm ci         # Installation propre et reproductible (strictement d'après package-lock.json
+      - run: npm run lint   # Analyse statique (ESLint, en général)
+      - run: npm run build  # Vérifie que l'application compile pour la production
 
   compose:
     name: Docker Compose (validation)
@@ -44,3 +59,5 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker compose -f deploy/docker-compose.yml config --quiet
+        # Valide la syntaxe du fichier compose (et l'interpolation des variables)
+        # --quiet : n'affiche rien, ne renvoie qu'un code d'erreur si c'est invalide

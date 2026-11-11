@@ -82,6 +82,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
 - [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
 - [Phase 4 — Orchestrateur](docs/phase4-orchestrateur.md)
+- [Phase 5 — Réception et restitution](docs/phase5-reception.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut
