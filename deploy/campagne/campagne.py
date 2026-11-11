@@ -324,10 +324,15 @@ def scenario_nominal():
     return full_transfer("nominal", 2, 50)
 
 
+# Ports bien connus, plus ceux de la box (8080 console, 11112 DICOM), du client (5225) et des relais.
+SCAN_PORTS = "1-1024,5223,5225,8080,11112"
+
+
 def nmap(service):
     ip = relais_ip(service)
     out = run("docker", "run", "--rm", "--network", f"{PROJECT}_relais", NETSHOOT,
-              "nmap", "-Pn", "-sT", "-p-", "-T4", "--max-retries", "1", "-oG", "-", ip)
+              "nmap", "-Pn", "-sT", "-p", SCAN_PORTS, "-T4", "--max-retries", "1", "--host-timeout", "120s",
+              "-oG", "-", ip)
     ports = [p for line in out.splitlines() if "Ports:" in line
              for p in line.split("Ports:")[1].split("\t")[0].split(", ")]
     return {"ip": ip, "ports": [p.strip() for p in ports if p.strip()]}
