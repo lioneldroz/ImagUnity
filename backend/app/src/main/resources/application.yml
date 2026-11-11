@@ -1,6 +1,19 @@
 imagunity:
   box:
     name: ${IMAGUNITY_BOX_NAME:box-dev}
+  dicom:
+    port: ${IMAGUNITY_DICOM_PORT:11112}
+    storage-dir: ${IMAGUNITY_DATA_DIR:./data}/incoming
+    study-idle-timeout: 30s
+    min-free-space: 1GB
+    # Émetteurs locaux autorisés (PACS, stations). Liste vide : toute association est refusée.
+    allowed-calling-aets: []
+    # Destinations DICOM : envoyer à called-aet, c'est désigner le partenaire destination.
+    # Exemple :
+    # routes:
+    #   - called-aet: IU_TO_B
+    #     destination: box-b
+    routes: []
 
 spring:
   application:

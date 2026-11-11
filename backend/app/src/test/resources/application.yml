@@ -1,6 +1,8 @@
 imagunity:
   box:
     name: box-test
+  dicom:
+    enabled: false
 
 spring:
   datasource:

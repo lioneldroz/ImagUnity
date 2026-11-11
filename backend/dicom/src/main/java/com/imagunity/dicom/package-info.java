@@ -1,5 +1,7 @@
 /**
- * Adaptateur DICOM (dcm4che) : réception C-STORE depuis le PACS local,
- * envoi C-STORE vers le PACS destinataire. Phases 2 et 5.
+ * Adaptateur DICOM (dcm4che).
+ *
+ * <p>Phase 2 : entrée DICOM ({@link com.imagunity.dicom.DicomStoreScp}), contrôle des émetteurs et des
+ * destinations, réception C-STORE, regroupement par étude. Phase 5 : envoi C-STORE vers le PACS destinataire.
  */
 package com.imagunity.dicom;

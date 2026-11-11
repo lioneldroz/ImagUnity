@@ -58,6 +58,10 @@ services:
     environment:
       IMAGUNITY_BOX_NAME: box-a
       IMAGUNITY_DATA_DIR: /data
+      # Entrée DICOM : seul Orthanc A peut pousser ; la destination IU_TO_B désigne la box B.
+      IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_A
+      IMAGUNITY_DICOM_ROUTES_0_CALLED_AET: IU_TO_B
+      IMAGUNITY_DICOM_ROUTES_0_DESTINATION: box-b
     volumes:
       - box-a-data:/data
     network_mode: service:chat-a
@@ -100,6 +104,10 @@ services:
     environment:
       IMAGUNITY_BOX_NAME: box-b
       IMAGUNITY_DATA_DIR: /data
+      # Sens retour (symétrique) : Orthanc B pousse vers IU_TO_A pour désigner la box A.
+      IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_B
+      IMAGUNITY_DICOM_ROUTES_0_CALLED_AET: IU_TO_A
+      IMAGUNITY_DICOM_ROUTES_0_DESTINATION: box-a
     volumes:
       - box-b-data:/data
     network_mode: service:chat-b
@@ -111,6 +119,9 @@ services:
       ORTHANC__NAME: orthanc-b
       ORTHANC__DICOM_AET: ORTHANC_B
       ORTHANC__AUTHENTICATION_ENABLED: "false"
+      # Envoyer vers IU_TO_A = désigner la box A (sens retour).
+      ORTHANC__DICOM_MODALITIES: |
+        { "imagunity-a": ["IU_TO_A", "chat-b", 11112] }
     volumes:
       - orthanc-b-data:/var/lib/orthanc/db
     networks: [site-b]
