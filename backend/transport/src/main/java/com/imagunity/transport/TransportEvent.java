@@ -28,4 +28,25 @@ public sealed interface TransportEvent {
     /** Échec d'envoi ou de réception d'un fichier. */
     record FileFailed(long fileId, String reason) implements TransportEvent {
     }
+
+    /** Sens d'un transfert de fichier. */
+    enum Direction {
+        /** Téléversement vers les relais. */
+        SENDING,
+        /** Téléchargement depuis les relais. */
+        RECEIVING
+    }
+
+    /**
+     * Avancement d'un transfert, pour l'affichage. Les tailles sont celles vues par le
+     * transport (données chiffrées, morceaux complétés) : elles peuvent différer légèrement
+     * de la taille du fichier. Seul leur rapport est significatif.
+     */
+    record FileProgress(long fileId, Direction direction, long transferred, long total) implements TransportEvent {
+
+        /** Avancement entre 0 et 1, ou 0 si le total est inconnu. */
+        public double ratio() {
+            return total > 0 ? Math.min(1.0, (double) transferred / total) : 0.0;
+        }
+    }
 }

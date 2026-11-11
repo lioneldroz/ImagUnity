@@ -47,6 +47,7 @@ class SimplexLiveTest {
 
     private final BlockingQueue<TransportEvent> eventsA = new LinkedBlockingQueue<>();
     private final BlockingQueue<TransportEvent> eventsB = new LinkedBlockingQueue<>();
+    private final java.util.List<TransportEvent.FileProgress> progress = new java.util.concurrent.CopyOnWriteArrayList<>();
     private SimplexTransport boxA;
     private SimplexTransport boxB;
 
@@ -64,6 +65,13 @@ class SimplexLiveTest {
     void pairsSendsMessageAndTransfersFileIntact(@TempDir Path dir) throws Exception {
         boxA = open("IMAGUNITY_SIMPLEX_A", eventsA);
         boxB = open("IMAGUNITY_SIMPLEX_B", eventsB);
+        for (SimplexTransport box : new SimplexTransport[] {boxA, boxB}) {
+            box.addListener(e -> {
+                if (e instanceof TransportEvent.FileProgress p) {
+                    progress.add(p);
+                }
+            });
+        }
 
         // 1. Appairage par lien d'invitation à usage unique.
         long t0 = System.nanoTime();
@@ -101,6 +109,13 @@ class SimplexLiveTest {
         Path receivedPath = received.path() != null ? received.path() : target;
         System.out.printf("[phase 1] fichier reçu : %s (demandé : %s)%n", received.path(), target);
         assertThat(sha256(receivedPath)).isEqualTo(sha256(source));
+
+        // Progression remontée des deux côtés (événements non documentés de simplex-chat).
+        assertThat(progress).anyMatch(p -> p.direction() == TransportEvent.Direction.SENDING && p.fileId() == sentId);
+        assertThat(progress).anyMatch(p -> p.direction() == TransportEvent.Direction.RECEIVING && p.fileId() == offer.fileId());
+        progress.stream().filter(p -> p.fileId() == offer.fileId() && p.direction() == TransportEvent.Direction.RECEIVING)
+                .reduce((first, second) -> second)
+                .ifPresent(last -> System.out.printf("[phase 1] dernière progression B : %d / %d%n", last.transferred(), last.total()));
     }
 
     private static SimplexTransport open(String variable, BlockingQueue<TransportEvent> sink) {

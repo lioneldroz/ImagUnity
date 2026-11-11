@@ -94,6 +94,31 @@ class SimplexEventMapperTest {
     }
 
     @Test
+    void uploadProgress() {
+        var events = map("{\"type\":\"sndFileProgressXFTP\",\"chatItem_\":null,"
+                + "\"fileTransferMeta\":{\"fileId\":42},\"sentSize\":12582912,\"totalSize\":52428800}");
+
+        assertThat(events).containsExactly(
+                new TransportEvent.FileProgress(42, TransportEvent.Direction.SENDING, 12582912, 52428800));
+        assertThat(((TransportEvent.FileProgress) events.getFirst()).ratio()).isEqualTo(0.24);
+    }
+
+    @Test
+    void downloadProgress() {
+        var events = map("{\"type\":\"rcvFileProgressXFTP\",\"receivedSize\":4194304,\"totalSize\":52428800,"
+                + "\"rcvFileTransfer\":{\"fileId\":7}}");
+
+        assertThat(events).containsExactly(
+                new TransportEvent.FileProgress(7, TransportEvent.Direction.RECEIVING, 4194304, 52428800));
+    }
+
+    @Test
+    void progressRatioIsBounded() {
+        assertThat(new TransportEvent.FileProgress(1, TransportEvent.Direction.SENDING, 10, 0).ratio()).isZero();
+        assertThat(new TransportEvent.FileProgress(1, TransportEvent.Direction.SENDING, 11, 10).ratio()).isEqualTo(1.0);
+    }
+
+    @Test
     void unknownEventsAreIgnored() {
         assertThat(map("{\"type\":\"hostConnected\",\"protocol\":\"smp\"}")).isEmpty();
         assertThat(map("{\"type\":\"somethingNew\"}")).isEmpty();
