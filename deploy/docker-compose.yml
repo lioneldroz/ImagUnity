@@ -53,7 +53,11 @@ services:
     image: ubuntu:24.04
     command: ["sleep", "infinity"]
     init: true
-    networks: [relais, site-a]
+    networks:
+      relais:
+      site-a:
+        ipv4_address: 172.31.1.10
+        gw_priority: 1   # réseau du site prioritaire : la console publiée y arrive
     ports:
       - "8081:8080"   # console de la box A
 
@@ -77,6 +81,9 @@ services:
     environment:
       IMAGUNITY_BOX_NAME: box-a
       IMAGUNITY_DATA_DIR: /data
+      # Console et entrée DICOM sur le réseau du site seulement : rien n'écoute côté relais (« Internet »).
+      SERVER_ADDRESS: 172.31.1.10
+      IMAGUNITY_DICOM_BIND_ADDRESS: 172.31.1.10
       # Entrée DICOM : seul Orthanc A peut pousser ; la destination IU_TO_B désigne la box B.
       IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_A
       IMAGUNITY_DICOM_ROUTES_0_CALLED_AET: IU_TO_B
@@ -114,7 +121,11 @@ services:
     image: ubuntu:24.04
     command: ["sleep", "infinity"]
     init: true
-    networks: [relais, site-b]
+    networks:
+      relais:
+      site-b:
+        ipv4_address: 172.31.2.10
+        gw_priority: 1   # réseau du site prioritaire : la console publiée y arrive
     ports:
       - "8082:8080"   # console de la box B
 
@@ -138,6 +149,9 @@ services:
     environment:
       IMAGUNITY_BOX_NAME: box-b
       IMAGUNITY_DATA_DIR: /data
+      # Console et entrée DICOM sur le réseau du site seulement : rien n'écoute côté relais (« Internet »).
+      SERVER_ADDRESS: 172.31.2.10
+      IMAGUNITY_DICOM_BIND_ADDRESS: 172.31.2.10
       # Sens retour (symétrique) : Orthanc B pousse vers IU_TO_A pour désigner la box A.
       IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_B
       IMAGUNITY_DICOM_ROUTES_0_CALLED_AET: IU_TO_A
@@ -173,7 +187,13 @@ networks:
       config:
         - subnet: 172.30.0.0/24
   site-a:
+    ipam:
+      config:
+        - subnet: 172.31.1.0/24
   site-b:
+    ipam:
+      config:
+        - subnet: 172.31.2.0/24
 
 volumes:
   smp-config:

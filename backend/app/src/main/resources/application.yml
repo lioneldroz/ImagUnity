@@ -2,6 +2,8 @@ imagunity:
   box:
     name: ${IMAGUNITY_BOX_NAME:box-dev}
   dicom:
+    # Adresse d'écoute DICOM : celle de l'interface du réseau local (vide : toutes les interfaces, déconseillé).
+    bind-address: ${IMAGUNITY_DICOM_BIND_ADDRESS:}
     port: ${IMAGUNITY_DICOM_PORT:11112}
     storage-dir: ${IMAGUNITY_DATA_DIR:./data}/incoming
     study-idle-timeout: 30s
@@ -52,6 +54,8 @@ spring:
 
 server:
   port: ${IMAGUNITY_HTTP_PORT:8080}
+  # Adresse d'écoute de la console et de l'API : réglée par SERVER_ADDRESS (interface du réseau local).
+  # Sans elle, la console écoute sur toutes les interfaces et un avertissement est journalisé.
 
 management:
   endpoints:

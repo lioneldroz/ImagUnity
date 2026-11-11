@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-11T20:03:41+00:00",
+  "simplexChat": "SimpleX Chat v7.1.2.0\nTo update run: curl -o- https://raw.githubusercontent.com/simplex-chat/simplex-chat/master/install.sh | bash",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.53,
+        "RECEIVED": 5.64,
+        "PACKAGED": 6.15,
+        "ANNOUNCED": 8.69,
+        "ACKNOWLEDGED": 11.75,
+        "restored": 11.76
+      },
+      "debitBoutEnBout_Mo_s": 4.46,
+      "depotRelais_s": 2.54,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "pare-feu",
+      "scanAvant": {
+        "net-a": {
+          "ip": "172.30.0.2",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.3",
+          "ports": []
+        }
+      },
+      "scanApres": {
+        "net-a": {
+          "ip": "172.30.0.2",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.3",
+          "ports": []
+        }
+      },
+      "transfert": {
+        "scenario": "pare-feu",
+        "instances": 100,
+        "tailleMo": 50.1,
+        "etatFinal": "ACKNOWLEDGED",
+        "chronologie_s": {
+          "cstore": 0.52,
+          "PACKAGED": 6.11,
+          "ANNOUNCED": 7.64,
+          "ACKNOWLEDGED": 10.68,
+          "restored": 10.68
+        },
+        "debitBoutEnBout_Mo_s": 4.93,
+        "depotRelais_s": 1.53,
+        "verification": {
+          "instancesA": 100,
+          "instancesB": 100,
+          "identiques": 100
+        }
+      }
+    }
+  ]
+}
