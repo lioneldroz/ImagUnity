@@ -86,7 +86,13 @@ class ReceiveOrchestratorTest {
     private TransferAnnouncement announcement(List<PackagePart> parts) {
         return new TransferAnnouncement(UUID.randomUUID(), parts.getFirst().manifest().packageGroupId(), STUDY,
                 parts.stream().map(p -> new TransferAnnouncement.Part(p.index(), p.count(),
-                        p.file().getFileName().toString(), p.size(), p.sha256())).toList());
+                        p.file().getFileName().toString(), p.size(), p.sha256())).toList(), clock.instant());
+    }
+
+    /** La même annonce, émise de nouveau par l'émetteur (relance). */
+    private static TransferAnnouncement reissued(TransferAnnouncement a) {
+        return new TransferAnnouncement(a.transferId(), a.packageGroupId(), a.studyInstanceUid(), a.parts(),
+                a.announcedAt().plusSeconds(60));
     }
 
     /** Le partenaire propose le fichier ; renvoie son identifiant. */
@@ -337,6 +343,22 @@ class ReceiveOrchestratorTest {
         announce(a);
 
         assertThat(restored).hasSize(1);
+        assertThat(transport.messages).as("une relecture ne renvoie pas d'accusé").hasSize(1);
+    }
+
+    @Test
+    void replayedAnnouncementDoesNotReopenAFailedTransfer() throws IOException {
+        restoreFailure = new IOException("PACS injoignable");
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        TransferAnnouncement a = announcement(parts);
+        download(offer(parts.getFirst()), parts.getFirst());
+        announce(a);
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
+
+        announce(a); // rattrapage du transport après un redémarrage
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
+        assertThat(transport.messages).hasSize(1);
     }
 
     @Test
@@ -500,7 +522,7 @@ class ReceiveOrchestratorTest {
         assertThat(transport.downloads.get(first)).doesNotExist();
 
         restoreFailure = null;
-        announce(a); // l'annonce arrive avant les paquets renvoyés
+        announce(reissued(a)); // l'annonce arrive avant les paquets renvoyés
         assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.ANNOUNCED);
         download(offer(parts.getFirst()), parts.getFirst());
 
@@ -520,7 +542,7 @@ class ReceiveOrchestratorTest {
         transport.downloads.clear();
 
         long again = offer(parts.getFirst());
-        announce(a);
+        announce(reissued(a));
 
         assertThat(transport.downloads).as("paquet non retéléchargé").isEmpty();
         assertThat(inbound.files).doesNotContainKey(again);

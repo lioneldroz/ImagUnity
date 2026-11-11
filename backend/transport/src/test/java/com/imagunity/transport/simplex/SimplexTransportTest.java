@@ -49,6 +49,18 @@ class SimplexTransportTest {
         if (cmd.startsWith("/_send @5 json ")) {
             return "{\"type\":\"newChatItems\",\"chatItems\":[{\"chatItem\":{}}]}";
         }
+        if (cmd.equals("/_contacts 3")) {
+            return "{\"type\":\"contactsList\",\"contacts\":[{\"contactId\":5},{\"contactId\":6}]}";
+        }
+        if (cmd.equals("/_get chat @5 count=" + SimplexTransport.CATCH_UP_ITEMS)) {
+            return "{\"type\":\"apiChat\",\"chat\":{\"chatInfo\":{\"type\":\"direct\",\"contact\":{\"contactId\":5}},"
+                    + "\"chatItems\":[{\"chatDir\":{\"type\":\"directRcv\"},\"content\":{\"type\":\"rcvMsgContent\","
+                    + "\"msgContent\":{\"type\":\"text\",\"text\":\"annonce\"}}}]}}";
+        }
+        if (cmd.equals("/_get chat @6 count=" + SimplexTransport.CATCH_UP_ITEMS)) {
+            return "{\"type\":\"apiChat\",\"chat\":{\"chatInfo\":{\"type\":\"direct\",\"contact\":{\"contactId\":6}},"
+                    + "\"chatItems\":[]}}";
+        }
         if (cmd.startsWith("/freceive 42 ")) {
             return "{\"type\":\"rcvFileAccepted\"}";
         }
@@ -125,5 +137,16 @@ class SimplexTransportTest {
     void rejectsInvitationLinkWithSpaces() {
         assertThatThrownBy(() -> transport.acceptInvitation("lien avec espace"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void catchUpReplaysRecentArrivalsOfEveryContact() {
+        List<TransportEvent> events = new CopyOnWriteArrayList<>();
+        transport.addListener(events::add);
+
+        transport.catchUp();
+
+        assertThat(connection.commands).contains("/_contacts 3", "/_get chat @5 count=200", "/_get chat @6 count=200");
+        assertThat(events).containsExactly(new TransportEvent.MessageReceived(new PeerId(5), "annonce"));
     }
 }

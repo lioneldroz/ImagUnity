@@ -7,8 +7,8 @@
 # Aucun chemin réseau direct n'existe entre site-a et site-b : tout passe par les relais.
 #
 # Chaque box est composée de deux conteneurs qui partagent la même pile réseau
-# (network_mode: service:chat-x) : le client simplex-chat, processus séparé (AGPL),
-# et le logiciel ImagUnity qui le pilote par WebSocket sur localhost.
+# (network_mode: service:chat-x) et le même volume /data : le client simplex-chat, processus
+# séparé (AGPL), et le logiciel ImagUnity qui le pilote par WebSocket sur localhost.
 
 name: imagunity
 
@@ -19,22 +19,31 @@ services:
   smp-server:
     image: simplexchat/smp-server:v7.0.1
     environment:
-      ADDR: smp-server
+      # Adresse IPv4 fixe : l'image refuse un nom court (« smp-server ») et, avec un nom de domaine,
+      # exige un certificat HTTPS pour son site statique. Les clients joignent le relais par son nom
+      # de service et l'authentifient par l'empreinte de son certificat.
+      ADDR: 172.30.0.10
+      WEB_MANUAL: "1"   # pas de site web statique (il exigerait un certificat HTTPS) : port SMP 5223 seul
     volumes:
       - smp-config:/etc/opt/simplex
       - smp-logs:/var/opt/simplex
-    networks: [relais]
+    networks:
+      relais:
+        ipv4_address: 172.30.0.10
 
   xftp-server:
     image: simplexchat/xftp-server:v7.0.1
     environment:
-      ADDR: xftp-server
+      ADDR: 172.30.0.11
       QUOTA: 20gb
+      PASS: ""        # pas de mot de passe de création de fichiers (variable obligatoire pour l'image)
     volumes:
       - xftp-config:/etc/opt/simplex-xftp
       - xftp-logs:/var/opt/simplex-xftp
       - xftp-files:/srv/xftp
-    networks: [relais]
+    networks:
+      relais:
+        ipv4_address: 172.30.0.11
 
   # --- Box A (émettrice) -----------------------------------------------------
 
@@ -43,7 +52,9 @@ services:
     environment:
       BOX_NAME: box-a
     volumes:
-      - chat-a-data:/data
+      # Volume partagé avec box-a : le client lit les paquets à envoyer et écrit les paquets reçus
+      # aux chemins que lui donne la box (/data/outbox, /data/inbox). Chacun a ses propres sous-dossiers.
+      - box-a-data:/data
       - smp-config:/smp-config:ro
       - xftp-config:/xftp-config:ro
     depends_on: [smp-server, xftp-server]
@@ -94,7 +105,9 @@ services:
     environment:
       BOX_NAME: box-b
     volumes:
-      - chat-b-data:/data
+      # Volume partagé avec box-b : le client lit les paquets à envoyer et écrit les paquets reçus
+      # aux chemins que lui donne la box (/data/outbox, /data/inbox). Chacun a ses propres sous-dossiers.
+      - box-b-data:/data
       - smp-config:/smp-config:ro
       - xftp-config:/xftp-config:ro
     depends_on: [smp-server, xftp-server]
@@ -140,6 +153,9 @@ services:
 
 networks:
   relais:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
   site-a:
   site-b:
 
@@ -149,8 +165,6 @@ volumes:
   xftp-config:
   xftp-logs:
   xftp-files:
-  chat-a-data:
-  chat-b-data:
   box-a-data:
   box-b-data:
   orthanc-a-data:

@@ -19,6 +19,8 @@ cd deploy
 docker compose up -d --build
 ```
 
+Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vite), la campagne fournit une variante construite à partir d'artefacts préparés : voir [phase 8](../docs/phase8-campagne.md).
+
 | Service | URL |
 |---|---|
 | Console box A | http://localhost:8081 (API : `/api/v1/box`) |
@@ -29,9 +31,10 @@ docker compose up -d --build
 ## Points d'attention
 
 - Les relais génèrent leurs clés et leur empreinte au premier démarrage. Les clients `simplex-chat` lisent ces empreintes dans les volumes de configuration des relais (voir [simplex-chat/entrypoint.sh](simplex-chat/entrypoint.sh)).
-- Chaque box est composée de deux conteneurs qui partagent la même pile réseau : `chat-x` (client SimpleX non modifié, AGPL-3.0) et `box-x` (logiciel ImagUnity, qui pilote le client par WebSocket sur `localhost:5225`).
+- Chaque box est composée de deux conteneurs qui partagent la même pile réseau **et le même volume `/data`** : `chat-x` (client SimpleX non modifié, AGPL-3.0) et `box-x` (logiciel ImagUnity, qui pilote le client par WebSocket sur `localhost:5225`). Le client lit les paquets à envoyer et écrit les paquets reçus aux chemins donnés par la box ; son dossier temporaire (`--temp-folder /data/tmp`) doit être sur le même système de fichiers que `/data/inbox`, sinon le fichier reçu ne peut pas y être renommé.
+- Les relais ont une adresse IPv4 fixe sur le réseau `relais` (172.30.0.10 et .11) : leurs images refusent un nom court et, avec un nom de domaine, exigent un certificat HTTPS pour leur site web, désactivé ici (`WEB_MANUAL`).
 - Orthanc A déclare la destination DICOM `IU_TO_B` : envoyer un examen à cette destination désigne la box B comme destinataire. L'entrée DICOM de la box arrive en phase 2.
-- La dégradation de la liaison (débit, latence, pertes) sera ajoutée en phase 8 (Toxiproxy ou `tc netem`).
+- La dégradation de la liaison (débit, latence, pertes), le pare-feu et les coupures sont appliqués par la campagne de tests ([phase 8](../docs/phase8-campagne.md), dossier [campagne](campagne/)) avec `tc netem` et `iptables`.
 - **Données de test uniquement** : jeux publics ou anonymisés, jamais de patient réel.
 
 ## Appairer les deux box

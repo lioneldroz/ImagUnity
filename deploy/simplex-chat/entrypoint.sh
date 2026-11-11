@@ -23,7 +23,10 @@ wait_for /xftp-config/fingerprint
 SMP_FP=$(tr -d '\r\n' < /smp-config/fingerprint)
 XFTP_FP=$(tr -d '\r\n' < /xftp-config/fingerprint)
 
-mkdir -p /data/files
+# Dossier temporaire sur le même volume que les fichiers reçus : le client y déchiffre chaque fichier
+# puis le renomme à l'emplacement demandé par la box (/data/inbox). Un renommage ne traverse pas deux
+# systèmes de fichiers ; avec le /tmp du conteneur, le fichier reste bloqué une fois reçu à 100 %.
+mkdir -p /data/files /data/tmp
 
 exec simplex-chat \
     -d /data/chat \
@@ -33,4 +36,5 @@ exec simplex-chat \
     --server "smp://${SMP_FP}@smp-server" \
     --xftp-server "xftp://${XFTP_FP}@xftp-server" \
     --files-folder /data/files \
+    --temp-folder /data/tmp \
     --yes-migrate

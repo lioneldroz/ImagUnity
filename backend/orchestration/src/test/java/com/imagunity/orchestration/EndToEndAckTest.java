@@ -17,8 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +38,8 @@ class EndToEndAckTest {
     @TempDir
     Path dir;
 
-    private final Clock clock = Clock.fixed(Instant.parse("2026-11-11T12:00:00Z"), ZoneOffset.UTC);
+    /** Horloge réelle : une relance doit dater son annonce après la première. */
+    private final Clock clock = Clock.systemUTC();
     private final FakeTransport transportA = new FakeTransport();
     private final FakeTransport transportB = new FakeTransport();
     private final InMemoryRepositories.Transfers transfersA = new InMemoryRepositories.Transfers();

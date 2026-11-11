@@ -43,6 +43,16 @@ final class SimplexCommands {
         return "/freceive " + fileId + " " + path;
     }
 
+    /** APIListContacts : contacts du profil. */
+    static String listContacts(long userId) {
+        return "/_contacts " + userId;
+    }
+
+    /** APIGetChat : derniers éléments de la conversation avec un contact direct. */
+    static String chatHistory(long contactId, int count) {
+        return "/_get chat @" + contactId + " count=" + count;
+    }
+
     private static void requireSingleToken(String value, String what) {
         if (value == null || value.isBlank() || value.chars().anyMatch(Character::isWhitespace)) {
             throw new IllegalArgumentException("Le " + what + " ne doit être ni vide ni contenir d'espace : " + value);
