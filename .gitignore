@@ -43,6 +43,10 @@ logs/
 .vs/
 .vscode/
 .idea/
+.project
+.classpath
+.settings/
+.factorypath
 *.user
 *.suo
 
