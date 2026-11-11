@@ -1,0 +1,136 @@
+# Environnement de la preuve de concept ImagUnity.
+#
+# Trois réseaux séparés simulent les deux établissements et Internet :
+#   site-a  : orthanc-a + box A (chat-a / box-a)
+#   site-b  : orthanc-b + box B (chat-b / box-b)
+#   relais  : smp-server, xftp-server, et les clients simplex-chat des deux box
+# Aucun chemin réseau direct n'existe entre site-a et site-b : tout passe par les relais.
+#
+# Chaque box est composée de deux conteneurs qui partagent la même pile réseau
+# (network_mode: service:chat-x) : le client simplex-chat, processus séparé (AGPL),
+# et le logiciel ImagUnity qui le pilote par WebSocket sur localhost.
+
+name: imagunity
+
+services:
+
+  # --- Relais aveugles -------------------------------------------------------
+
+  smp-server:
+    image: simplexchat/smp-server:v7.0.1
+    environment:
+      ADDR: smp-server
+    volumes:
+      - smp-config:/etc/opt/simplex
+      - smp-logs:/var/opt/simplex
+    networks: [relais]
+
+  xftp-server:
+    image: simplexchat/xftp-server:v7.0.1
+    environment:
+      ADDR: xftp-server
+      QUOTA: 20gb
+    volumes:
+      - xftp-config:/etc/opt/simplex-xftp
+      - xftp-logs:/var/opt/simplex-xftp
+      - xftp-files:/srv/xftp
+    networks: [relais]
+
+  # --- Box A (émettrice) -----------------------------------------------------
+
+  chat-a:
+    build: ./simplex-chat
+    environment:
+      BOX_NAME: box-a
+    volumes:
+      - chat-a-data:/data
+      - smp-config:/smp-config:ro
+      - xftp-config:/xftp-config:ro
+    depends_on: [smp-server, xftp-server]
+    networks: [relais, site-a]
+    ports:
+      - "8081:8080"   # console de la box A
+
+  box-a:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/box/Dockerfile
+    environment:
+      IMAGUNITY_BOX_NAME: box-a
+      IMAGUNITY_DATA_DIR: /data
+    volumes:
+      - box-a-data:/data
+    network_mode: service:chat-a
+    depends_on: [chat-a]
+
+  orthanc-a:
+    image: orthancteam/orthanc:26.11.0
+    environment:
+      ORTHANC__NAME: orthanc-a
+      ORTHANC__DICOM_AET: ORTHANC_A
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      # Envoyer vers IU_TO_B = désigner la box B comme destinataire (routage par AET).
+      ORTHANC__DICOM_MODALITIES: |
+        { "imagunity-b": ["IU_TO_B", "chat-a", 11112] }
+    volumes:
+      - orthanc-a-data:/var/lib/orthanc/db
+    networks: [site-a]
+    ports:
+      - "8042:8042"
+
+  # --- Box B (réceptrice) ----------------------------------------------------
+
+  chat-b:
+    build: ./simplex-chat
+    environment:
+      BOX_NAME: box-b
+    volumes:
+      - chat-b-data:/data
+      - smp-config:/smp-config:ro
+      - xftp-config:/xftp-config:ro
+    depends_on: [smp-server, xftp-server]
+    networks: [relais, site-b]
+    ports:
+      - "8082:8080"   # console de la box B
+
+  box-b:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/box/Dockerfile
+    environment:
+      IMAGUNITY_BOX_NAME: box-b
+      IMAGUNITY_DATA_DIR: /data
+    volumes:
+      - box-b-data:/data
+    network_mode: service:chat-b
+    depends_on: [chat-b]
+
+  orthanc-b:
+    image: orthancteam/orthanc:26.11.0
+    environment:
+      ORTHANC__NAME: orthanc-b
+      ORTHANC__DICOM_AET: ORTHANC_B
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+    volumes:
+      - orthanc-b-data:/var/lib/orthanc/db
+    networks: [site-b]
+    ports:
+      - "8043:8042"
+
+networks:
+  relais:
+  site-a:
+  site-b:
+
+volumes:
+  smp-config:
+  smp-logs:
+  xftp-config:
+  xftp-logs:
+  xftp-files:
+  chat-a-data:
+  chat-b-data:
+  box-a-data:
+  box-b-data:
+  orthanc-a-data:
+  orthanc-b-data:

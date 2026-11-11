@@ -1,0 +1,23 @@
+imagunity:
+  box:
+    name: ${IMAGUNITY_BOX_NAME:box-dev}
+
+spring:
+  application:
+    name: imagunity-box
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:h2:file:${IMAGUNITY_DATA_DIR:./data}/imagunity
+    username: sa
+    password: ""
+
+server:
+  port: ${IMAGUNITY_HTTP_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

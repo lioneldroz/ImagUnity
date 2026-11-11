@@ -1,0 +1,9 @@
+imagunity:
+  box:
+    name: box-test
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:imagunity-test;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""

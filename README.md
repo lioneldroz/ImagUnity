@@ -33,10 +33,49 @@ ImagUnity s'appuie sur deux protocoles de l'écosystème [SimpleX](https://simpl
 6. Elle transmet l'examen au mini-PACS et renvoie un accusé de bout en bout par une file SMP de retour.
 7. Les relais suppriment les morceaux après leur retrait ou à l'expiration de leur durée de séjour.
 
+## Organisation du dépôt
+
+```
+backend/     Java 25, Spring Boot 4, Maven multi-modules
+  domain/       modèle métier, machine à états des transferts
+  dicom/        adaptateur DICOM (dcm4che)
+  packaging/    manifeste, compression zstd, découpage par série
+  transport/    port de transport et adaptateur simplex-chat
+  persistence/  état des transferts (H2 + Flyway)
+  api/          API REST (+ SSE) pour la console
+  app/          assemblage Spring Boot de la box
+frontend/    console React + TypeScript (Vite)
+deploy/      environnement Docker Compose de la preuve de concept
+docs/        note d'architecture et plan de réalisation
+```
+
+## Développement
+
+Prérequis : JDK 25, Node.js 24, Docker (pour l'environnement de test).
+
+Backend (API sur http://localhost:8080) :
+
+```bash
+cd backend
+./mvnw verify
+java -jar app/target/imagunity-box.jar
+```
+
+Frontend (http://localhost:5173, les appels `/api` sont relayés vers le backend) :
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md](deploy/README.md).
+
 ## Documentation
 
 - [Note d'architecture](docs/ImagUnity%20—%20Note%20d'architecture.docx)
+- [Plan de réalisation](docs/plan-de-realisation.md)
 
 ## Statut
 
-Projet en phase de conception.
+Phase 0 (socle) : squelette du backend, de la console et de l'environnement de test.

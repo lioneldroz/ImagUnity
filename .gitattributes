@@ -1,0 +1,7 @@
+# Les scripts exécutés sous Linux (conteneurs, CI) doivent garder des fins de ligne LF.
+*.sh    text eol=lf
+mvnw    text eol=lf
+*.cmd   text eol=crlf
+
+*.docx  binary
+*.dcm   binary
