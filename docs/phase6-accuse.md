@@ -42,6 +42,8 @@ L'accusé part **dès que le transfert reçu est terminé** chez B, réussi ou n
 | `FAILED` | transfert `FAILED` : « Échec chez le destinataire : <cause> » ; cause bornée, caractères de contrôle retirés ; **paquets gardés** |
 | `RESTORED`, empreinte conforme | transfert `ACKNOWLEDGED`, dossier `outbox/<transfert>` supprimé |
 
+Après un accusé cohérent, réussi ou en échec, les paquets déposés sont aussi **retirés des relais XFTP** : le destinataire n'en a plus besoin, et une relance les redépose. Un échec de ce retrait est seulement journalisé, et les morceaux expirent d'eux-mêmes au bout de 48 h.
+
 **Authenticité.** Dans la preuve de concept, l'accusé n'a pas de signature applicative : il s'appuie sur la conversation SimpleX, chiffrée et authentifiée de bout en bout, que seul le partenaire appairé peut alimenter, et sur la vérification que l'expéditeur est bien le destinataire du transfert. Les accusés signés (Ed25519 + ML-DSA-65) sont prévus par le protocole IU-T (`file.ack`, [spécification](specification-protocole.md) § 10).
 
 ## 4. Fiabilité et reprise

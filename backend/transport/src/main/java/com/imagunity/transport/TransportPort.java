@@ -40,6 +40,15 @@ public interface TransportPort extends AutoCloseable {
      */
     long sendFile(PeerId peer, Path file);
 
+    /**
+     * Retire des relais un fichier envoyé dont le destinataire n'a plus besoin (après son accusé), au lieu
+     * d'attendre son expiration. Sans effet si le transport ne le permet pas.
+     *
+     * @param fileId identifiant renvoyé par {@link #sendFile}
+     */
+    default void discardSentFile(long fileId) {
+    }
+
     /** Accepte un fichier annoncé et le télécharge à l'emplacement donné. */
     void receiveFile(long fileId, Path target);
 

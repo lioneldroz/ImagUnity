@@ -60,6 +60,18 @@ final class FakeTransport implements TransportPort {
         return id;
     }
 
+    /** Fichiers retirés des relais. */
+    final List<Long> discarded = new ArrayList<>();
+    boolean failDiscard;
+
+    @Override
+    public void discardSentFile(long fileId) {
+        if (failDiscard) {
+            throw new TransportException("fichier déjà supprimé");
+        }
+        discarded.add(fileId);
+    }
+
     /** Téléchargements demandés : identifiant de fichier → emplacement cible. */
     final java.util.Map<Long, Path> downloads = new java.util.LinkedHashMap<>();
     boolean failReceive;

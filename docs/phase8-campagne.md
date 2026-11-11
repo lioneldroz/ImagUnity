@@ -97,7 +97,7 @@ Propre à ce banc, sans conséquence en déploiement : le noyau de l'hôte n'a *
 ## 4. Recommandations pour le pilote
 
 1. **Exposition réseau** : faire écouter la console (8080) et l'entrée DICOM (11112) sur l'interface du réseau local seulement (`server.address`, adresse d'écoute DICOM), en plus du pare-feu du site.
-2. **Ménage sur le relais** : supprimer les fichiers XFTP dès l'accusé reçu, au lieu d'attendre leur expiration à 48 h.
+2. **Ménage sur le relais** : supprimer les fichiers XFTP dès l'accusé reçu, au lieu d'attendre leur expiration à 48 h. **Fait** : la box A retire des relais les paquets d'un transfert dès l'accusé (réussi ou en échec) du destinataire (`/fcancel` de simplex-chat). Vérifié en réel : aucun morceau ne reste sur le relais après un transfert de 50 Mo.
 3. **Déploiement** : client SimpleX et box sur le même système de fichiers pour `/data` (dossier temporaire compris).
 4. **Rattrapage** : il couvre le redémarrage de la box. Une reconnexion automatique au client SimpleX, si celui-ci redémarre seul pendant que la box tourne, reste à faire.
 
