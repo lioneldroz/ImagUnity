@@ -29,6 +29,17 @@ final class SimplexEventMapper {
             case "sndFileError" -> List.of(new TransportEvent.FileFailed(
                     resp.path("fileTransferMeta").path("fileId").asLong(),
                     "envoi : " + resp.path("errorMessage").asString()));
+            // Événements non documentés dans bots/api, relevés dans src/Simplex/Chat/Controller.hs (v7.1.2).
+            case "sndFileProgressXFTP" -> List.of(new TransportEvent.FileProgress(
+                    resp.path("fileTransferMeta").path("fileId").asLong(),
+                    TransportEvent.Direction.SENDING,
+                    resp.path("sentSize").asLong(),
+                    resp.path("totalSize").asLong()));
+            case "rcvFileProgressXFTP" -> List.of(new TransportEvent.FileProgress(
+                    resp.path("rcvFileTransfer").path("fileId").asLong(),
+                    TransportEvent.Direction.RECEIVING,
+                    resp.path("receivedSize").asLong(),
+                    resp.path("totalSize").asLong()));
             default -> List.of();
         };
     }

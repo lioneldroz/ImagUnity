@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : brouillon v0.1, pour décision.** Rien n'est implémenté.
+> **Statut : brouillon v0.2, pour décision.** Rien n'est implémenté. Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour remplacer à terme SimpleX derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md).
 
@@ -185,7 +185,7 @@ Toutes les requêtes passent par TLS 1.3. Les requêtes authentifiées portent u
 |---|---|---|---|
 | Créer un morceau | `POST /iu/v1/chunks` corps : `{suite, size, digest, senderKey, recipientKeys[], ttl}` | Certificat client d'enrôlement (§ 6.4) | `{senderId, recipientIds[]}` |
 | Téléverser | `PUT /iu/v1/chunks/{senderId}` corps : `C_i` | Signature `sk_snd` | `204` ; le relais vérifie `size` et `digest` |
-| Télécharger | `GET /iu/v1/chunks/{recipientId}` (`Range` autorisé) | Signature `sk_rcv` | `200` + `C_i` |
+| Télécharger | `GET /iu/v1/chunks/{recipientId}[?wait=<s>]` (`Range` autorisé) | Signature `sk_rcv` | `200` + `C_i` ; `425 Too Early` + `Retry-After` si le morceau n'est pas encore téléversé (§ 6.6) |
 | Acquitter | `POST /iu/v1/chunks/{recipientId}/ack` | Signature `sk_rcv` | `204` ; accès révoqué pour ce destinataire |
 | Supprimer | `DELETE /iu/v1/chunks/{senderId}` | Signature `sk_snd` | `204` |
 | État | `GET /iu/v1/chunks/{senderId}` | Signature `sk_snd` | `{uploaded, recipientsAcked}` (sans identifier les destinataires) |
@@ -195,6 +195,7 @@ Règles du relais :
 - un morceau est **supprimé** quand tous ses destinataires l'ont acquitté, à la demande de l'émetteur, ou à l'expiration de son `ttl` ;
 - `ttl` est plafonné par la configuration du relais (proposition : 72 h par défaut, 7 jours au plus) ;
 - un morceau incomplet (téléversement inachevé) expire au bout d'une durée courte (proposition : 24 h) ;
+- un morceau créé mais pas encore téléversé répond `425 Too Early` au téléchargement ; avec `wait`, le relais garde la requête ouverte jusqu'à la fin du téléversement ou jusqu'au délai demandé (plafonné, proposition : 30 s) ;
 - le relais ne journalise aucun identifiant de morceau associé à une adresse IP au-delà de ce qu'exige la lutte contre les abus.
 
 ### 6.3 Signature des requêtes
@@ -224,6 +225,28 @@ Le relais applique des limites de débit et de volume par certificat (protection
 - **Redondance** : un morceau peut être déposé sur plusieurs relais ; la description liste toutes les répliques et le destinataire prend la première disponible.
 - **Ordre et parallélisme** : libres côté box (savoir-faire propriétaire) ; par exemple les séries utiles au diagnostic d'abord.
 
+### 6.6 Annonce anticipée : téléchargement pendant le téléversement
+
+**Constat de la phase 1** : avec XFTP, le destinataire ne reçoit la description qu'une fois **tout** le fichier téléversé. Le temps d'un transfert est donc la somme du téléversement et du téléchargement ([résultats de la phase 1](phase1-simplex.md#5-résultats)). Sur une liaison lente, c'est le facteur le plus coûteux.
+
+IU-T sépare la **création** des morceaux de leur **téléversement**, ce qui permet d'annoncer le fichier dès que tous les morceaux sont créés :
+
+1. La box émettrice chiffre le paquet et calcule toutes les empreintes `H_i` (§ 5) : la description est complète avant tout téléversement.
+2. Elle **crée** tous les morceaux sur les relais (`POST /iu/v1/chunks`, requêtes légères sans données) et obtient tous les identifiants.
+3. Elle **annonce** aussitôt le fichier (`file.announce`, avec `"mode": "early"`).
+4. Elle téléverse les morceaux, dans l'ordre de son choix.
+5. Le destinataire télécharge en parallèle : un morceau pas encore disponible répond `425 Too Early` ; il le redemande avec `wait` (attente longue) ou passe à un autre morceau.
+
+Conséquences :
+
+- **Durée** : sur une liaison où le téléchargement suit le téléversement, le temps total tend vers celui du plus lent des deux, au lieu de leur somme.
+- **Ordre utile** : en téléversant d'abord les séries utiles au diagnostic, le destinataire peut commencer à les restituer avant la fin du transfert (à condition que le paquet soit découpé par série, phase 3).
+- **Destinataire hors ligne** : aucun changement. Il trouvera les morceaux déjà téléversés à son retour (poste restante).
+- **Abandon par l'émetteur** : il supprime ses morceaux et envoie `file.cancel` (§ 8.4). Sans ce message, le destinataire conclut à l'abandon quand des morceaux restent indisponibles au-delà de la durée d'expiration des morceaux incomplets (§ 6.2).
+- **Métadonnées** : le relais voit un retrait commencer avant la fin du dépôt, ce qui lui permet plus facilement d'associer un dépôt et un retrait par leurs horaires. C'est le prix du gain de temps ; le mode classique reste disponible quand cette corrélation doit être évitée.
+
+Le **mode classique** (`"mode": "complete"`, annonce après le téléversement complet, comme XFTP) reste possible. Le choix revient à la box émettrice, transfert par transfert.
+
 ---
 
 ## 7. Description de fichier
@@ -234,6 +257,7 @@ La description donne au destinataire tout ce qu'il faut pour retrouver, vérifie
 {
   "suite": "IU1",
   "transferId": "<T, base64url>",
+  "mode": "early",
   "chunkSize": 4194304,
   "chunkCount": 312,
   "size": 1306525184,
@@ -305,6 +329,7 @@ Le relais ne voit ni l'émetteur, ni le type, ni le contenu.
 | `file.announce` | émetteur → destinataire | description de fichier (§ 7) ou description de redirection |
 | `file.ack` | destinataire → émetteur | `transferId`, résultat : `complete` / `failed`, nombre d'instances vérifiées, empreinte du manifeste (§ 10) |
 | `file.reject` | destinataire → émetteur | `transferId`, motif (expéditeur non appairé, examen invalide…) |
+| `file.cancel` | émetteur → destinataire | `transferId`, motif : l'émetteur abandonne un transfert annoncé (utile en annonce anticipée, § 6.6) |
 | `ping` | les deux | diagnostic de liaison |
 
 ---
@@ -337,14 +362,15 @@ Une **entrée de box**, signée par le responsable de l'organisation :
 1. Le PACS envoie l'examen à la box (C-STORE) ; la box identifie le destinataire (AET appelé).
 2. La box lit l'entrée du destinataire dans l'annuaire et vérifie sa signature.
 3. Elle produit le paquet, choisit `S`, chiffre et découpe (§ 5).
-4. Pour chaque morceau : création sur un ou plusieurs relais, puis téléversement (§ 6). État enregistré morceau par morceau.
-5. Elle construit la description (§ 7), la chiffre et la signe pour le destinataire, et la dépose dans sa file (§ 8) : état `ANNOUNCED`.
-6. La box réceptrice relève le message, vérifie la signature de l'émetteur et qu'il appartient à son organisation.
-7. Elle télécharge les morceaux, vérifie chaque `H_i`, déchiffre, contrôle `D`, et acquitte chaque morceau auprès du relais.
-8. Elle dépaquette, vérifie l'empreinte de chaque instance DICOM, pousse l'examen vers le mini-PACS.
-9. Elle renvoie un `file.ack` signé : l'émetteur passe le transfert à `ACKNOWLEDGED`.
+4. Elle crée tous les morceaux sur un ou plusieurs relais (§ 6). État enregistré morceau par morceau.
+5. Elle construit la description (§ 7), la chiffre et la signe pour le destinataire, et la dépose dans sa file (§ 8) : état `ANNOUNCED`. En annonce anticipée (par défaut, § 6.6), elle le fait **avant** de téléverser ; en mode classique, après l'étape suivante.
+6. Elle téléverse les morceaux (§ 6.2), dans l'ordre de son choix.
+7. La box réceptrice relève le message, vérifie la signature de l'émetteur et qu'il appartient à son organisation.
+8. Elle télécharge les morceaux (en parallèle du téléversement en annonce anticipée), vérifie chaque `H_i`, déchiffre, contrôle `D`, et acquitte chaque morceau auprès du relais.
+9. Elle dépaquette, vérifie l'empreinte de chaque instance DICOM, pousse l'examen vers le mini-PACS.
+10. Elle renvoie un `file.ack` signé : l'émetteur passe le transfert à `ACKNOWLEDGED`.
 
-Les étapes 4 et 7 reprennent là où elles s'étaient arrêtées après une coupure.
+Les étapes 4, 6 et 8 reprennent là où elles s'étaient arrêtées après une coupure.
 
 ---
 
@@ -360,6 +386,7 @@ Les étapes 4 et 7 reprennent là où elles s'étaient arrêtées après une cou
 | Taille de fichier | Limitée (1 Go en v5.0.0) | Non limitée par le protocole |
 | Taille de morceau | Quelques tailles fixes | Ensemble fermé, choisi selon la liaison |
 | Reprise | Par morceau | Par morceau, plus `Range` dans un morceau |
+| Début du téléchargement | Après le téléversement complet (mesuré en phase 1) | Dès l'annonce, en parallèle du téléversement (§ 6.6) ; mode classique possible |
 | Post-quantique | En cours d'intégration (messages) | Hybride dès la v1 pour les clés de fichier et les signatures |
 | Double ratchet, confidentialité persistante | Oui (messages) | Non : clé éphémère par transfert et par message (§ 12) |
 | Métadonnées | Minimisées (pas d'identité) | Le relais voit les adresses IP des box enrôlées ; le contenu et le couple émetteur / destinataire restent cachés |
@@ -402,3 +429,12 @@ Les étapes 4 et 7 reprennent là où elles s'étaient arrêtées après une cou
 **Total indicatif : 2,5 à 3,5 mois pour une personne, hors audit.**
 
 Calendrier recommandé : mener la preuve de concept sur SimpleX (phases 1 à 8), valider cette spécification en parallèle, puis implémenter IU-T pour le pilote. Le `TransportPort` permet de changer de transport sans toucher au DICOM, à l'empaquetage ni à l'orchestrateur.
+
+---
+
+## Historique
+
+| Version | Date | Changements |
+|---|---|---|
+| 0.1 | 2026-11-11 | Premier brouillon. |
+| 0.2 | 2026-11-11 | Annonce anticipée (§ 6.6) : téléchargement en parallèle du téléversement, réponse `425 Too Early` et attente longue sur les morceaux, champ `mode` de la description, message `file.cancel`, déroulé du § 10 mis à jour. Motivée par les mesures de la phase 1. |

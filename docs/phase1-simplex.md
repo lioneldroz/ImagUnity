@@ -10,7 +10,7 @@ Module [`backend/transport`](../backend/transport) :
 | Élément | Rôle |
 |---|---|
 | `TransportPort` | Interface du transport vue par le cœur métier : invitation, appairage, message, envoi et réception de fichier, événements. **Brouillon**, à figer après les essais. |
-| `TransportEvent` | `PeerConnected`, `MessageReceived`, `FileOffered`, `FileReceived`, `FileSent`, `FileFailed`. |
+| `TransportEvent` | `PeerConnected`, `MessageReceived`, `FileOffered`, `FileReceived`, `FileSent`, `FileFailed`, `FileProgress`. |
 | `simplex.SimplexChatClient` | Client bas niveau de l'API WebSocket : corrélation commande / réponse par `corrId`, erreurs `chatCmdError`, délai d'attente, diffusion des événements. |
 | `simplex.SimplexTransport` | Implémentation du `TransportPort` sur `simplex-chat`. |
 | `simplex.SimplexEventMapper` | Traduction des événements `simplex-chat` en `TransportEvent`. |
@@ -97,7 +97,7 @@ IMAGUNITY_SIMPLEX_A=ws://localhost:5225 IMAGUNITY_SIMPLEX_B=ws://localhost:5226 
 |---|---|
 | `contactConnected` / `contactSndReady` ? | Pour un lien d'invitation, **seul `contactConnected`** arrive, chez les deux parties, précédé de `contactConnecting`. `contactSndReady` n'a pas été émis. L'envoi est possible dès `contactConnected`. |
 | Déroulé d'un envoi de fichier | **En deux temps** : A téléverse tout le fichier (`sndFileProgressXFTP` puis `sndFileCompleteXFTP`), et c'est seulement ensuite que B reçoit la description (`rcvFileDescrReady`), puis télécharge (`rcvFileStart`, `rcvFileProgressXFTP`, `rcvFileComplete`). Le temps total est donc la somme du téléversement et du téléchargement. |
-| Progression des transferts | Les événements **non documentés** `sndFileProgressXFTP` et `rcvFileProgressXFTP` existent (environ un tous les 3 Mo sur 50 Mo). Ils pourront alimenter la console. |
+| Progression des transferts | Les événements **non documentés** `sndFileProgressXFTP` (`sentSize`, `totalSize`) et `rcvFileProgressXFTP` (`receivedSize`, `totalSize`) existent, environ un tous les 3 Mo sur 50 Mo. Forme relevée dans `src/Simplex/Chat/Controller.hs`. Traduits en `FileProgress`. |
 | Fichier reçu : où, et en clair ? | À l'**emplacement exact** passé à `/freceive`, **en clair** (empreinte identique à la source). |
 | Limite de taille | D'après le code source (`simplexmq`, `Simplex/FileTransfer/Description.hs` et `Agent.hs`) : **1 Go « souple »** (`maxFileSize`) et **5 Go « dur »** côté agent (`maxFileSizeHard`). Morceaux XFTP de 64 Kio, 256 Kio, 1 Mio ou 4 Mio. Les fichiers de plus de 1 Go restent à essayer, sur relais auto-hébergés. |
 | Autres événements observés | `chatItemsStatusesUpdated` (statuts de remise des messages envoyés), `newChatItems` pour les événements de connexion. Tous ignorés sans erreur par l'adaptateur. |
@@ -106,8 +106,8 @@ IMAGUNITY_SIMPLEX_A=ws://localhost:5225 IMAGUNITY_SIMPLEX_B=ws://localhost:5226 
 ### 5.4 Conséquences
 
 - L'adaptateur fonctionne **sans modification** sur un vrai `simplex-chat` : le `TransportPort` peut être stabilisé tel quel pour la suite de la preuve de concept.
-- Le `TransportEvent` gagnera un événement de **progression** (à partir de `sndFileProgressXFTP` / `rcvFileProgressXFTP`), utile à la console.
-- Le déroulé en deux temps double le temps d'un transfert par rapport à un flux continu : c'est un argument de plus pour le protocole propre IU-T, qui pourrait annoncer le fichier avant la fin du téléversement pour que le destinataire télécharge en parallèle. Ce mode n'est **pas encore** dans la [spécification](specification-protocole.md) : à y ajouter.
+- **Fait :** le `TransportEvent` a gagné l'événement `FileProgress` (sens, octets transférés, total), alimenté par `sndFileProgressXFTP` / `rcvFileProgressXFTP` et vérifié par l'essai réel. Le total est celui vu par le transport : 6 Mio pour un fichier de 5 Mio (morceaux complétés). Seul le rapport transféré / total est significatif.
+- **Fait :** le déroulé en deux temps double le temps d'un transfert par rapport à un flux continu. La [spécification IU-T](specification-protocole.md) prévoit désormais une **annonce anticipée** (§ 6.6, v0.2) : le destinataire télécharge pendant le téléversement.
 - Le **découpage par série** (phase 3) reste nécessaire pour les études de plus de 1 Go.
 
 ### 5.5 Remarque sur l'environnement de développement
