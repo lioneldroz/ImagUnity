@@ -99,11 +99,15 @@ class SimplexLiveTest {
         report("fichier " + sizeMb + " Mo", t0);
 
         Path receivedPath = received.path() != null ? received.path() : target;
+        System.out.printf("[phase 1] fichier reçu : %s (demandé : %s)%n", received.path(), target);
         assertThat(sha256(receivedPath)).isEqualTo(sha256(source));
     }
 
     private static SimplexTransport open(String variable, BlockingQueue<TransportEvent> sink) {
         SimplexChatClient client = SimplexChatClient.connect(URI.create(System.getenv(variable)), COMMAND_TIMEOUT);
+        String box = variable.substring(variable.length() - 1);
+        // Journal des événements bruts, pour documenter l'API réelle (types non documentés compris).
+        client.addEventListener(resp -> System.out.printf("[phase 1] événement %s : %s%n", box, resp.path("type").asString()));
         SimplexTransport transport = new SimplexTransport(client);
         transport.addListener(sink::add);
         return transport;
