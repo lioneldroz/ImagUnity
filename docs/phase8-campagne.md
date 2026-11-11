@@ -99,7 +99,7 @@ Propre à ce banc, sans conséquence en déploiement : le noyau de l'hôte n'a *
 1. **Exposition réseau** : faire écouter la console (8080) et l'entrée DICOM (11112) sur l'interface du réseau local seulement (`server.address`, adresse d'écoute DICOM), en plus du pare-feu du site.
 2. **Ménage sur le relais** : supprimer les fichiers XFTP dès l'accusé reçu, au lieu d'attendre leur expiration à 48 h. **Fait** : la box A retire des relais les paquets d'un transfert dès l'accusé (réussi ou en échec) du destinataire (`/fcancel` de simplex-chat). Vérifié en réel : aucun morceau ne reste sur le relais après un transfert de 50 Mo.
 3. **Déploiement** : client SimpleX et box sur le même système de fichiers pour `/data` (dossier temporaire compris).
-4. **Rattrapage** : il couvre le redémarrage de la box. Une reconnexion automatique au client SimpleX, si celui-ci redémarre seul pendant que la box tourne, reste à faire.
+4. **Rattrapage** : il couvre le redémarrage de la box. Une reconnexion automatique au client SimpleX, si celui-ci redémarre seul pendant que la box tourne, reste à faire. **Fait** : la box se reconnecte d'elle-même (attente de 1 s, doublée à chaque échec jusqu'à 30 s), puis relance le rattrapage. Dans le Compose, la box et son client partagent la pile réseau d'un petit conteneur `net-x` (comme un pod), pour que chacun puisse redémarrer seul. Vérifié en réel : client de B redémarré, box reconnectée en 1 s, transfert suivant réussi (100/100).
 
 ## 5. Non couvert, à mesurer ailleurs
 

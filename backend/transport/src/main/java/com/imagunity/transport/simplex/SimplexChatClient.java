@@ -12,8 +12,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,6 +28,10 @@ import tools.jackson.databind.node.ObjectNode;
  * la réponse revient avec le même {@code corrId} dans {@code {"corrId": "...", "resp": {...}}}.
  * Les messages sans {@code corrId} sont des événements, transmis aux écouteurs.
  * Les types inconnus doivent être ignorés : simplex-chat en émet qui ne sont pas documentés.
+ *
+ * <p>Si la connexion tombe (client simplex-chat redémarré), le client se reconnecte de lui-même, avec une attente
+ * qui double à chaque échec (de 1 s à 30 s), puis prévient ses {@link #addReconnectListener écouteurs de
+ * reconnexion} : ce qui est arrivé entre-temps n'a été signalé à personne.
  */
 public final class SimplexChatClient implements AutoCloseable {
 
@@ -37,11 +43,39 @@ public final class SimplexChatClient implements AutoCloseable {
     private final Map<String, String> pendingCommands = new ConcurrentHashMap<>();
     private final List<Consumer<JsonNode>> eventListeners = new CopyOnWriteArrayList<>();
     private final AtomicLong nextCorrId = new AtomicLong();
+    private final List<Runnable> reconnectListeners = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean reconnecting = new AtomicBoolean();
+    private final Supplier<ChatConnection> connector;
+    private final Duration firstPause;
+    private final Sleeper sleeper;
     private volatile ChatConnection connection;
+    private volatile boolean closed;
 
+    static final Duration FIRST_PAUSE = Duration.ofSeconds(1);
+    static final Duration MAX_PAUSE = Duration.ofSeconds(30);
+
+    /** Attente entre deux tentatives de reconnexion ; remplaçable pour les tests. */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(Duration duration) throws InterruptedException;
+    }
+
+    /** Client sans reconnexion (connexion attachée par {@link #attach}). */
     SimplexChatClient(JsonMapper mapper, Duration commandTimeout) {
+        this(mapper, commandTimeout, null, FIRST_PAUSE, Thread::sleep);
+    }
+
+    /**
+     * @param connector ouvre une nouvelle connexion (rappelée après une coupure), ou {@code null} : pas de
+     *                  reconnexion
+     */
+    SimplexChatClient(JsonMapper mapper, Duration commandTimeout, Supplier<ChatConnection> connector,
+                      Duration firstPause, Sleeper sleeper) {
         this.mapper = mapper;
         this.commandTimeout = commandTimeout;
+        this.connector = connector;
+        this.firstPause = firstPause;
+        this.sleeper = sleeper;
     }
 
     /**
@@ -51,8 +85,13 @@ public final class SimplexChatClient implements AutoCloseable {
      * @param commandTimeout délai maximal d'attente d'une réponse
      */
     public static SimplexChatClient connect(URI uri, Duration commandTimeout) {
-        SimplexChatClient client = new SimplexChatClient(JsonMapper.builder().build(), commandTimeout);
-        client.attach(WebSocketChatConnection.open(uri, Duration.ofSeconds(10), client::onMessage, client::onClosed));
+        SimplexChatClient[] self = new SimplexChatClient[1];
+        Supplier<ChatConnection> connector = () -> WebSocketChatConnection.open(uri, Duration.ofSeconds(10),
+                text -> self[0].onMessage(text), error -> self[0].onClosed(error));
+        SimplexChatClient client = new SimplexChatClient(JsonMapper.builder().build(), commandTimeout, connector,
+                FIRST_PAUSE, Thread::sleep);
+        self[0] = client;
+        client.attach(connector.get());
         return client;
     }
 
@@ -62,6 +101,11 @@ public final class SimplexChatClient implements AutoCloseable {
 
     JsonMapper mapper() {
         return mapper;
+    }
+
+    /** Abonne un écouteur appelé après chaque reconnexion réussie. */
+    public void addReconnectListener(Runnable listener) {
+        reconnectListeners.add(listener);
     }
 
     /** Abonne un écouteur aux événements (champ {@code resp} des messages sans corrId). */
@@ -155,17 +199,61 @@ public final class SimplexChatClient implements AutoCloseable {
         }
     }
 
-    /** La connexion est fermée : toutes les commandes en attente échouent. */
+    /** La connexion est fermée : toutes les commandes en attente échouent, puis reconnexion si elle est prévue. */
     void onClosed(Throwable error) {
         TransportException failure = new TransportException("Connexion à simplex-chat fermée", error);
         pending.values().forEach(f -> f.completeExceptionally(failure));
-        if (error != null) {
-            LOG.log(Level.WARNING, "Connexion à simplex-chat perdue", error);
+        if (closed || connector == null) {
+            return;
+        }
+        LOG.log(Level.WARNING, "Connexion à simplex-chat perdue{0} : reconnexion",
+                error == null ? "" : " (" + error.getMessage() + ")");
+        if (reconnecting.compareAndSet(false, true)) {
+            connection = null;
+            Thread.ofVirtual().name("simplex-reconnexion").start(this::reconnect);
+        }
+    }
+
+    /** Retente la connexion jusqu'au succès ou jusqu'à la fermeture du client. */
+    void reconnect() {
+        Duration pause = firstPause;
+        try {
+            while (!closed) {
+                sleeper.sleep(pause);
+                ChatConnection conn;
+                try {
+                    conn = connector.get();
+                } catch (TransportException e) {
+                    LOG.log(Level.DEBUG, "simplex-chat toujours injoignable : {0}", e.getMessage());
+                    pause = pause.multipliedBy(2).compareTo(MAX_PAUSE) > 0 ? MAX_PAUSE : pause.multipliedBy(2);
+                    continue;
+                }
+                if (closed) {
+                    conn.close();
+                    return;
+                }
+                attach(conn);
+                reconnecting.set(false);
+                LOG.log(Level.INFO, "Reconnecté à simplex-chat");
+                for (Runnable listener : reconnectListeners) {
+                    try {
+                        listener.run();
+                    } catch (RuntimeException e) {
+                        LOG.log(Level.WARNING, "Erreur dans un écouteur de reconnexion", e);
+                    }
+                }
+                return;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            reconnecting.set(false);
         }
     }
 
     @Override
     public void close() {
+        closed = true;
         ChatConnection conn = connection;
         if (conn != null) {
             conn.close();
