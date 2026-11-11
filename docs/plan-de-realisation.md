@@ -25,7 +25,7 @@ Démontrer une seule chose : un examen part d'un PACS, traverse des relais aveug
 | Composant | Stockage | Raison |
 |---|---|---|
 | Box (chez les établissements) | **H2** embarquée | Appliance installée sans compétence informatique : aucune base à installer, surveiller ou mettre à jour. Un seul processus écrit l'état des transferts d'une seule box. La résistance aux coupures de courant sera vérifiée en phase 8 (SQLite reste une alternative). |
-| Relais SMP et XFTP | **Aucune base ImagUnity** | Serveurs SimpleX utilisés sans modification, avec leur propre stockage (journal SMP, fichiers XFTP). Le logiciel ImagUnity n'y écrit jamais : un relais aveugle ne détient aucune donnée applicative, et le modifier créerait des obligations AGPL. |
+| Relais SMP et XFTP | **Aucune base ImagUnity** | Serveurs SimpleX utilisés sans modification, avec leur propre stockage (journal SMP, fichiers XFTP). Le logiciel ImagUnity n'y écrit jamais : un relais aveugle ne détient aucune donnée applicative, et le modifier créerait des obligations AGPL. Si le relais propre IU-T est retenu ([spécification](specification-protocole.md)), il utilisera **PostgreSQL** pour ses métadonnées (morceaux, files, expirations). |
 | Annuaire de l'organisation (pilote) | **PostgreSQL** | Service central partagé par toutes les box : box enrôlées, clés publiques, entrées signées, révocations. Accès concurrents, administration et sauvegardes. Absent de la preuve de concept (appairage par lien d'invitation SimpleX). |
 
 ### Architecture hexagonale : le transport isolé derrière une interface
@@ -94,6 +94,7 @@ Par ordre de criticité :
 5. Routage par champ DICOM, réception STOW-RS (DICOMweb).
 6. Adaptation au réseau : taille des blocs, priorité aux séries utiles au diagnostic, redondance entre relais.
 7. Validation juridique de la licence AGPL avant commercialisation.
+8. **Transport propre IU-T** (équivalent de XFTP et SMP, en Java), derrière le même `TransportPort` : voir la [spécification](specification-protocole.md). Estimation : 2,5 à 3,5 mois, plus un audit de sécurité externe. Il rendrait le point 7 sans objet pour le transport.
 
 ## 5. Décisions
 
