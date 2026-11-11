@@ -76,6 +76,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Note d'architecture](docs/ImagUnity%20—%20Note%20d'architecture.docx)
 - [Plan de réalisation](docs/plan-de-realisation.md)
 - [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
+- [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut
