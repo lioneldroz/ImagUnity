@@ -29,6 +29,22 @@ class TransferStateTest {
     }
 
     @Test
+    void onlyAcknowledgedAndFailedAreTerminal() {
+        assertThat(TransferState.values())
+                .filteredOn(TransferState::isTerminal)
+                .containsExactlyInAnyOrder(TransferState.ACKNOWLEDGED, TransferState.FAILED);
+    }
+
+    @Test
+    void everyActiveStateCanFail() {
+        for (TransferState state : TransferState.values()) {
+            if (!state.isTerminal()) {
+                assertThat(state.canTransitionTo(TransferState.FAILED)).as(state.name()).isTrue();
+            }
+        }
+    }
+
+    @Test
     void failedTransferCanBeResumed() {
         assertThat(TransferState.FAILED.canTransitionTo(TransferState.UPLOADED)).isTrue();
         assertThat(TransferState.FAILED.canTransitionTo(TransferState.ACKNOWLEDGED)).isFalse();

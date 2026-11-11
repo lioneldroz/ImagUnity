@@ -60,5 +60,32 @@ class DicomInputConfigTest {
     void rejectsNonPositiveIdleTimeout() {
         assertThatThrownBy(() -> new DicomInputConfig(null, 11112, Set.of(), Map.of(), Path.of("x"), Duration.ZERO, 0))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DicomInputConfig(null, 11112, Set.of(), Map.of(), Path.of("x"),
+                Duration.ofSeconds(-1), 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsInvalidPort() {
+        assertThatThrownBy(() -> new DicomInputConfig(null, 0, Set.of(), Map.of(), Path.of("x"), Duration.ofSeconds(1), 0))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Port");
+        assertThatThrownBy(() -> new DicomInputConfig(null, 65536, Set.of(), Map.of(), Path.of("x"),
+                Duration.ofSeconds(1), 0))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Port");
+    }
+
+    @Test
+    void requiresStorageDirAndTimeout() {
+        assertThatThrownBy(() -> new DicomInputConfig(null, 11112, Set.of(), Map.of(), null, Duration.ofSeconds(1), 0))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new DicomInputConfig(null, 11112, Set.of(), Map.of(), Path.of("x"), null, 0))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void rejectsNullAet() {
+        var routes = new java.util.HashMap<String, String>();
+        routes.put("IU_TO_B", null);
+        assertThatThrownBy(() -> config(Set.of(), routes)).isInstanceOf(NullPointerException.class);
     }
 }
