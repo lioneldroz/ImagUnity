@@ -21,4 +21,7 @@ public interface InboundRepository {
     Optional<InboundTransfer> findTransferByGroup(String peerName, String packageGroupId);
 
     List<InboundTransfer> findTransfers(InboundTransfer.State state);
+
+    /** Transferts terminés dont l'accusé n'est pas encore parti (cf. {@link InboundTransfer#awaitsAck()}). */
+    List<InboundTransfer> findAwaitingAck();
 }

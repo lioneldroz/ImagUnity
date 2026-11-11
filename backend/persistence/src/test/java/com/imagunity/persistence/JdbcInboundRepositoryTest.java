@@ -73,4 +73,20 @@ class JdbcInboundRepositoryTest {
         assertThat(repository.findTransfers(InboundTransfer.State.ANNOUNCED)).isEmpty();
         assertThat(repository.findTransfers(InboundTransfer.State.FAILED)).hasSize(1);
     }
+
+    @Test
+    void findsFinishedTransfersAwaitingTheirAck() {
+        InboundTransfer pending = announced("box-a", "g1");
+        InboundTransfer restored = announced("box-a", "g2").restored(6, t0.plusSeconds(1));
+        InboundTransfer failed = announced("box-a", "g3").failed("x", t0.plusSeconds(2));
+        InboundTransfer acked = announced("box-a", "g4").restored(1, t0).acknowledged(t0.plusSeconds(3));
+        for (InboundTransfer t : java.util.List.of(pending, restored, failed, acked)) {
+            repository.saveTransfer(t);
+        }
+
+        assertThat(repository.findAwaitingAck()).containsExactly(restored, failed);
+        InboundTransfer read = repository.findTransfer("box-a", acked.transferId()).orElseThrow();
+        assertThat(read.ackSent()).isTrue();
+        assertThat(read.restoredInstances()).isEqualTo(1);
+    }
 }

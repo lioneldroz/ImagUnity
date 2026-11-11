@@ -320,4 +320,150 @@ class SendOrchestratorTest {
 
         assertThat(broken.transfers).isEmpty();
     }
+
+    // --- Accusé de bout en bout ---
+
+    private static final PeerId BOX_B = new PeerId(5);
+
+    private Transfer announcedTransfer() throws IOException {
+        orchestrator.handleStudy(study("box-b", 2, 2));
+        uploadAll();
+        Transfer transfer = transfers.only();
+        assertThat(transfer.state()).isEqualTo(TransferState.ANNOUNCED);
+        return transfer;
+    }
+
+    private TransferAck ack(Transfer transfer, TransferAck.Result result, String reason) {
+        TransferAnnouncement a = messages.decodeAnnouncement(transport.messages.getLast().text()).orElseThrow();
+        return new TransferAck(transfer.id(), transfer.packageGroupId(), result,
+                result == TransferAck.Result.RESTORED ? 4 : 0,
+                TransferMessages.partsDigest(a.packageGroupId(), a.parts()), reason);
+    }
+
+    private void receive(PeerId from, TransferAck ack) {
+        orchestrator.onTransportEvent(new TransportEvent.MessageReceived(from, messages.encode(ack)));
+    }
+
+    private Path outboxOf(Transfer transfer) {
+        return dir.resolve("outbox").resolve(transfer.id().toString());
+    }
+
+    @Test
+    void restoredAckAcknowledgesTheTransferAndEmptiesItsOutbox() throws IOException {
+        Transfer transfer = announcedTransfer();
+        assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+
+        receive(BOX_B, ack(transfer, TransferAck.Result.RESTORED, null));
+
+        Transfer acknowledged = transfers.only();
+        assertThat(acknowledged.state()).isEqualTo(TransferState.ACKNOWLEDGED);
+        assertThat(acknowledged.errorMessage()).isNull();
+        assertThat(outboxOf(transfer)).doesNotExist();
+        assertThat(dir.resolve("outbox")).as("les autres envois restent").exists();
+    }
+
+    @Test
+    void failedAckFailsTheTransferAndKeepsItsPackages() throws IOException {
+        Transfer transfer = announcedTransfer();
+
+        receive(BOX_B, ack(transfer, TransferAck.Result.FAILED, "Restitution impossible :\nPACS injoignable"));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+        assertThat(transfers.only().errorMessage())
+                .isEqualTo("Échec chez le destinataire : Restitution impossible : PACS injoignable");
+        assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+    }
+
+    @Test
+    void ackWithOtherPackagesFailsTheTransfer() throws IOException {
+        Transfer transfer = announcedTransfer();
+        TransferAck good = ack(transfer, TransferAck.Result.RESTORED, null);
+
+        receive(BOX_B, new TransferAck(good.transferId(), good.packageGroupId(), good.result(), 4, "0".repeat(64),
+                null));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+        assertThat(transfers.only().errorMessage()).startsWith("Accusé du destinataire incohérent");
+        assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+    }
+
+    @Test
+    void ackWithOtherGroupFailsTheTransfer() throws IOException {
+        Transfer transfer = announcedTransfer();
+        TransferAck good = ack(transfer, TransferAck.Result.RESTORED, null);
+
+        receive(BOX_B, new TransferAck(good.transferId(), "autre-groupe", good.result(), 4, good.partsDigest(), null));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+    }
+
+    @Test
+    void ackFromAnotherContactIsIgnored() throws IOException {
+        Transfer transfer = announcedTransfer();
+        peers.save(new Peer("box-c", 6, "box-c", clock.instant()));
+        TransferAck ack = ack(transfer, TransferAck.Result.RESTORED, null);
+
+        receive(new PeerId(66), ack); // non appairé
+        receive(new PeerId(6), ack);  // appairé, mais pas destinataire de ce transfert
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
+        assertThat(outboxOf(transfer)).isNotEmptyDirectory();
+    }
+
+    @Test
+    void ackForUnknownTransferIsIgnored() throws IOException {
+        Transfer transfer = announcedTransfer();
+        TransferAck ack = ack(transfer, TransferAck.Result.RESTORED, null);
+
+        receive(BOX_B, new TransferAck(java.util.UUID.randomUUID(), ack.packageGroupId(), ack.result(), 4,
+                ack.partsDigest(), null));
+        receive(BOX_B, new TransferAck(null, ack.packageGroupId(), ack.result(), 4, ack.partsDigest(), null));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
+    }
+
+    @Test
+    void ackOfFinishedTransferIsIgnored() throws IOException {
+        Transfer transfer = announcedTransfer();
+        TransferAck restored = ack(transfer, TransferAck.Result.RESTORED, null);
+        receive(BOX_B, restored);
+
+        receive(BOX_B, restored);
+        receive(BOX_B, ack(transfer, TransferAck.Result.FAILED, "trop tard"));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
+    }
+
+    @Test
+    void otherMessagesAreNotAcks() throws IOException {
+        Transfer transfer = announcedTransfer();
+
+        orchestrator.onTransportEvent(new TransportEvent.MessageReceived(BOX_B, "bonjour"));
+        orchestrator.onTransportEvent(new TransportEvent.MessageReceived(BOX_B, transport.messages.getLast().text()));
+
+        assertThat(transfers.find(transfer.id()).orElseThrow().state()).isEqualTo(TransferState.ANNOUNCED);
+    }
+
+    @Test
+    void recoveryEmptiesTheOutboxOfAcknowledgedTransfers() throws IOException {
+        Transfer leftover = announcedTransfer();
+        transfers.update(leftover.moveTo(TransferState.ACKNOWLEDGED, clock.instant())); // arrêt avant le ménage
+        Transfer clean = Transfer.received("2.25.10", "IU_TO_B", "box-b", 1, clock.instant());
+        transfers.create(clean);
+        transfers.update(clean.packaged("g", 1, clock.instant()).moveTo(TransferState.UPLOADED, clock.instant())
+                .moveTo(TransferState.ANNOUNCED, clock.instant()).moveTo(TransferState.ACKNOWLEDGED, clock.instant()));
+
+        orchestrator.recover();
+
+        assertThat(outboxOf(leftover)).doesNotExist();
+        assertThat(outboxOf(clean)).doesNotExist();
+    }
+
+    @Test
+    void reasonFromPartnerIsSanitized() {
+        assertThat(SendOrchestrator.sanitize(null)).isEqualTo("cause non précisée");
+        assertThat(SendOrchestrator.sanitize("  ")).isEqualTo("cause non précisée");
+        assertThat(SendOrchestrator.sanitize("a\u0007b\r\n")).isEqualTo("a b");
+        assertThat(SendOrchestrator.sanitize("x".repeat(600))).hasSize(TransferAck.MAX_REASON);
+    }
 }

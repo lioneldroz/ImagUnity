@@ -78,7 +78,7 @@ Durée totale, du premier C-STORE à la restitution : **20 s**, dont environ 13 
 
 ## 6. Limites et suites
 
-- **Accusé de bout en bout** (phase 6) : l'émetteur reste à `ANNOUNCED` ; il ne sait pas encore que l'examen est arrivé intact, et son dossier d'envoi n'est pas nettoyé.
+- **Accusé de bout en bout** : fait en [phase 6](phase6-accuse.md).
 - **Un seul fil pour l'envoi et la réception** : une restitution longue retarde les envois de la même box. À revoir si la volumétrie l'exige.
 - **Paquets d'un transfert en échec** conservés dans le dossier de réception : nettoyage à prévoir (console, phase 7).
 - **Le PACS local doit accepter l'AET de la box** (`box-aet`) ; Orthanc l'accepte par défaut.
