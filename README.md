@@ -79,6 +79,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Plan de réalisation](docs/plan-de-realisation.md)
 - [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
 - [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
+- [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut

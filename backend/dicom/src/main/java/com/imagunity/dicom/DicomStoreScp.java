@@ -1,5 +1,6 @@
 package com.imagunity.dicom;
 
+import com.imagunity.domain.exam.DicomUids;
 import com.imagunity.domain.exam.ReceivedInstance;
 import java.io.BufferedOutputStream;
 import java.io.IOException;

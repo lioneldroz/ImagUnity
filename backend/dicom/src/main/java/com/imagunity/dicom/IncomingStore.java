@@ -60,7 +60,7 @@ final class IncomingStore {
         return root.resolve(TEMP_DIR).resolve(UUID.randomUUID() + ".part");
     }
 
-    /** Emplacement définitif ; les UID doivent avoir été validés par {@link DicomUids}. */
+    /** Emplacement définitif ; les UID doivent avoir été validés par {@link com.imagunity.domain.exam.DicomUids}. */
     Path finalPath(String calledAet, String studyUid, String seriesUid, String sopInstanceUid) {
         Path path = root.resolve(calledAet).resolve(studyUid).resolve(seriesUid).resolve(sopInstanceUid + SUFFIX)
                 .normalize();
