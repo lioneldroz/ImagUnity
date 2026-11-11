@@ -75,6 +75,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 
 - [Note d'architecture](docs/ImagUnity%20—%20Note%20d'architecture.docx)
 - [Plan de réalisation](docs/plan-de-realisation.md)
+- [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
 
 ## Statut
 
