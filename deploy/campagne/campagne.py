@@ -362,14 +362,14 @@ def firewall(service, on):
 def scenario_pare_feu():
     """Box derrière un pare-feu bloquant toute connexion entrante côté Internet, avec scan de ports."""
     result = {"scenario": "pare-feu"}
-    result["scanAvant"] = {s: nmap(s) for s in ("chat-a", "chat-b")}
-    for s in ("chat-a", "chat-b"):
+    result["scanAvant"] = {s: nmap(s) for s in ("net-a", "net-b")}
+    for s in ("net-a", "net-b"):
         firewall(s, True)
     try:
-        result["scanApres"] = {s: nmap(s) for s in ("chat-a", "chat-b")}
+        result["scanApres"] = {s: nmap(s) for s in ("net-a", "net-b")}
         result["transfert"] = full_transfer("pare-feu", 2, 50)
     finally:
-        for s in ("chat-a", "chat-b"):
+        for s in ("net-a", "net-b"):
             firewall(s, False)
     log(f"[pare-feu] {json.dumps(result, ensure_ascii=False)}")
     return result
@@ -382,7 +382,7 @@ DEGRADATION = ("netem delay 40ms 10ms loss 1% rate 20mbit" if os.environ.get("NE
 
 
 def degrade(on):
-    for service in ("chat-a", "chat-b", "smp-server", "xftp-server"):
+    for service in ("net-a", "net-b", "smp-server", "xftp-server"):
         iface = relais_iface(service)
         if on:
             netshoot(service, f"tc qdisc add dev {iface} root {DEGRADATION}")
@@ -407,7 +407,7 @@ def scenario_coupure(cut_seconds=60):
     Tout le trafic de la box A côté relais est bloqué, sauf la passerelle Docker par laquelle le pilote
     interroge la console (ports publiés). Les règles sont retirées quoi qu'il arrive.
     """
-    iface = relais_iface("chat-a")
+    iface = relais_iface("net-a")
     gateway = relais_gateway()
     rules = (f"INPUT -i {iface} ! -s {gateway} -j DROP", f"OUTPUT -o {iface} ! -d {gateway} -j DROP")
     events = {}
@@ -416,7 +416,7 @@ def scenario_coupure(cut_seconds=60):
         transfer.wait_for(lambda s: s == "PACKAGED", 600, "empaquetage")
         time.sleep(3)  # dépôt commencé
         events["coupure_s"] = transfer.elapsed()
-        netshoot("chat-a", " && ".join(f"iptables -I {r}" for r in rules))
+        netshoot("net-a", " && ".join(f"iptables -I {r}" for r in rules))
         log(f"[coupure] réseau de la box A coupé pour {cut_seconds} s")
         try:
             end = time.monotonic() + cut_seconds
@@ -424,7 +424,7 @@ def scenario_coupure(cut_seconds=60):
                 transfer.poll()
                 time.sleep(1)
         finally:
-            netshoot("chat-a", " ; ".join(f"iptables -D {r}" for r in rules))
+            netshoot("net-a", " ; ".join(f"iptables -D {r}" for r in rules))
         events["retablissement_s"] = transfer.elapsed()
         log("[coupure] réseau rétabli")
 

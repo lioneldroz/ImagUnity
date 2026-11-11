@@ -6,8 +6,8 @@
 #   relais  : smp-server, xftp-server, et les clients simplex-chat des deux box
 # Aucun chemin réseau direct n'existe entre site-a et site-b : tout passe par les relais.
 #
-# Chaque box est composée de deux conteneurs qui partagent la même pile réseau
-# (network_mode: service:chat-x) et le même volume /data : le client simplex-chat, processus
+# Chaque box est composée de deux conteneurs qui partagent la même pile réseau (celle de net-x,
+# network_mode: service:net-x) et le même volume /data : le client simplex-chat, processus
 # séparé (AGPL), et le logiciel ImagUnity qui le pilote par WebSocket sur localhost.
 
 name: imagunity
@@ -47,6 +47,16 @@ services:
 
   # --- Box A (émettrice) -----------------------------------------------------
 
+  # Pile réseau de la box A, partagée par chat-a et box-a comme dans un pod : le client SimpleX et la
+  # box peuvent redémarrer chacun de leur côté sans perdre le réseau de l'autre.
+  net-a:
+    image: ubuntu:24.04
+    command: ["sleep", "infinity"]
+    init: true
+    networks: [relais, site-a]
+    ports:
+      - "8081:8080"   # console de la box A
+
   chat-a:
     build: ./simplex-chat
     environment:
@@ -57,10 +67,8 @@ services:
       - box-a-data:/data
       - smp-config:/smp-config:ro
       - xftp-config:/xftp-config:ro
-    depends_on: [smp-server, xftp-server]
-    networks: [relais, site-a]
-    ports:
-      - "8081:8080"   # console de la box A
+    network_mode: service:net-a
+    depends_on: [smp-server, xftp-server, net-a]
 
   box-a:
     build:
@@ -80,7 +88,7 @@ services:
       IMAGUNITY_BOX_AET: IMAGUNITY_A
     volumes:
       - box-a-data:/data
-    network_mode: service:chat-a
+    network_mode: service:net-a
     depends_on: [chat-a]
 
   orthanc-a:
@@ -91,7 +99,7 @@ services:
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       # Envoyer vers IU_TO_B = désigner la box B comme destinataire (routage par AET).
       ORTHANC__DICOM_MODALITIES: |
-        { "imagunity-b": ["IU_TO_B", "chat-a", 11112] }
+        { "imagunity-b": ["IU_TO_B", "net-a", 11112] }
     volumes:
       - orthanc-a-data:/var/lib/orthanc/db
     networks: [site-a]
@@ -99,6 +107,16 @@ services:
       - "8042:8042"
 
   # --- Box B (réceptrice) ----------------------------------------------------
+
+  # Pile réseau de la box B, partagée par chat-b et box-b comme dans un pod : le client SimpleX et la
+  # box peuvent redémarrer chacun de leur côté sans perdre le réseau de l'autre.
+  net-b:
+    image: ubuntu:24.04
+    command: ["sleep", "infinity"]
+    init: true
+    networks: [relais, site-b]
+    ports:
+      - "8082:8080"   # console de la box B
 
   chat-b:
     build: ./simplex-chat
@@ -110,10 +128,8 @@ services:
       - box-b-data:/data
       - smp-config:/smp-config:ro
       - xftp-config:/xftp-config:ro
-    depends_on: [smp-server, xftp-server]
-    networks: [relais, site-b]
-    ports:
-      - "8082:8080"   # console de la box B
+    network_mode: service:net-b
+    depends_on: [smp-server, xftp-server, net-b]
 
   box-b:
     build:
@@ -133,7 +149,7 @@ services:
       IMAGUNITY_BOX_AET: IMAGUNITY_B
     volumes:
       - box-b-data:/data
-    network_mode: service:chat-b
+    network_mode: service:net-b
     depends_on: [chat-b]
 
   orthanc-b:
@@ -144,7 +160,7 @@ services:
       ORTHANC__AUTHENTICATION_ENABLED: "false"
       # Envoyer vers IU_TO_A = désigner la box A (sens retour).
       ORTHANC__DICOM_MODALITIES: |
-        { "imagunity-a": ["IU_TO_A", "chat-b", 11112] }
+        { "imagunity-a": ["IU_TO_A", "net-b", 11112] }
     volumes:
       - orthanc-b-data:/var/lib/orthanc/db
     networks: [site-b]

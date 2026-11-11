@@ -38,6 +38,7 @@ public final class SimplexTransport implements TransportPort {
     public SimplexTransport(SimplexChatClient client) {
         this.client = client;
         client.addEventListener(this::onSimplexEvent);
+        client.addReconnectListener(this::catchUpAfterReconnection);
         JsonNode resp = expect(client.command(SimplexCommands.showActiveUser()), "activeUser");
         this.userId = resp.path("user").path("userId").asLong();
     }
@@ -111,6 +112,15 @@ public final class SimplexTransport implements TransportPort {
             replayed += events.size();
         }
         LOG.log(Level.INFO, "Rattrapage : {0} événement(s) rejoué(s)", replayed);
+    }
+
+    /** Après une reconnexion au client simplex-chat : rattrape ce qu'il a reçu pendant la coupure. */
+    private void catchUpAfterReconnection() {
+        try {
+            catchUp();
+        } catch (TransportException e) {
+            LOG.log(Level.WARNING, "Rattrapage après reconnexion impossible : {0}", e.getMessage());
+        }
     }
 
     @Override
