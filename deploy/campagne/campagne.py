@@ -338,11 +338,25 @@ def nmap(service):
     return {"ip": ip, "ports": [p.strip() for p in ports if p.strip()]}
 
 
+def relais_gateway():
+    return run("docker", "network", "inspect", f"{PROJECT}_relais", "-f", "{{(index .IPAM.Config 0).Gateway}}")
+
+
 def firewall(service, on):
+    """Bloque toute connexion entrante côté relais (« Internet »).
+
+    Exception : la passerelle Docker, par laquelle arrivent dans ce labo les ports publiés de la console
+    (le pilote de campagne s'en sert) ; dans un établissement, la console n'est joignable que du réseau local.
+    """
     iface = relais_iface(service)
-    action = "-I" if on else "-D"
-    netshoot(service, f"iptables {action} INPUT -i {iface} -p tcp --syn -j DROP && "
-                      f"iptables {action} INPUT -i {iface} -p udp -j DROP")
+    gateway = relais_gateway()
+    rules = [f"INPUT -i {iface} -s {gateway} -j ACCEPT", f"INPUT -i {iface} -p tcp --syn -j DROP",
+             f"INPUT -i {iface} -p udp -j DROP"]
+    if on:
+        script = " && ".join(f"iptables -A {r}" for r in rules)
+    else:
+        script = " ; ".join(f"iptables -D {r}" for r in rules)
+    netshoot(service, script)
 
 
 def scenario_pare_feu():
@@ -361,26 +375,29 @@ def scenario_pare_feu():
     return result
 
 
-DEGRADATION = "delay 40ms 10ms loss 1% rate 20mbit"
+# Débit limité à 20 Mbit/s en sortie de chaque box et de chaque relais (tbf). La latence et les pertes
+# (netem) ne sont pas disponibles sur tous les noyaux : NETEM=1 les ajoute là où le module existe.
+DEGRADATION = ("netem delay 40ms 10ms loss 1% rate 20mbit" if os.environ.get("NETEM") == "1"
+               else "tbf rate 20mbit burst 64kb latency 400ms")
 
 
 def degrade(on):
     for service in ("chat-a", "chat-b", "smp-server", "xftp-server"):
         iface = relais_iface(service)
         if on:
-            netshoot(service, f"tc qdisc add dev {iface} root netem {DEGRADATION}")
+            netshoot(service, f"tc qdisc add dev {iface} root {DEGRADATION}")
         else:
             netshoot(service, f"tc qdisc del dev {iface} root || true")
 
 
 def scenario_degrade():
-    """Liaison bridée sur tous les trajets box ↔ relais : 20 Mbit/s, 40 ± 10 ms par sens, 1 % de pertes."""
+    """Liaison bridée sur tous les trajets box ↔ relais : 20 Mbit/s (+ 40 ± 10 ms et 1 % de pertes avec NETEM=1)."""
     degrade(True)
     try:
         result = full_transfer("liaison-degradee", 2, 100)
     finally:
         degrade(False)
-    result["degradation"] = f"netem {DEGRADATION} (sortie de chaque box et de chaque relais)"
+    result["degradation"] = f"{DEGRADATION} (sortie de chaque box et de chaque relais)"
     return result
 
 
