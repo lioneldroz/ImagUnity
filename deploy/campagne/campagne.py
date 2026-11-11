@@ -402,9 +402,14 @@ def scenario_degrade():
 
 
 def scenario_coupure(cut_seconds=60):
-    """Coupure réseau de la box A pendant 60 s, au milieu du dépôt des paquets sur le relais."""
+    """Coupure réseau de la box A pendant 60 s, au milieu du dépôt des paquets sur le relais.
+
+    Tout le trafic de la box A côté relais est bloqué, sauf la passerelle Docker par laquelle le pilote
+    interroge la console (ports publiés). Les règles sont retirées quoi qu'il arrive.
+    """
     iface = relais_iface("chat-a")
-    rules = (f"INPUT -i {iface} -j DROP", f"OUTPUT -o {iface} -j DROP")
+    gateway = relais_gateway()
+    rules = (f"INPUT -i {iface} ! -s {gateway} -j DROP", f"OUTPUT -o {iface} ! -d {gateway} -j DROP")
     events = {}
 
     def cut(transfer):
@@ -413,16 +418,21 @@ def scenario_coupure(cut_seconds=60):
         events["coupure_s"] = transfer.elapsed()
         netshoot("chat-a", " && ".join(f"iptables -I {r}" for r in rules))
         log(f"[coupure] réseau de la box A coupé pour {cut_seconds} s")
-        end = time.monotonic() + cut_seconds
-        while time.monotonic() < end:
-            transfer.poll()
-            time.sleep(1)
-        netshoot("chat-a", " && ".join(f"iptables -D {r}" for r in rules))
+        try:
+            end = time.monotonic() + cut_seconds
+            while time.monotonic() < end:
+                transfer.poll()
+                time.sleep(1)
+        finally:
+            netshoot("chat-a", " ; ".join(f"iptables -D {r}" for r in rules))
         events["retablissement_s"] = transfer.elapsed()
         log("[coupure] réseau rétabli")
 
     result = full_transfer("coupure-reseau", 4, 150, during=cut)
     result.update(events)
+    if "ANNOUNCED" in result["chronologie_s"]:
+        result["annonceApresRetablissement_s"] = round(result["chronologie_s"]["ANNOUNCED"]
+                                                       - events["retablissement_s"], 2)
     return result
 
 
