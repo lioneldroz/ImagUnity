@@ -89,4 +89,20 @@ class JdbcInboundRepositoryTest {
         assertThat(read.ackSent()).isTrue();
         assertThat(read.restoredInstances()).isEqualTo(1);
     }
+
+    @Test
+    void listsRecentTransfersAndCountsThemByState() {
+        InboundTransfer first = announced("box-a", "g1");
+        InboundTransfer second = announced("box-a", "g2").restored(3, t0.plusSeconds(9));
+        InboundTransfer third = announced("box-c", "g3").failed("x", t0.plusSeconds(4));
+        repository.saveTransfer(first);
+        repository.saveTransfer(second);
+        repository.saveTransfer(third);
+
+        assertThat(repository.findRecentTransfers(2)).containsExactly(second, third);
+        assertThat(repository.countTransfersByState()).containsOnly(
+                java.util.Map.entry(InboundTransfer.State.ANNOUNCED, 1L),
+                java.util.Map.entry(InboundTransfer.State.RESTORED, 1L),
+                java.util.Map.entry(InboundTransfer.State.FAILED, 1L));
+    }
 }

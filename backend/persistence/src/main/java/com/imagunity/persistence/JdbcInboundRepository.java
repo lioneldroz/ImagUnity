@@ -6,7 +6,9 @@ import com.imagunity.domain.inbound.InboundTransfer;
 import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -70,6 +72,22 @@ public final class JdbcInboundRepository implements InboundRepository {
     public List<InboundTransfer> findTransfers(InboundTransfer.State state) {
         return jdbc.sql("SELECT * FROM inbound_transfer WHERE state = ? ORDER BY created_at").param(state.name())
                 .query(JdbcInboundRepository::transfer).list();
+    }
+
+    @Override
+    public List<InboundTransfer> findRecentTransfers(int limit) {
+        return jdbc.sql("SELECT * FROM inbound_transfer ORDER BY updated_at DESC, created_at DESC LIMIT ?")
+                .param(limit).query(JdbcInboundRepository::transfer).list();
+    }
+
+    @Override
+    public Map<InboundTransfer.State, Long> countTransfersByState() {
+        Map<InboundTransfer.State, Long> counts = new EnumMap<>(InboundTransfer.State.class);
+        jdbc.sql("SELECT state, COUNT(*) AS n FROM inbound_transfer GROUP BY state")
+                .query(rs -> {
+                    counts.put(InboundTransfer.State.valueOf(rs.getString("state")), rs.getLong("n"));
+                });
+        return counts;
     }
 
     @Override

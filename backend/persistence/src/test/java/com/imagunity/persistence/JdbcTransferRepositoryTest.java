@@ -134,4 +134,29 @@ class JdbcTransferRepositoryTest {
         assertThatThrownBy(() -> repository.updatePart(part(UUID.randomUUID(), 1, 1)))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void listsRecentTransfersAndCountsThemByState() {
+        Transfer a = received("2.25.1");
+        Transfer b = received("2.25.2");
+        Transfer c = received("2.25.3");
+        repository.create(a);
+        repository.create(b);
+        repository.create(c);
+        repository.update(b.failed("x", now.plusSeconds(10)));
+        repository.update(c.packaged("g", 1, now.plusSeconds(5)));
+
+        assertThat(repository.findRecent(2)).extracting(Transfer::id).containsExactly(b.id(), c.id());
+        assertThat(repository.findRecent(10)).hasSize(3);
+        assertThat(repository.countByState()).containsOnly(
+                java.util.Map.entry(TransferState.RECEIVED, 1L),
+                java.util.Map.entry(TransferState.PACKAGED, 1L),
+                java.util.Map.entry(TransferState.FAILED, 1L));
+    }
+
+    @Test
+    void emptyDatabaseHasNoCounts() {
+        assertThat(repository.countByState()).isEmpty();
+        assertThat(repository.findRecent(5)).isEmpty();
+    }
 }

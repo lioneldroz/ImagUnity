@@ -466,4 +466,70 @@ class SendOrchestratorTest {
         assertThat(SendOrchestrator.sanitize("a\u0007b\r\n")).isEqualTo("a b");
         assertThat(SendOrchestrator.sanitize("x".repeat(600))).hasSize(TransferAck.MAX_REASON);
     }
+
+    // --- Relance ---
+
+    private Transfer failedAtDestination() throws IOException {
+        Transfer transfer = announcedTransfer();
+        receive(BOX_B, ack(transfer, TransferAck.Result.FAILED, "PACS injoignable"));
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+        return transfer;
+    }
+
+    @Test
+    void retryResendsThePackagesAndAnnouncesAgain() throws IOException {
+        Transfer transfer = failedAtDestination();
+        int sentBefore = transport.files.size();
+
+        Transfer retried = orchestrator.retry(transfer.id()).join();
+
+        assertThat(retried.state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(retried.errorMessage()).isNull();
+        assertThat(transport.files).hasSize(2 * sentBefore);
+        uploadAll();
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
+        assertThat(transport.messages).hasSize(2);
+        assertThat(messages.decodeAnnouncement(transport.messages.getLast().text()).orElseThrow().transferId())
+                .isEqualTo(transfer.id());
+
+        receive(BOX_B, ack(transfer, TransferAck.Result.RESTORED, null));
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
+    }
+
+    @Test
+    void retryIsRefusedWhenNotPossible() throws IOException {
+        assertThat(orchestrator.retry(java.util.UUID.randomUUID()))
+                .failsWithin(java.time.Duration.ofSeconds(1)).withThrowableThat()
+                .withCauseInstanceOf(java.util.NoSuchElementException.class);
+
+        Transfer announced = announcedTransfer();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(announced.id()))
+                .isInstanceOf(RetryRefusedException.class).hasMessageContaining("ANNOUNCED");
+
+        Transfer early = Transfer.received("2.25.11", "IU_TO_B", "box-b", 1, clock.instant());
+        transfers.create(early);
+        transfers.update(early.failed("Empaquetage impossible", clock.instant()));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(early.id()))
+                .isInstanceOf(RetryRefusedException.class).hasMessageContaining("avant l'empaquetage");
+    }
+
+    @Test
+    void retryIsRefusedWhenAPackageIsGone() throws IOException {
+        Transfer transfer = failedAtDestination();
+        Files.delete(transfers.parts(transfer.id()).getFirst().file());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(transfer.id()))
+                .isInstanceOf(RetryRefusedException.class).hasMessageContaining("absent du dossier d'envoi");
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+    }
+
+    @Test
+    void failedPackagingWithoutPartsCannotBeRetried() {
+        Transfer packagedNoParts = Transfer.received("2.25.12", "IU_TO_B", "box-b", 1, clock.instant());
+        transfers.create(packagedNoParts);
+        transfers.update(packagedNoParts.packaged("g", 1, clock.instant()).failed("x", clock.instant()));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(packagedNoParts.id()))
+                .isInstanceOf(RetryRefusedException.class);
+    }
 }

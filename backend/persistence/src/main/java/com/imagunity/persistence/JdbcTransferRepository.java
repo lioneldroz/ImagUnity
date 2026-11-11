@@ -10,7 +10,9 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -74,6 +76,22 @@ public final class JdbcTransferRepository implements TransferRepository {
                         + ") ORDER BY created_at")
                 .params(states.stream().map(Enum::name).toList())
                 .query(JdbcTransferRepository::transfer).list();
+    }
+
+    @Override
+    public List<Transfer> findRecent(int limit) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM transfer ORDER BY updated_at DESC, created_at DESC LIMIT ?")
+                .param(limit).query(JdbcTransferRepository::transfer).list();
+    }
+
+    @Override
+    public Map<TransferState, Long> countByState() {
+        Map<TransferState, Long> counts = new EnumMap<>(TransferState.class);
+        jdbc.sql("SELECT state, COUNT(*) AS n FROM transfer GROUP BY state")
+                .query(rs -> {
+                    counts.put(TransferState.valueOf(rs.getString("state")), rs.getLong("n"));
+                });
+        return counts;
     }
 
     @Override

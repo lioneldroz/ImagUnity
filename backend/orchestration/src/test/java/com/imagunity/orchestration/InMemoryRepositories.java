@@ -56,6 +56,19 @@ final class InMemoryRepositories {
         }
 
         @Override
+        public List<Transfer> findRecent(int limit) {
+            return transfers.values().stream()
+                    .sorted(Comparator.comparing(Transfer::updatedAt).reversed()).limit(limit).toList();
+        }
+
+        @Override
+        public Map<TransferState, Long> countByState() {
+            Map<TransferState, Long> counts = new java.util.EnumMap<>(TransferState.class);
+            transfers.values().forEach(t -> counts.merge(t.state(), 1L, Long::sum));
+            return counts;
+        }
+
+        @Override
         public void saveParts(UUID transferId, List<TransferPart> list) {
             parts.put(transferId, new ArrayList<>(list));
         }
@@ -129,6 +142,21 @@ final class InMemoryRepositories {
         public List<com.imagunity.domain.inbound.InboundTransfer> findTransfers(
                 com.imagunity.domain.inbound.InboundTransfer.State state) {
             return transfers.values().stream().filter(t -> t.state() == state).toList();
+        }
+
+        @Override
+        public List<com.imagunity.domain.inbound.InboundTransfer> findRecentTransfers(int limit) {
+            return transfers.values().stream()
+                    .sorted(Comparator.comparing(com.imagunity.domain.inbound.InboundTransfer::updatedAt).reversed())
+                    .limit(limit).toList();
+        }
+
+        @Override
+        public Map<com.imagunity.domain.inbound.InboundTransfer.State, Long> countTransfersByState() {
+            Map<com.imagunity.domain.inbound.InboundTransfer.State, Long> counts =
+                    new java.util.EnumMap<>(com.imagunity.domain.inbound.InboundTransfer.State.class);
+            transfers.values().forEach(t -> counts.merge(t.state(), 1L, Long::sum));
+            return counts;
         }
 
         @Override

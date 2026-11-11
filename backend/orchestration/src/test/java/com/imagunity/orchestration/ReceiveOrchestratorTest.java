@@ -484,4 +484,64 @@ class ReceiveOrchestratorTest {
         assertThat(ReceiveOrchestrator.truncate("abc", 5)).isEqualTo("abc");
         assertThat(ReceiveOrchestrator.truncate("abcdefgh", 5)).isEqualTo("abcde");
     }
+
+    // --- Relance par l'émetteur ---
+
+    @Test
+    void failedTransferIsAttemptedAgainOnNewAnnouncement() throws IOException {
+        restoreFailure = new IOException("PACS injoignable");
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        TransferAnnouncement a = announcement(parts);
+        long first = offer(parts.getFirst());
+        download(first, parts.getFirst());
+        announce(a);
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
+        assertThat(inbound.files.get(first).state()).as("paquet écarté").isEqualTo(InboundFile.State.FAILED);
+        assertThat(transport.downloads.get(first)).doesNotExist();
+
+        restoreFailure = null;
+        announce(a); // l'annonce arrive avant les paquets renvoyés
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.ANNOUNCED);
+        download(offer(parts.getFirst()), parts.getFirst());
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(onlyTransfer().createdAt()).isEqualTo(clock.instant());
+        assertThat(transport.messages).hasSize(2);
+        assertThat(messages.decodeAck(transport.messages.getLast().text()).orElseThrow().result())
+                .isEqualTo(TransferAck.Result.RESTORED);
+    }
+
+    @Test
+    void announcementOfRestoredTransferOnlyResendsTheAck() throws IOException {
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        TransferAnnouncement a = announcement(parts);
+        download(offer(parts.getFirst()), parts.getFirst());
+        announce(a);
+        transport.downloads.clear();
+
+        long again = offer(parts.getFirst());
+        announce(a);
+
+        assertThat(transport.downloads).as("paquet non retéléchargé").isEmpty();
+        assertThat(inbound.files).doesNotContainKey(again);
+        assertThat(restored).hasSize(1);
+        assertThat(transport.messages).hasSize(2)
+                .allSatisfy(m -> assertThat(messages.decodeAck(m.text())).isPresent());
+    }
+
+    @Test
+    void retryWithAnotherGroupIsIgnored() throws IOException {
+        restoreFailure = new IOException("PACS injoignable");
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        TransferAnnouncement a = announcement(parts);
+        download(offer(parts.getFirst()), parts.getFirst());
+        announce(a);
+        String other = UUID.randomUUID().toString();
+
+        announce(new TransferAnnouncement(a.transferId(), other, STUDY, List.of(new TransferAnnouncement.Part(1, 1,
+                other + "-1-of-1.tar.zst", 10, "a".repeat(64)))));
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
+        assertThat(onlyTransfer().packageGroupId()).isEqualTo(a.packageGroupId());
+    }
 }

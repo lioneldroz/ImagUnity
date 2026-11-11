@@ -22,7 +22,7 @@ Les fichiers et l'annonce arrivent **dans n'importe quel ordre** ; la restitutio
 | Restitution | C-STORE vers le PACS local, dans une seule association, chaque instance dans **sa syntaxe de transfert d'origine** (aucune conversion), lue en flux depuis le fichier. Les avertissements du PACS (`Bxxx`) sont acceptés, tout autre statut fait échouer la restitution. |
 | Après restitution | Paquets reçus et dossier de travail supprimés ; transfert `RESTORED`. |
 
-Toute anomalie fait passer le transfert reçu à `FAILED` avec sa cause ; les paquets reçus sont conservés pour diagnostic.
+Toute anomalie fait passer le transfert reçu à `FAILED` avec sa cause ; depuis la [phase 7](phase7-console.md), ses paquets reçus sont alors écartés, pour qu'une relance reparte de paquets neufs.
 
 ## 2. Persistance
 
@@ -80,6 +80,6 @@ Durée totale, du premier C-STORE à la restitution : **20 s**, dont environ 13 
 
 - **Accusé de bout en bout** : fait en [phase 6](phase6-accuse.md).
 - **Un seul fil pour l'envoi et la réception** : une restitution longue retarde les envois de la même box. À revoir si la volumétrie l'exige.
-- **Paquets d'un transfert en échec** conservés dans le dossier de réception : nettoyage à prévoir (console, phase 7).
+- **Paquets d'un transfert en échec** : écartés à l'échec depuis la [phase 7](phase7-console.md).
 - **Le PACS local doit accepter l'AET de la box** (`box-aet`) ; Orthanc l'accepte par défaut.
 - **Identité du patient** : les études reçues sont des dossiers externes ; aucun rapprochement automatique avec les patients locaux n'est fait par la box (rôle du mini-PACS, cf. note d'architecture).

@@ -1,6 +1,7 @@
 package com.imagunity.domain.transfer;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -19,6 +20,12 @@ public interface TransferRepository {
     Optional<Transfer> findActive(String studyInstanceUid, String calledAet);
 
     List<Transfer> findByStates(Set<TransferState> states);
+
+    /** Derniers transferts, du plus récemment modifié au plus ancien. */
+    List<Transfer> findRecent(int limit);
+
+    /** Nombre de transferts par état (états sans transfert absents). */
+    Map<TransferState, Long> countByState();
 
     /** Remplace les paquets d'un transfert. */
     void saveParts(UUID transferId, List<TransferPart> parts);

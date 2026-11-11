@@ -36,6 +36,11 @@ public record TransferPart(
         return new TransferPart(transferId, index, count, file, size, sha256, fileId, false);
     }
 
+    /** Paquet à confier de nouveau au transport (relance d'un transfert). */
+    public TransferPart reset() {
+        return new TransferPart(transferId, index, count, file, size, sha256, null, false);
+    }
+
     public TransferPart markUploaded() {
         return new TransferPart(transferId, index, count, file, size, sha256, transportFileId, true);
     }

@@ -67,6 +67,6 @@ Essai réel : à refaire depuis le poste avec deux clients `simplex-chat`, comme
 
 ## 6. Limites et suites
 
-- **Pas de relance automatique** après un accusé `FAILED` : les paquets sont gardés pour une relance depuis la console (phase 7).
-- **Délai de garde** : un transfert `ANNOUNCED` dont l'accusé n'arrive jamais (box B détruite) reste en attente ; une alerte au-delà d'un délai est à prévoir dans la console.
+- **Relance** après un accusé `FAILED` : manuelle, depuis la console ([phase 7](phase7-console.md)) ; pas de relance automatique.
+- **Délai de garde** : un transfert `ANNOUNCED` dont l'accusé n'arrive jamais (box B détruite) reste en attente ; la console le signale « accusé en retard » ([phase 7](phase7-console.md)).
 - **Signature applicative** des accusés : avec l'identité de box du protocole IU-T ou de l'annuaire signé (pilote).

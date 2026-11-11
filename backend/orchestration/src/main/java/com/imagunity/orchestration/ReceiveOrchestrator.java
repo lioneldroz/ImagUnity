@@ -23,6 +23,7 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -46,6 +47,10 @@ import java.util.stream.Stream;
  * Les fichiers et l'annonce arrivent dans n'importe quel ordre : la restitution est tentée à chaque arrivée.
  * Une fois le transfert restitué ou en échec, un {@link TransferAck accusé} part vers l'émetteur ; s'il n'a pas pu
  * partir, il est renvoyé au redémarrage.
+ *
+ * <p>Relance par l'émetteur : une nouvelle annonce d'un transfert en échec (même groupe de paquets) ouvre une
+ * nouvelle tentative ; les paquets de la tentative ratée ont été écartés à l'échec. Une nouvelle annonce d'un
+ * transfert déjà restitué ne déclenche qu'un nouvel accusé, et ses paquets ne sont pas retéléchargés.
  *
  * <p>Ce qui vient d'un partenaire n'est pas fiable :
  * <ul>
@@ -140,6 +145,11 @@ public final class ReceiveOrchestrator {
         if (inbound.findFile(offered.fileId()).isPresent()) {
             return;
         }
+        if (inbound.findTransferByGroup(peer.get().name(), groupOf(offered.fileName()))
+                .filter(t -> t.state() == InboundTransfer.State.RESTORED).isPresent()) {
+            LOG.log(Level.INFO, "Paquet {0} d''un transfert déjà restitué : ignoré", offered.fileName());
+            return;
+        }
         Path target = inboxDir.resolve(peer.get().name()).resolve(offered.fileId() + "-" + offered.fileName());
         InboundFile file = new InboundFile(offered.fileId(), peer.get().name(), offered.fileName(), offered.size(),
                 InboundFile.State.DOWNLOADING, target, clock.instant());
@@ -196,12 +206,23 @@ public final class ReceiveOrchestrator {
             LOG.log(Level.WARNING, "Annonce de {0} invalide ({1}) : ignorée", peer.get().name(), invalid.get());
             return;
         }
-        if (inbound.findTransfer(peer.get().name(), a.transferId()).isPresent()) {
-            return;
+        Optional<InboundTransfer> existing = inbound.findTransfer(peer.get().name(), a.transferId());
+        Instant createdAt = clock.instant();
+        if (existing.isPresent()) {
+            InboundTransfer known = existing.get();
+            if (known.state() == InboundTransfer.State.RESTORED) {
+                sendAck(known); // l'émetteur n'a pas eu l'accusé : il relance, on le lui renvoie
+                return;
+            }
+            if (known.state() != InboundTransfer.State.FAILED || !known.packageGroupId().equals(a.packageGroupId())) {
+                return; // annonce en double, ou relance incohérente
+            }
+            createdAt = known.createdAt();
+            LOG.log(Level.INFO, "Transfert {0} relancé par {1}", a.transferId(), peer.get().name());
         }
         inbound.saveTransfer(new InboundTransfer(a.transferId(), peer.get().name(), a.packageGroupId(),
                 a.studyInstanceUid(), a.parts().size(), messages.encode(a), InboundTransfer.State.ANNOUNCED, null,
-                clock.instant(), clock.instant()));
+                createdAt, clock.instant()));
         LOG.log(Level.INFO, "Transfert {0} annoncé par {1} ({2} paquet(s))", a.transferId(), peer.get().name(),
                 a.parts().size());
         tryComplete(peer.get().name(), a.packageGroupId());
@@ -360,7 +381,26 @@ public final class ReceiveOrchestrator {
         inbound.saveTransfer(failed);
         LOG.log(Level.WARNING, "Transfert {0} de {1} en échec : {2}", transfer.transferId(), transfer.peerName(),
                 reason);
+        discardFiles(failed);
         sendAck(failed);
+    }
+
+    /** Écarte les paquets reçus d'un transfert en échec : une relance repartira de paquets neufs. */
+    private void discardFiles(InboundTransfer transfer) {
+        TransferAnnouncement a = messages.decodeAnnouncement(transfer.announcement()).orElseThrow();
+        for (TransferAnnouncement.Part part : a.parts()) {
+            for (InboundFile file : inbound.findFiles(transfer.peerName(), part.fileName())) {
+                if (file.state() != InboundFile.State.DOWNLOADED) {
+                    continue;
+                }
+                inbound.saveFile(file.with(InboundFile.State.FAILED, clock.instant()));
+                try {
+                    Files.deleteIfExists(file.file());
+                } catch (IOException e) {
+                    LOG.log(Level.WARNING, "Paquet écarté non supprimé : " + file.file(), e);
+                }
+            }
+        }
     }
 
     private static String groupOf(String fileName) {

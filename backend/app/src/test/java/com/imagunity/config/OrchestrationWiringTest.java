@@ -114,6 +114,63 @@ class OrchestrationWiringTest {
     }
 
     @Test
+    void consoleApiFollowsTransfersOverHttp() throws Exception {
+        String base = "http://127.0.0.1:" + environment.getProperty("local.server.port");
+        HttpClient http = HttpClient.newHttpClient();
+        // Flux SSE ouvert avant le transfert : il doit en recevoir les changements d'état.
+        HttpResponse<java.util.stream.Stream<String>> stream = http.send(
+                HttpRequest.newBuilder(URI.create(base + "/api/v1/events")).build(),
+                HttpResponse.BodyHandlers.ofLines());
+        java.util.concurrent.BlockingQueue<String> lines = new java.util.concurrent.LinkedBlockingQueue<>();
+        Thread.ofVirtual().start(() -> stream.body().forEach(lines::add));
+
+        peers.save(new Peer("box-b", 5, "box-b", Instant.now()));
+        Path file = Files.write(Files.createDirectories(dir.resolve("incoming/IU_TO_B/2.25.5/2.25.5.1"))
+                .resolve("2.25.5.1.1.dcm"), new byte[500]);
+        studyListener.studyReceived(new ReceivedStudy("2.25.5", "IU_TO_B", "box-b", Set.of("ORTHANC_A"),
+                List.of(new ReceivedInstance("1.2", "2.25.5.1.1", "2.25.5.1", "1.2", file, 500)), Instant.now(),
+                Instant.now()));
+        Transfer transfer = awaitTerminal("2.25.5");
+
+        HttpResponse<String> list = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/transfers")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> detail = http.send(HttpRequest.newBuilder(
+                URI.create(base + "/api/v1/transfers/" + transfer.id())).build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> overview = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/overview")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> retry = http.send(HttpRequest.newBuilder(
+                        URI.create(base + "/api/v1/transfers/" + transfer.id() + "/retry"))
+                .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> unknown = http.send(HttpRequest.newBuilder(
+                URI.create(base + "/api/v1/transfers/" + UUID.randomUUID())).build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> inbound = http.send(HttpRequest.newBuilder(
+                URI.create(base + "/api/v1/inbound-transfers?limit=10")).build(), HttpResponse.BodyHandlers.ofString());
+
+        assertThat(list.statusCode()).isEqualTo(200);
+        assertThat(list.body()).contains(transfer.id().toString()).contains("\"studyInstanceUid\":\"2.25.5\"");
+        assertThat(detail.body()).contains("\"parts\"").contains(".tar.zst").doesNotContain(dir.toString());
+        assertThat(overview.body()).contains("\"outbound\"").contains("\"FAILED\"");
+        assertThat(retry.statusCode()).as("relance acceptée, nouvel échec : transport désactivé").isEqualTo(200);
+        assertThat(retry.body()).contains("\"state\":\"FAILED\"");
+        assertThat(unknown.statusCode()).isEqualTo(404);
+        assertThat(inbound.statusCode()).isEqualTo(200);
+        assertThat(inbound.body()).isEqualTo("[]");
+
+        java.util.List<String> received = new java.util.ArrayList<>();
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline && received.stream().noneMatch(l -> l.contains("\"FAILED\""))) {
+            String line = lines.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (line != null) {
+                received.add(line);
+            }
+        }
+        assertThat(received).contains("event:ready", "event:transfer");
+        assertThat(received).anySatisfy(l -> assertThat(l).startsWith("data:").contains("\"PACKAGED\""));
+        assertThat(received).anySatisfy(l -> assertThat(l).startsWith("data:").contains("\"FAILED\""));
+        stream.body().close();
+    }
+
+    @Test
     void orchestratorStartsBeforeDicomInput() {
         SmartLifecycle orchestration = lifecycles.stream().filter(l -> l.getPhase() == OrchestrationConfiguration.PHASE)
                 .findFirst().orElseThrow();
