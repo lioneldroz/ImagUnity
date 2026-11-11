@@ -1,0 +1,147 @@
+{
+  "date": "2026-11-11T18:03:58+00:00",
+  "simplexChat": "SimpleX Chat v7.1.2.0\nTo update run: curl -o- https://raw.githubusercontent.com/simplex-chat/simplex-chat/master/install.sh | bash",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.52,
+        "RECEIVED": 5.6,
+        "PACKAGED": 6.11,
+        "ANNOUNCED": 7.64,
+        "ACKNOWLEDGED": 10.18,
+        "restored": 10.18
+      },
+      "debitBoutEnBout_Mo_s": 5.18,
+      "depotRelais_s": 1.53,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "pare-feu",
+      "scanAvant": {
+        "chat-a": {
+          "ip": "172.30.0.2",
+          "ports": [
+            "8080/open/tcp//http-proxy///",
+            "11112/open/tcp//dicom///"
+          ]
+        },
+        "chat-b": {
+          "ip": "172.30.0.3",
+          "ports": [
+            "8080/open/tcp//http-proxy///",
+            "11112/open/tcp//dicom///"
+          ]
+        }
+      },
+      "scanApres": {
+        "chat-a": {
+          "ip": "172.30.0.2",
+          "ports": []
+        },
+        "chat-b": {
+          "ip": "172.30.0.3",
+          "ports": []
+        }
+      },
+      "transfert": {
+        "scenario": "pare-feu",
+        "instances": 100,
+        "tailleMo": 50.1,
+        "etatFinal": "ACKNOWLEDGED",
+        "chronologie_s": {
+          "cstore": 0.51,
+          "PACKAGED": 6.1,
+          "ANNOUNCED": 8.13,
+          "ACKNOWLEDGED": 10.67,
+          "restored": 10.67
+        },
+        "debitBoutEnBout_Mo_s": 4.93,
+        "depotRelais_s": 2.03,
+        "verification": {
+          "instancesA": 100,
+          "instancesB": 100,
+          "identiques": 100
+        }
+      }
+    },
+    {
+      "scenario": "liaison-degradee",
+      "instances": 200,
+      "tailleMo": 100.2,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.52,
+        "RECEIVED": 6.1,
+        "PACKAGED": 6.61,
+        "ANNOUNCED": 52.94,
+        "restored": 100.58,
+        "ACKNOWLEDGED": 101.09
+      },
+      "debitBoutEnBout_Mo_s": 1.0,
+      "depotRelais_s": 46.33,
+      "verification": {
+        "instancesA": 200,
+        "instancesB": 200,
+        "identiques": 200
+      },
+      "degradation": "tbf rate 20mbit burst 64kb latency 400ms (sortie de chaque box et de chaque relais)"
+    },
+    {
+      "scenario": "coupure-reseau",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.54,
+        "RECEIVED": 7.62,
+        "PACKAGED": 8.12,
+        "ANNOUNCED": 127.64,
+        "ACKNOWLEDGED": 143.35,
+        "restored": 143.36
+      },
+      "debitBoutEnBout_Mo_s": 2.12,
+      "depotRelais_s": 119.52,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "coupure_s": 11.12,
+      "retablissement_s": 72.47,
+      "annonceApresRetablissement_s": 55.17
+    },
+    {
+      "scenario": "destinataire-eteint",
+      "erreur": "TimeoutError('[destinataire-eteint] délai dépassé : fin du transfert')"
+    },
+    {
+      "scenario": "volumineux-2Go",
+      "instances": 1024,
+      "tailleMo": 2048.8,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 5.6,
+        "RECEIVED": 11.16,
+        "PACKAGED": 17.72,
+        "ANNOUNCED": 98.56,
+        "restored": 154.38,
+        "ACKNOWLEDGED": 157.41
+      },
+      "debitBoutEnBout_Mo_s": 13.77,
+      "depotRelais_s": 80.84,
+      "verification": {
+        "instancesA": 1024,
+        "instancesB": 1024,
+        "identiques": 1024
+      }
+    }
+  ]
+}
