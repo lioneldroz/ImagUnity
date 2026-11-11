@@ -48,7 +48,7 @@ class DicomStoreScpTest {
         config = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
                 storage, Duration.ofMillis(400), 0);
         scp = new DicomStoreScp(config, studies::add);
-        scp.start();
+        TestPorts.start(scp);
         pacs = new TestScu("ORTHANC_A", port);
     }
 
@@ -139,7 +139,7 @@ class DicomStoreScpTest {
         var tightConfig = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
                 storage, Duration.ofMillis(400), Long.MAX_VALUE);
         scp = new DicomStoreScp(tightConfig, studies::add);
-        scp.start();
+        TestPorts.start(scp);
 
         List<Integer> statuses = pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
 
@@ -155,7 +155,7 @@ class DicomStoreScpTest {
         assertThat(studies).isEmpty();
 
         scp = new DicomStoreScp(config, studies::add);
-        scp.start();
+        TestPorts.start(scp);
 
         ReceivedStudy study = studies.poll(5, TimeUnit.SECONDS);
         assertThat(study).isNotNull();
@@ -187,7 +187,7 @@ class DicomStoreScpTest {
         var slowConfig = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
                 storage, Duration.ofMinutes(5), 0);
         scp = new DicomStoreScp(slowConfig, studies::add);
-        scp.start();
+        TestPorts.start(scp);
 
         pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
 
@@ -196,8 +196,28 @@ class DicomStoreScpTest {
     }
 
     @Test
+    void sameScpRestartsAfterStop() throws Exception {
+        scp.stop();
+
+        TestPorts.start(scp);
+
+        assertThat(pacs.echo("IU_TO_B")).isEqualTo(Status.Success);
+    }
+
+    @Test
+    void failedStartCanBeRetried() throws Exception {
+        try (java.net.ServerSocket taken = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
+            var busy = new DicomStoreScp(new DicomInputConfig("127.0.0.1", taken.getLocalPort(), Set.of("ORTHANC_A"),
+                    Map.of("IU_TO_B", "box-b"), storage.resolve("busy"), Duration.ofMillis(400), 0), studies::add);
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(busy::start).isInstanceOf(IOException.class);
+            busy.stop(); // déjà libéré par l'échec : sans effet
+        }
+    }
+
+    @Test
     void startAndStopAreIdempotent() throws Exception {
-        scp.start();
+        TestPorts.start(scp);
         assertThat(pacs.echo("IU_TO_B")).isEqualTo(Status.Success);
 
         scp.close();
@@ -210,7 +230,7 @@ class DicomStoreScpTest {
         var anyConfig = new DicomInputConfig(" ", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
                 storage, Duration.ofMillis(400), 0);
         scp = new DicomStoreScp(anyConfig, studies::add);
-        scp.start();
+        TestPorts.start(scp);
 
         assertThat(pacs.echo("IU_TO_B")).isEqualTo(Status.Success);
     }
@@ -224,7 +244,7 @@ class DicomStoreScpTest {
         var otherRoutes = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_C", "box-c"),
                 storage, Duration.ofMillis(400), 0);
         scp = new DicomStoreScp(otherRoutes, studies::add);
-        scp.start();
+        TestPorts.start(scp);
 
         assertThat(studies.poll(1, TimeUnit.SECONDS)).isNull();
         assertThat(storage.resolve("IU_TO_B").resolve(STUDY)).as("fichiers conservés").exists();
