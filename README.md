@@ -83,8 +83,9 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
 - [Phase 4 — Orchestrateur](docs/phase4-orchestrateur.md)
 - [Phase 5 — Réception et restitution](docs/phase5-reception.md)
+- [Phase 6 — Accusé de bout en bout](docs/phase6-accuse.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut
 
-Phase 0 (socle) : squelette du backend, de la console et de l'environnement de test.
+Phases 0 à 6 faites : la chaîne PACS A → box A → relais SimpleX → box B → PACS B fonctionne, avec accusé de bout en bout. Prochaine étape : API et console (phase 7).

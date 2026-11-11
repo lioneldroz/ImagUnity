@@ -400,4 +400,88 @@ class ReceiveOrchestratorTest {
 
         assertThat(inbound.files).isEmpty();
     }
+
+    // --- Accusé de bout en bout ---
+
+    private TransferAck sentAck() {
+        assertThat(transport.messages).singleElement().satisfies(m -> assertThat(m.peer()).isEqualTo(SENDER));
+        return messages.decodeAck(transport.messages.getFirst().text()).orElseThrow();
+    }
+
+    @Test
+    void restorationIsAcknowledgedToTheSender() throws IOException {
+        List<PackagePart> parts = packages(2, 60);
+        TransferAnnouncement a = announcement(parts);
+        announce(a);
+        assertThat(transport.messages).as("pas d'accusé avant la fin").isEmpty();
+        download(offer(parts.get(0)), parts.get(0));
+        download(offer(parts.get(1)), parts.get(1));
+
+        TransferAck ack = sentAck();
+        assertThat(ack.transferId()).isEqualTo(a.transferId());
+        assertThat(ack.packageGroupId()).isEqualTo(a.packageGroupId());
+        assertThat(ack.result()).isEqualTo(TransferAck.Result.RESTORED);
+        assertThat(ack.instances()).isEqualTo(4);
+        assertThat(ack.partsDigest()).isEqualTo(TransferMessages.partsDigest(a.packageGroupId(), a.parts()));
+        assertThat(ack.reason()).isNull();
+        assertThat(onlyTransfer().ackSent()).isTrue();
+        assertThat(onlyTransfer().restoredInstances()).isEqualTo(4);
+    }
+
+    @Test
+    void failureIsAcknowledgedWithItsReason() throws IOException {
+        restoreFailure = new IOException("PACS injoignable");
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        download(offer(parts.getFirst()), parts.getFirst());
+
+        announce(announcement(parts));
+
+        TransferAck ack = sentAck();
+        assertThat(ack.result()).isEqualTo(TransferAck.Result.FAILED);
+        assertThat(ack.instances()).isZero();
+        assertThat(ack.reason()).isEqualTo("Restitution impossible : PACS injoignable");
+        assertThat(onlyTransfer().ackSent()).isTrue();
+    }
+
+    @Test
+    void ackNotSentIsRetriedOnRecovery() throws IOException {
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        download(offer(parts.getFirst()), parts.getFirst());
+        transport.failSendMessage = true;
+
+        announce(announcement(parts));
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(onlyTransfer().ackSent()).isFalse();
+
+        transport.failSendMessage = false;
+        orchestrator.recover();
+
+        assertThat(sentAck().result()).isEqualTo(TransferAck.Result.RESTORED);
+        assertThat(onlyTransfer().ackSent()).isTrue();
+        orchestrator.recover();
+        assertThat(transport.messages).as("pas de second envoi").hasSize(1);
+    }
+
+    @Test
+    void ackIsNotSentToAPeerNoLongerPaired() throws IOException {
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        download(offer(parts.getFirst()), parts.getFirst());
+        TransferAnnouncement a = announcement(parts);
+        inbound.saveTransfer(new InboundTransfer(a.transferId(), "box-disparue", a.packageGroupId(), STUDY, 1,
+                messages.encode(a), InboundTransfer.State.ANNOUNCED, null, clock.instant(), clock.instant())
+                .failed("x", clock.instant()));
+
+        orchestrator.recover();
+
+        assertThat(transport.messages).isEmpty();
+        assertThat(inbound.findAwaitingAck()).hasSize(1);
+    }
+
+    @Test
+    void longReasonsAreTruncated() {
+        assertThat(ReceiveOrchestrator.truncate(null, 5)).isNull();
+        assertThat(ReceiveOrchestrator.truncate("abc", 5)).isEqualTo("abc");
+        assertThat(ReceiveOrchestrator.truncate("abcdefgh", 5)).isEqualTo("abcde");
+    }
 }

@@ -46,11 +46,11 @@ public final class JdbcInboundRepository implements InboundRepository {
     @Override
     public void saveTransfer(InboundTransfer t) {
         jdbc.sql("MERGE INTO inbound_transfer (transfer_id, peer_name, package_group_id, study_uid, part_count, "
-                        + "announcement, state, error_message, created_at, updated_at) KEY (peer_name, transfer_id) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        + "announcement, state, error_message, created_at, updated_at, restored_instances, ack_sent) "
+                        + "KEY (peer_name, transfer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 .params(t.transferId(), t.peerName(), t.packageGroupId(), t.studyInstanceUid(), t.partCount(),
                         t.announcement(), t.state().name(), t.errorMessage(), JdbcTransferRepository.utc(t.createdAt()),
-                        JdbcTransferRepository.utc(t.updatedAt()))
+                        JdbcTransferRepository.utc(t.updatedAt()), t.restoredInstances(), t.ackSent())
                 .update();
     }
 
@@ -72,6 +72,12 @@ public final class JdbcInboundRepository implements InboundRepository {
                 .query(JdbcInboundRepository::transfer).list();
     }
 
+    @Override
+    public List<InboundTransfer> findAwaitingAck() {
+        return jdbc.sql("SELECT * FROM inbound_transfer WHERE ack_sent = FALSE AND state <> ? ORDER BY updated_at")
+                .param(InboundTransfer.State.ANNOUNCED.name()).query(JdbcInboundRepository::transfer).list();
+    }
+
     private static InboundFile file(ResultSet rs, int row) throws SQLException {
         String path = rs.getString("file_path");
         return new InboundFile(rs.getLong("transport_file_id"), rs.getString("peer_name"), rs.getString("file_name"),
@@ -84,6 +90,7 @@ public final class JdbcInboundRepository implements InboundRepository {
                 rs.getString("package_group_id"), rs.getString("study_uid"), rs.getInt("part_count"),
                 rs.getString("announcement"), InboundTransfer.State.valueOf(rs.getString("state")),
                 rs.getString("error_message"), JdbcTransferRepository.instant(rs, "created_at"),
-                JdbcTransferRepository.instant(rs, "updated_at"));
+                JdbcTransferRepository.instant(rs, "updated_at"), rs.getInt("restored_instances"),
+                rs.getBoolean("ack_sent"));
     }
 }

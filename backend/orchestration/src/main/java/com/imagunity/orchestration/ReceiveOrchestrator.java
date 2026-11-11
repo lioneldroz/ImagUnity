@@ -10,6 +10,7 @@ import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.packaging.PackageManifest;
 import com.imagunity.packaging.PackageReader;
 import com.imagunity.packaging.UnpackedPackage;
+import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import com.imagunity.transport.TransportException;
 import com.imagunity.transport.TransportPort;
@@ -43,6 +44,8 @@ import java.util.stream.Stream;
  * annonce reçue ────────────────────────────────────┴─► tous les paquets là ? ──► vérification ──► restitution
  * </pre>
  * Les fichiers et l'annonce arrivent dans n'importe quel ordre : la restitution est tentée à chaque arrivée.
+ * Une fois le transfert restitué ou en échec, un {@link TransferAck accusé} part vers l'émetteur ; s'il n'a pas pu
+ * partir, il est renvoyé au redémarrage.
  *
  * <p>Ce qui vient d'un partenaire n'est pas fiable :
  * <ul>
@@ -89,7 +92,7 @@ public final class ReceiveOrchestrator {
         this.clock = clock;
     }
 
-    /** S'abonne aux événements du transport et reprend les transferts annoncés en attente. */
+    /** S'abonne aux événements du transport, reprend les transferts annoncés et les accusés en attente. */
     public void start() {
         transport.addListener(event -> run(() -> onTransportEvent(event)));
         run(this::recover);
@@ -253,6 +256,7 @@ public final class ReceiveOrchestrator {
     private void restore(InboundTransfer transfer, TransferAnnouncement a, List<TransferAnnouncement.Part> parts,
                          List<InboundFile> files) {
         Path work = inboxDir.resolve(transfer.peerName()).resolve("restore-" + transfer.transferId());
+        int instanceCount;
         try {
             List<StudyRestorer.Instance> instances = new ArrayList<>();
             int expectedInstances = -1;
@@ -279,13 +283,15 @@ public final class ReceiveOrchestrator {
                 throw new IOException("Étude incomplète : " + instances.size() + " instance(s) sur " + expectedInstances);
             }
             restorer.restore(a.studyInstanceUid(), instances);
+            instanceCount = instances.size();
         } catch (IOException | RuntimeException e) {
             fail(transfer, "Restitution impossible : " + e.getMessage());
             return;
         } finally {
             deleteRecursively(work);
         }
-        inbound.saveTransfer(transfer.restored(clock.instant()));
+        InboundTransfer restored = transfer.restored(instanceCount, clock.instant());
+        inbound.saveTransfer(restored);
         for (InboundFile file : files) {
             inbound.saveFile(file.with(InboundFile.State.CONSUMED, clock.instant()));
             try {
@@ -294,7 +300,9 @@ public final class ReceiveOrchestrator {
                 LOG.log(Level.WARNING, "Paquet reçu non supprimé : " + file.file(), e);
             }
         }
-        LOG.log(Level.INFO, "Transfert {0} de {1} restitué au PACS local", transfer.transferId(), transfer.peerName());
+        LOG.log(Level.INFO, "Transfert {0} de {1} restitué au PACS local ({2} instance(s))", transfer.transferId(),
+                transfer.peerName(), instanceCount);
+        sendAck(restored);
     }
 
     void recover() {
@@ -303,14 +311,56 @@ public final class ReceiveOrchestrator {
             LOG.log(Level.INFO, "Reprise : {0} transfert(s) reçu(s) en attente", announced.size());
         }
         announced.forEach(t -> tryComplete(t.peerName(), t.packageGroupId()));
+        List<InboundTransfer> awaitingAck = inbound.findAwaitingAck();
+        if (!awaitingAck.isEmpty()) {
+            LOG.log(Level.INFO, "Reprise : {0} accusé(s) à envoyer", awaitingAck.size());
+        }
+        awaitingAck.forEach(this::sendAck);
+    }
+
+    // --- Accusé ---
+
+    /** Envoie l'accusé d'un transfert terminé ; en cas d'échec du transport, il sera renvoyé au redémarrage. */
+    private void sendAck(InboundTransfer transfer) {
+        Optional<Peer> peer = peers.findByName(transfer.peerName());
+        if (peer.isEmpty()) {
+            LOG.log(Level.WARNING, "Accusé du transfert {0} non envoyé : partenaire {1} inconnu",
+                    transfer.transferId(), transfer.peerName());
+            return;
+        }
+        TransferAnnouncement a = messages.decodeAnnouncement(transfer.announcement()).orElseThrow();
+        boolean restored = transfer.state() == InboundTransfer.State.RESTORED;
+        TransferAck ack = new TransferAck(transfer.transferId(), transfer.packageGroupId(),
+                restored ? TransferAck.Result.RESTORED : TransferAck.Result.FAILED, transfer.restoredInstances(),
+                TransferMessages.partsDigest(a.packageGroupId(), a.parts()),
+                restored ? null : truncate(transfer.errorMessage(), TransferAck.MAX_REASON));
+        try {
+            transport.sendMessage(new PeerId(peer.get().transportPeerId()), messages.encode(ack));
+        } catch (TransportException e) {
+            LOG.log(Level.WARNING, "Accusé du transfert {0} non envoyé, nouvel essai au redémarrage : {1}",
+                    transfer.transferId(), e.getMessage());
+            return;
+        }
+        inbound.saveTransfer(transfer.acknowledged(clock.instant()));
+        LOG.log(Level.INFO, "Accusé {0} du transfert {1} envoyé à {2}", ack.result(), transfer.transferId(),
+                transfer.peerName());
+    }
+
+    static String truncate(String text, int max) {
+        if (text == null) {
+            return null;
+        }
+        return text.length() <= max ? text : text.substring(0, max);
     }
 
     // --- Outils ---
 
     private void fail(InboundTransfer transfer, String reason) {
-        inbound.saveTransfer(transfer.failed(reason, clock.instant()));
+        InboundTransfer failed = transfer.failed(reason, clock.instant());
+        inbound.saveTransfer(failed);
         LOG.log(Level.WARNING, "Transfert {0} de {1} en échec : {2}", transfer.transferId(), transfer.peerName(),
                 reason);
+        sendAck(failed);
     }
 
     private static String groupOf(String fileName) {

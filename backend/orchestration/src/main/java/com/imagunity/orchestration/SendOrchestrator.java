@@ -21,24 +21,32 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.stream.Stream;
 
 /**
  * Orchestrateur côté émetteur : fait avancer chaque transfert dans sa machine à états.
  *
  * <pre>
  * RECEIVED ──empaquetage──► PACKAGED ──dépôt de tous les paquets──► UPLOADED ──annonce──► ANNOUNCED
- *     └──────────────────────────────── échec ────────────────────────────────► FAILED
+ *     │                                                                                   │
+ *     │                                              accusé « restitué » du destinataire ─┴─► ACKNOWLEDGED
+ *     └───────────────────────── échec, ou accusé « en échec » ──────────────────────────────► FAILED
  * </pre>
- * (L'accusé de bout en bout, {@code ANNOUNCED → ACKNOWLEDGED}, arrive en phase 6.)
+ *
+ * <p>L'accusé n'est retenu que s'il vient du partenaire destinataire du transfert, pour un transfert annoncé, et
+ * si l'empreinte des paquets qu'il porte est celle des paquets déposés. Un accusé « restitué » vide le dossier
+ * d'envoi du transfert ; après un accusé « en échec », les paquets sont gardés.
  *
  * <p>Chaque étape est enregistrée avant de passer à la suivante. Au démarrage, {@link #start()}
  * reprend les transferts {@code PACKAGED} (paquets pas encore confiés au transport) et
- * {@code UPLOADED} (annonce pas encore envoyée). Un transfert {@code RECEIVED} reprend quand l'entrée
+ * {@code UPLOADED} (annonce pas encore envoyée), et finit de vider le dossier d'envoi des transferts
+ * {@code ACKNOWLEDGED}. Un transfert {@code RECEIVED} reprend quand l'entrée
  * DICOM signale à nouveau l'étude, dont les fichiers sont restés dans le dossier de réception.
  *
  * <p>Toutes les étapes s'exécutent sur l'{@link Executor} fourni, prévu à un seul fil : les
@@ -115,7 +123,7 @@ public final class SendOrchestrator {
     private void packageStudy(Transfer transfer, ReceivedStudy study) {
         List<PackagePart> parts;
         try {
-            parts = packager.pack(study, outboxDir.resolve(transfer.id().toString()));
+            parts = packager.pack(study, outboxOf(transfer));
         } catch (IOException | RuntimeException e) {
             fail(transfer, "Empaquetage impossible : " + e.getMessage());
             return;
@@ -200,10 +208,57 @@ public final class SendOrchestrator {
                     .flatMap(part -> transfers.find(part.transferId()))
                     .filter(t -> !t.state().isTerminal())
                     .ifPresent(t -> fail(t, "Transport : " + failed.reason()));
+            case TransportEvent.MessageReceived message -> messages.decodeAck(message.text())
+                    .ifPresent(ack -> onAck(message.peer(), ack));
             default -> {
-                // Les autres événements (réception, appairage) concernent d'autres composants.
+                // Les autres événements (réception, appairage, annonces) concernent d'autres composants.
             }
         }
+    }
+
+    private void onAck(PeerId from, TransferAck ack) {
+        Optional<Peer> peer = peers.findByTransportPeerId(from.value());
+        if (peer.isEmpty()) {
+            LOG.log(Level.WARNING, "Accusé d''un contact non appairé : ignoré");
+            return;
+        }
+        Optional<Transfer> found = ack.transferId() == null ? Optional.empty() : transfers.find(ack.transferId());
+        if (found.isEmpty() || !found.get().destination().equals(peer.get().name())) {
+            LOG.log(Level.WARNING, "Accusé de {0} pour un transfert qui ne lui est pas destiné : ignoré",
+                    peer.get().name());
+            return;
+        }
+        Transfer transfer = found.get();
+        if (transfer.state() != TransferState.ANNOUNCED) {
+            LOG.log(Level.INFO, "Accusé du transfert {0} ignoré : transfert {1}", transfer.id(), transfer.state());
+            return;
+        }
+        List<TransferAnnouncement.Part> parts = transfers.parts(transfer.id()).stream()
+                .map(p -> new TransferAnnouncement.Part(p.index(), p.count(), p.file().getFileName().toString(),
+                        p.size(), p.sha256()))
+                .toList();
+        if (!transfer.packageGroupId().equals(ack.packageGroupId())
+                || !TransferMessages.partsDigest(transfer.packageGroupId(), parts).equals(ack.partsDigest())) {
+            fail(transfer, "Accusé du destinataire incohérent : paquets différents de ceux envoyés");
+            return;
+        }
+        if (ack.result() != TransferAck.Result.RESTORED) {
+            fail(transfer, "Échec chez le destinataire : " + sanitize(ack.reason()));
+            return;
+        }
+        transfers.update(transfer.moveTo(TransferState.ACKNOWLEDGED, clock.instant()));
+        LOG.log(Level.INFO, "Transfert {0} confirmé par {1} : {2} instance(s) restituée(s)", transfer.id(),
+                transfer.destination(), ack.instances());
+        deleteOutbox(transfer);
+    }
+
+    /** Cause d'échec venue du partenaire : bornée et sans caractère de contrôle avant d'être enregistrée. */
+    static String sanitize(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "cause non précisée";
+        }
+        String clean = reason.replaceAll("\\p{Cntrl}", " ").strip();
+        return clean.length() <= TransferAck.MAX_REASON ? clean : clean.substring(0, TransferAck.MAX_REASON);
     }
 
     void recover() {
@@ -216,6 +271,9 @@ public final class SendOrchestrator {
         }
         packaged.forEach(this::hand);
         uploaded.forEach(this::announce);
+        transfers.findByStates(Set.of(TransferState.ACKNOWLEDGED)).stream()
+                .filter(t -> Files.exists(outboxOf(t)))
+                .forEach(this::deleteOutbox);
     }
 
     // --- Outils ---
@@ -227,6 +285,24 @@ public final class SendOrchestrator {
             return Optional.empty();
         }
         return Optional.of(new PeerId(peer.get().transportPeerId()));
+    }
+
+    private Path outboxOf(Transfer transfer) {
+        return outboxDir.resolve(transfer.id().toString());
+    }
+
+    /** Supprime le dossier d'envoi d'un transfert confirmé (ses paquets ne servent plus). */
+    private void deleteOutbox(Transfer transfer) {
+        Path dir = outboxOf(transfer);
+        try (Stream<Path> paths = Files.walk(dir)) {
+            for (Path p : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (NoSuchFileException e) {
+            // déjà supprimé
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Dossier d''envoi non supprimé : " + dir, e);
+        }
     }
 
     private void fail(Transfer transfer, String reason) {

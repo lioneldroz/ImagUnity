@@ -35,13 +35,34 @@ class InboundTest {
                 InboundTransfer.State.ANNOUNCED, null, t0, t0);
 
         InboundTransfer failed = announced.failed("empreinte différente", t1);
-        InboundTransfer restored = announced.restored(t1);
+        InboundTransfer restored = announced.restored(4, t1);
 
         assertThat(failed.state()).isEqualTo(InboundTransfer.State.FAILED);
         assertThat(failed.errorMessage()).isEqualTo("empreinte différente");
         assertThat(restored.state()).isEqualTo(InboundTransfer.State.RESTORED);
         assertThat(restored.errorMessage()).isNull();
         assertThat(restored.createdAt()).isEqualTo(t0);
+        assertThat(restored.restoredInstances()).isEqualTo(4);
+        assertThat(failed.restoredInstances()).isZero();
+    }
+
+    @Test
+    void ackIsAwaitedOnceTheTransferEnds() {
+        InboundTransfer announced = new InboundTransfer(UUID.randomUUID(), "box-a", "g", "2.25.1", 1, "{}",
+                InboundTransfer.State.ANNOUNCED, null, t0, t0);
+        InboundTransfer restored = announced.restored(2, t1);
+        InboundTransfer failed = announced.failed("x", t1);
+
+        assertThat(announced.awaitsAck()).isFalse();
+        assertThat(restored.awaitsAck()).isTrue();
+        assertThat(failed.awaitsAck()).isTrue();
+
+        InboundTransfer acked = restored.acknowledged(t1.plusSeconds(1));
+        assertThat(acked.awaitsAck()).isFalse();
+        assertThat(acked.ackSent()).isTrue();
+        assertThat(acked.state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(acked.restoredInstances()).isEqualTo(2);
+        assertThat(failed.acknowledged(t1).errorMessage()).isEqualTo("x");
     }
 
     @Test

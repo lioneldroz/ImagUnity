@@ -130,6 +130,11 @@ final class InMemoryRepositories {
                 com.imagunity.domain.inbound.InboundTransfer.State state) {
             return transfers.values().stream().filter(t -> t.state() == state).toList();
         }
+
+        @Override
+        public List<com.imagunity.domain.inbound.InboundTransfer> findAwaitingAck() {
+            return transfers.values().stream().filter(com.imagunity.domain.inbound.InboundTransfer::awaitsAck).toList();
+        }
     }
 
     static final class Peers implements PeerRepository {
