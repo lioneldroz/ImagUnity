@@ -81,7 +81,7 @@
     </dependencyManagement>
 
     <repositories>
-        <!-- dcm4che n'est pas publiÃ© sur Maven Central -->
+        <!-- dcm4che n'est pas publié sur Maven Central -->
         <repository>
             <id>dcm4che</id>
             <url>https://www.dcm4che.org/maven2/</url>

@@ -16,9 +16,17 @@ Démontrer une seule chose : un examen part d'un PACS, traverse des relais aveug
 | DICOM | dcm4che | Bibliothèque Java de référence (C-STORE en réception et en envoi). Licence MPL/LGPL compatible avec une box propriétaire. |
 | Compression sans perte | zstd (zstd-jni) | Rapide, bon taux de compression, réglable selon la qualité du réseau. |
 | Transport | `simplex-chat` en ligne de commande, **processus séparé**, piloté par son API WebSocket (`java.net.http.WebSocket`) | Première voie de la note pour la licence AGPL : aucun lien en bibliothèque. |
-| État des transferts | H2 embarquée + Flyway | La box doit reprendre un transfert après une coupure de courant. |
+| État des transferts (box) | H2 embarquée + Flyway | La box doit reprendre un transfert après une coupure de courant, sans serveur de base à administrer sur place. |
 | Frontend | React + TypeScript + Vite, TanStack Query | Outillage standard et léger. |
 | Environnement de test | Docker Compose : `smp-server`, `xftp-server`, 2 × `simplex-chat`, 2 × box, 2 × Orthanc ; Toxiproxy ou `tc netem` pour dégrader la liaison | Couvre l'environnement décrit dans la note. |
+
+### Bases de données : une par type de composant
+
+| Composant | Stockage | Raison |
+|---|---|---|
+| Box (chez les établissements) | **H2** embarquée | Appliance installée sans compétence informatique : aucune base à installer, surveiller ou mettre à jour. Un seul processus écrit l'état des transferts d'une seule box. La résistance aux coupures de courant sera vérifiée en phase 8 (SQLite reste une alternative). |
+| Relais SMP et XFTP | **Aucune base ImagUnity** | Serveurs SimpleX utilisés sans modification, avec leur propre stockage (journal SMP, fichiers XFTP). Le logiciel ImagUnity n'y écrit jamais : un relais aveugle ne détient aucune donnée applicative, et le modifier créerait des obligations AGPL. |
+| Annuaire de l'organisation (pilote) | **PostgreSQL** | Service central partagé par toutes les box : box enrôlées, clés publiques, entrées signées, révocations. Accès concurrents, administration et sauvegardes. Absent de la preuve de concept (appairage par lien d'invitation SimpleX). |
 
 ### Architecture hexagonale : le transport isolé derrière une interface
 
@@ -79,7 +87,7 @@ La note exclut l'interface d'administration de la preuve de concept : la console
 
 Par ordre de criticité :
 
-1. **Annuaire signé** : appairage avec vérification de l'empreinte hors bande, révocation.
+1. **Annuaire signé** (service central de l'organisation, sur PostgreSQL) : appairage avec vérification de l'empreinte hors bande, révocation.
 2. **Chiffrement applicatif** avec la clé publique du destinataire ; étudier les algorithmes résistants au calcul quantique.
 3. **Mises à jour signées** : clé hors ligne, double signature.
 4. Clés d'identité dans un **TPM** ou un élément sécurisé.
@@ -92,6 +100,6 @@ Par ordre de criticité :
 | Sujet | Décision |
 |---|---|
 | Build | Maven |
-| Base embarquée | H2 |
+| Bases de données | H2 dans la box ; PostgreSQL pour l'annuaire (pilote) ; aucune base ImagUnity sur les relais |
 | Frontend ↔ backend | REST + SSE (à confirmer en phase 7) |
 | Code des box existantes | À évaluer : il pourrait remplacer une partie des phases 2 et 5 |
