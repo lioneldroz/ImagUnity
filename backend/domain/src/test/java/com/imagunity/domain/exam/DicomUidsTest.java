@@ -1,4 +1,4 @@
-package com.imagunity.dicom;
+package com.imagunity.domain.exam;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
