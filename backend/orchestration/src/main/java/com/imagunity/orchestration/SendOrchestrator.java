@@ -24,8 +24,11 @@ import java.time.Clock;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Stream;
 
@@ -42,6 +45,9 @@ import java.util.stream.Stream;
  * <p>L'accusé n'est retenu que s'il vient du partenaire destinataire du transfert, pour un transfert annoncé, et
  * si l'empreinte des paquets qu'il porte est celle des paquets déposés. Un accusé « restitué » vide le dossier
  * d'envoi du transfert ; après un accusé « en échec », les paquets sont gardés.
+ *
+ * <p>Un transfert {@code FAILED} empaqueté peut être {@link #retry relancé} : ses paquets, gardés dans le dossier
+ * d'envoi, sont de nouveau confiés au transport ({@code FAILED → PACKAGED}), puis annoncés.
  *
  * <p>Chaque étape est enregistrée avant de passer à la suivante. Au démarrage, {@link #start()}
  * reprend les transferts {@code PACKAGED} (paquets pas encore confiés au transport) et
@@ -85,6 +91,24 @@ public final class SendOrchestrator {
     /** Prend en charge une étude complète reçue du PACS local. */
     public void submit(ReceivedStudy study) {
         run(() -> handleStudy(study));
+    }
+
+    /**
+     * Relance un transfert en échec, sur le fil de l'orchestrateur.
+     *
+     * @return le transfert relancé ; en échec avec {@link java.util.NoSuchElementException} si le transfert est
+     *         inconnu, {@link RetryRefusedException} s'il ne peut pas être relancé
+     */
+    public CompletableFuture<Transfer> retry(UUID id) {
+        CompletableFuture<Transfer> result = new CompletableFuture<>();
+        executor.execute(() -> {
+            try {
+                result.complete(doRetry(id));
+            } catch (RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        });
+        return result;
     }
 
     private void run(Runnable step) {
@@ -192,6 +216,31 @@ public final class SendOrchestrator {
         transfers.update(transfer.moveTo(TransferState.ANNOUNCED, clock.instant()));
         LOG.log(Level.INFO, "Transfert {0} annoncé à {1} ({2} paquet(s))", transfer.id(), transfer.destination(),
                 parts.size());
+    }
+
+    Transfer doRetry(UUID id) {
+        Transfer transfer = transfers.find(id)
+                .orElseThrow(() -> new NoSuchElementException("Transfert inconnu : " + id));
+        if (transfer.state() != TransferState.FAILED) {
+            throw new RetryRefusedException("Seul un transfert en échec peut être relancé (état : "
+                    + transfer.state() + ")");
+        }
+        List<TransferPart> parts = transfers.parts(id);
+        if (transfer.packageGroupId() == null || parts.isEmpty()) {
+            throw new RetryRefusedException("Échec avant l'empaquetage : renvoyer l'étude depuis le PACS");
+        }
+        for (TransferPart part : parts) {
+            if (!Files.isRegularFile(part.file())) {
+                throw new RetryRefusedException("Paquet " + part.index() + "/" + part.count()
+                        + " absent du dossier d'envoi : renvoyer l'étude depuis le PACS");
+            }
+        }
+        parts.forEach(p -> transfers.updatePart(p.reset()));
+        Transfer packaged = transfer.moveTo(TransferState.PACKAGED, clock.instant());
+        transfers.update(packaged);
+        LOG.log(Level.INFO, "Transfert {0} relancé vers {1}", id, transfer.destination());
+        hand(packaged);
+        return transfers.find(id).orElseThrow();
     }
 
     void onTransportEvent(TransportEvent event) {

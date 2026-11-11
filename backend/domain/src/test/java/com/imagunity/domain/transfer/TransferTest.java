@@ -83,6 +83,7 @@ class TransferTest {
 
         TransferPart handed = part.handedOver(42);
         TransferPart uploaded = handed.markUploaded();
+        assertThat(uploaded.reset()).isEqualTo(part);
 
         assertThat(handed.transportFileId()).isEqualTo(42);
         assertThat(handed.uploaded()).isFalse();

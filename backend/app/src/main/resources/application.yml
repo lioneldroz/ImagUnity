@@ -28,6 +28,9 @@ imagunity:
     inbox-dir: ${IMAGUNITY_DATA_DIR:./data}/inbox
     max-inbound-file-size: 2GB
     max-unpacked-size: 4GB
+  console:
+    # Un transfert annoncé sans accusé au-delà de ce délai est signalé dans la console.
+    ack-overdue: 30m
   transport:
     simplex:
       # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.

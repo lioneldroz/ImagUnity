@@ -102,5 +102,5 @@ Par ordre de criticité :
 |---|---|
 | Build | Maven |
 | Bases de données | H2 dans la box ; PostgreSQL pour l'annuaire (pilote) ; aucune base ImagUnity sur les relais |
-| Frontend ↔ backend | REST + SSE (à confirmer en phase 7) |
+| Frontend ↔ backend | REST + SSE (confirmé en phase 7) |
 | Code des box existantes | À évaluer : il pourrait remplacer une partie des phases 2 et 5 |

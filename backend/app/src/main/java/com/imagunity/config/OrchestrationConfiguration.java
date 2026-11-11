@@ -1,5 +1,9 @@
 package com.imagunity.config;
 
+import com.imagunity.api.ConsoleEvents;
+import com.imagunity.api.ConsoleProperties;
+import com.imagunity.api.NotifyingInboundRepository;
+import com.imagunity.api.NotifyingTransferRepository;
 import com.imagunity.dicom.DicomRestorer;
 import com.imagunity.domain.exam.StudyRestorer;
 import com.imagunity.domain.inbound.InboundRepository;
@@ -22,16 +26,18 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Persistance, orchestrateurs d'envoi et de réception, appairage. */
+/** Persistance (signalée aux consoles), orchestrateurs d'envoi et de réception, appairage. */
 @Configuration(proxyBeanMethods = false)
 class OrchestrationConfiguration {
 
     /** Démarre avant l'entrée DICOM (phase par défaut), qui peut lui signaler des études reprises. */
     static final int PHASE = SmartLifecycle.DEFAULT_PHASE - 100;
 
+    /** Dépôt SQL ; chaque changement est signalé aux consoles connectées. */
     @Bean
-    TransferRepository transferRepository(DataSource dataSource) {
-        return new JdbcTransferRepository(dataSource);
+    TransferRepository transferRepository(DataSource dataSource, ConsoleEvents events, ConsoleProperties console,
+                                          Clock clock) {
+        return new NotifyingTransferRepository(new JdbcTransferRepository(dataSource), events, console, clock);
     }
 
     @Bean
@@ -59,8 +65,8 @@ class OrchestrationConfiguration {
     }
 
     @Bean
-    InboundRepository inboundRepository(DataSource dataSource) {
-        return new JdbcInboundRepository(dataSource);
+    InboundRepository inboundRepository(DataSource dataSource, ConsoleEvents events) {
+        return new NotifyingInboundRepository(new JdbcInboundRepository(dataSource), events);
     }
 
     @Bean

@@ -49,6 +49,7 @@ class EndToEndAckTest {
     private int deliveredMessagesA;
     private int deliveredMessagesB;
     private SendOrchestrator sendOrchestratorA;
+    private int offeredFiles;
 
     @BeforeEach
     void setUp() {
@@ -90,7 +91,6 @@ class EndToEndAckTest {
 
     /** Fait circuler fichiers et messages entre les deux box jusqu'à ce que plus rien ne bouge. */
     private void relay() throws IOException {
-        int offeredFiles = 0;
         boolean moved = true;
         while (moved) {
             moved = false;
@@ -152,5 +152,22 @@ class EndToEndAckTest {
 
     private void submit(ReceivedStudy study) {
         sendOrchestratorA.submit(study);
+    }
+
+    @Test
+    void transferFailedInBCanBeRetriedFromA() throws IOException {
+        pacsFailure = new IOException("PACS B injoignable");
+        submit(study());
+        relay();
+        Transfer failed = transfersA.only();
+        assertThat(failed.state()).isEqualTo(TransferState.FAILED);
+
+        pacsFailure = null;
+        sendOrchestratorA.retry(failed.id()).join();
+        relay();
+
+        assertThat(transfersA.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
+        assertThat(pacsB).hasSize(4);
+        assertThat(dir.resolve("a/outbox").resolve(failed.id().toString())).doesNotExist();
     }
 }

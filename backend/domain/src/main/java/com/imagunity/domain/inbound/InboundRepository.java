@@ -1,6 +1,7 @@
 package com.imagunity.domain.inbound;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +22,12 @@ public interface InboundRepository {
     Optional<InboundTransfer> findTransferByGroup(String peerName, String packageGroupId);
 
     List<InboundTransfer> findTransfers(InboundTransfer.State state);
+
+    /** Derniers transferts reçus, du plus récemment modifié au plus ancien. */
+    List<InboundTransfer> findRecentTransfers(int limit);
+
+    /** Nombre de transferts reçus par état (états sans transfert absents). */
+    Map<InboundTransfer.State, Long> countTransfersByState();
 
     /** Transferts terminés dont l'accusé n'est pas encore parti (cf. {@link InboundTransfer#awaitsAck()}). */
     List<InboundTransfer> findAwaitingAck();
