@@ -1,5 +1,6 @@
 package com.imagunity.orchestration;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,12 +16,19 @@ import java.util.UUID;
  * @param packageGroupId   identifiant commun aux paquets, présent dans leurs manifestes et leurs noms
  * @param studyInstanceUid étude transférée
  * @param parts            paquets du transfert
+ * @param announcedAt      émission de l'annonce : une relance porte une date plus récente, une relecture
+ *                         (rattrapage après redémarrage) la même date ; {@code null} si absente
  */
 public record TransferAnnouncement(UUID transferId, String packageGroupId, String studyInstanceUid,
-                                   List<Part> parts) {
+                                   List<Part> parts, Instant announcedAt) {
 
     public TransferAnnouncement {
         parts = parts == null ? List.of() : List.copyOf(parts);
+    }
+
+    /** Annonce sans date d'émission. */
+    public TransferAnnouncement(UUID transferId, String packageGroupId, String studyInstanceUid, List<Part> parts) {
+        this(transferId, packageGroupId, studyInstanceUid, parts, null);
     }
 
     /**

@@ -17,11 +17,14 @@ import com.imagunity.packaging.StudyPackager;
 import com.imagunity.persistence.JdbcInboundRepository;
 import com.imagunity.persistence.JdbcPeerRepository;
 import com.imagunity.persistence.JdbcTransferRepository;
+import com.imagunity.transport.TransportException;
 import com.imagunity.transport.TransportPort;
 import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.sql.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +35,8 @@ class OrchestrationConfiguration {
 
     /** Démarre avant l'entrée DICOM (phase par défaut), qui peut lui signaler des études reprises. */
     static final int PHASE = SmartLifecycle.DEFAULT_PHASE - 100;
+
+    private static final Logger LOG = LoggerFactory.getLogger(OrchestrationConfiguration.class);
 
     /** Dépôt SQL ; chaque changement est signalé aux consoles connectées. */
     @Bean
@@ -89,9 +94,13 @@ class OrchestrationConfiguration {
         return new PairingService(peers, transport, clock, properties.pairingTimeout());
     }
 
+    /**
+     * Démarre l'appairage et les orchestrateurs, puis rattrape les arrivées que le client de transport a reçues
+     * pendant que la box était arrêtée (sans quoi un fichier proposé à ce moment ne serait jamais accepté).
+     */
     @Bean
     SmartLifecycle orchestrationLifecycle(SendOrchestrator orchestrator, ReceiveOrchestrator receiver,
-                                          PairingService pairing) {
+                                          PairingService pairing, TransportPort transport) {
         return new SmartLifecycle() {
             private volatile boolean running;
 
@@ -100,6 +109,11 @@ class OrchestrationConfiguration {
                 pairing.start();
                 orchestrator.start();
                 receiver.start();
+                try {
+                    transport.catchUp();
+                } catch (TransportException e) {
+                    LOG.warn("Rattrapage des arrivées impossible : {}", e.getMessage());
+                }
                 running = true;
             }
 

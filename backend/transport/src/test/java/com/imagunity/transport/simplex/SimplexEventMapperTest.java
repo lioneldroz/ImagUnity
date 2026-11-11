@@ -6,6 +6,7 @@ import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Formes JSON reprises de bots/api/EVENTS.md et TYPES.md (simplex-chat), réduites aux champs utiles. */
@@ -122,5 +123,36 @@ class SimplexEventMapperTest {
     void unknownEventsAreIgnored() {
         assertThat(map("{\"type\":\"hostConnected\",\"protocol\":\"smp\"}")).isEmpty();
         assertThat(map("{\"type\":\"somethingNew\"}")).isEmpty();
+    }
+
+    @Test
+    void historyReplaysUnhandledArrivals() {
+        JsonNode chat = mapper.readTree("""
+                {"chatInfo": {"type": "direct", "contact": {"contactId": 3}},
+                 "chatItems": [
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "file"}},
+                    "file": {"fileId": 15, "fileName": "g-1-of-1.tar.zst", "fileSize": 100, "fileStatus": {"type": "rcvInvitation"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "file"}},
+                    "file": {"fileId": 16, "fileName": "h-1-of-1.tar.zst", "fileSize": 100, "fileStatus": {"type": "rcvComplete"},
+                             "fileSource": {"filePath": "/data/inbox/box-a/16-h-1-of-1.tar.zst"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "file"}},
+                    "file": {"fileId": 17, "fileName": "i-1-of-1.tar.zst", "fileSize": 100, "fileStatus": {"type": "rcvComplete"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "file"}},
+                    "file": {"fileId": 18, "fileName": "j-1-of-1.tar.zst", "fileSize": 100, "fileStatus": {"type": "rcvTransfer"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "text", "text": "annonce"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvMsgContent", "msgContent": {"type": "link"}}},
+                   {"chatDir": {"type": "directRcv"}, "content": {"type": "rcvDeleted"}},
+                   {"chatDir": {"type": "directSnd"}, "content": {"type": "sndMsgContent", "msgContent": {"type": "text", "text": "accusé"}}}
+                 ]}
+                """);
+        PeerId peer = new PeerId(3);
+
+        assertThat(eventMapper.history(chat)).containsExactly(
+                new TransportEvent.FileOffered(peer, 15, "g-1-of-1.tar.zst", 100),
+                new TransportEvent.FileReceived(peer, 16, Path.of("/data/inbox/box-a/16-h-1-of-1.tar.zst")),
+                new TransportEvent.FileReceived(peer, 17, null),
+                new TransportEvent.MessageReceived(peer, "annonce"));
+        assertThat(eventMapper.history(mapper.readTree("{\"chatInfo\": {\"type\": \"group\"}}")))
+                .isEmpty();
     }
 }

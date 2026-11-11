@@ -23,6 +23,16 @@ class TransferMessagesTest {
     }
 
     @Test
+    void announcementCarriesItsIssueDate() {
+        TransferAnnouncement announcement = new TransferAnnouncement(UUID.randomUUID(), "g", "2.25.1", List.of(),
+                java.time.Instant.parse("2026-11-11T12:00:00.123Z"));
+
+        assertThat(messages.decodeAnnouncement(messages.encode(announcement))).contains(announcement);
+        assertThat(messages.decodeAnnouncement(messages.encode(new TransferAnnouncement(UUID.randomUUID(), "g",
+                "2.25.1", List.of()))).orElseThrow().announcedAt()).isNull();
+    }
+
+    @Test
     void ignoresOtherMessages() {
         assertThat(messages.decodeAnnouncement("bonjour")).isEmpty();
         assertThat(messages.decodeAnnouncement("{\"type\":\"autre\",\"version\":1}")).isEmpty();

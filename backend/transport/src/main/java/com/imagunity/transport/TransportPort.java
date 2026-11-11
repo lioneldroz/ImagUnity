@@ -46,6 +46,15 @@ public interface TransportPort extends AutoCloseable {
     /** Abonne un écouteur à tous les événements du transport. */
     void addListener(Consumer<TransportEvent> listener);
 
+    /**
+     * Rejoue les arrivées récentes (messages, fichiers proposés ou reçus) que le transport a pu recevoir
+     * pendant que la box n'était pas à l'écoute (box redémarrée alors que le client de transport tournait).
+     * À appeler une fois les écouteurs abonnés. Les événements rejoués peuvent être des doublons :
+     * les écouteurs doivent être idempotents.
+     */
+    default void catchUp() {
+    }
+
     @Override
     void close();
 }

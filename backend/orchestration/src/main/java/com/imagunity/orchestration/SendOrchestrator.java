@@ -206,7 +206,7 @@ public final class SendOrchestrator {
                         p.size(), p.sha256()))
                 .toList();
         TransferAnnouncement announcement = new TransferAnnouncement(transfer.id(), transfer.packageGroupId(),
-                transfer.studyInstanceUid(), parts);
+                transfer.studyInstanceUid(), parts, clock.instant());
         try {
             transport.sendMessage(peer.get(), messages.encode(announcement));
         } catch (TransportException e) {

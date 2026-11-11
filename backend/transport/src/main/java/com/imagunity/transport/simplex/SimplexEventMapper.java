@@ -44,6 +44,46 @@ final class SimplexEventMapper {
         };
     }
 
+    /**
+     * Événements à rejouer d'après l'historique d'une conversation ({@code apiChat}) : messages texte reçus,
+     * fichiers proposés pas encore acceptés, fichiers reçus complets.
+     */
+    List<TransportEvent> history(JsonNode chat) {
+        JsonNode chatInfo = chat.path("chatInfo");
+        if (!"direct".equals(chatInfo.path("type").asString())) {
+            return List.of();
+        }
+        PeerId peer = new PeerId(chatInfo.path("contact").path("contactId").asLong());
+        List<TransportEvent> events = new ArrayList<>();
+        for (JsonNode item : chat.path("chatItems")) {
+            if (!"directRcv".equals(item.path("chatDir").path("type").asString())) {
+                continue;
+            }
+            JsonNode file = item.path("file");
+            if (!file.isMissingNode() && !file.isNull()) {
+                long fileId = file.path("fileId").asLong();
+                switch (file.path("fileStatus").path("type").asString()) {
+                    case "rcvInvitation" -> events.add(new TransportEvent.FileOffered(peer, fileId,
+                            file.path("fileName").asString(), file.path("fileSize").asLong()));
+                    case "rcvComplete" -> {
+                        String path = file.path("fileSource").path("filePath").asString();
+                        events.add(new TransportEvent.FileReceived(peer, fileId, path.isEmpty() ? null : Path.of(path)));
+                    }
+                    default -> {
+                        // accepté ou en cours : la suite arrivera par les événements habituels
+                    }
+                }
+                continue;
+            }
+            JsonNode content = item.path("content");
+            if ("rcvMsgContent".equals(content.path("type").asString())
+                    && "text".equals(content.path("msgContent").path("type").asString())) {
+                events.add(new TransportEvent.MessageReceived(peer, content.path("msgContent").path("text").asString()));
+            }
+        }
+        return events;
+    }
+
     private static List<TransportEvent> peerConnected(JsonNode contact) {
         if (contact.isMissingNode()) {
             return List.of();

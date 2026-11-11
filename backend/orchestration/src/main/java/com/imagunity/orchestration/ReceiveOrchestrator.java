@@ -29,6 +29,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -51,6 +52,7 @@ import java.util.stream.Stream;
  * <p>Relance par l'émetteur : une nouvelle annonce d'un transfert en échec (même groupe de paquets) ouvre une
  * nouvelle tentative ; les paquets de la tentative ratée ont été écartés à l'échec. Une nouvelle annonce d'un
  * transfert déjà restitué ne déclenche qu'un nouvel accusé, et ses paquets ne sont pas retéléchargés.
+ * Une annonce déjà reçue (même date d'émission, rejouée par le rattrapage du transport) est ignorée.
  *
  * <p>Ce qui vient d'un partenaire n'est pas fiable :
  * <ul>
@@ -210,6 +212,9 @@ public final class ReceiveOrchestrator {
         Instant createdAt = clock.instant();
         if (existing.isPresent()) {
             InboundTransfer known = existing.get();
+            if (isReplay(known, a)) {
+                return; // même annonce, rejouée après un redémarrage
+            }
             if (known.state() == InboundTransfer.State.RESTORED) {
                 sendAck(known); // l'émetteur n'a pas eu l'accusé : il relance, on le lui renvoie
                 return;
@@ -226,6 +231,13 @@ public final class ReceiveOrchestrator {
         LOG.log(Level.INFO, "Transfert {0} annoncé par {1} ({2} paquet(s))", a.transferId(), peer.get().name(),
                 a.parts().size());
         tryComplete(peer.get().name(), a.packageGroupId());
+    }
+
+    /** Vrai si l'annonce reçue est celle déjà enregistrée (même date d'émission, ou sans date des deux côtés). */
+    private boolean isReplay(InboundTransfer known, TransferAnnouncement received) {
+        return messages.decodeAnnouncement(known.announcement())
+                .map(stored -> Objects.equals(stored.announcedAt(), received.announcedAt()))
+                .orElse(false);
     }
 
     static Optional<String> validate(TransferAnnouncement a) {

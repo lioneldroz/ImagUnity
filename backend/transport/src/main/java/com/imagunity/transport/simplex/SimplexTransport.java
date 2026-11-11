@@ -31,6 +31,9 @@ public final class SimplexTransport implements TransportPort {
     private final Set<PeerId> connectedPeers = ConcurrentHashMap.newKeySet();
     private final long userId;
 
+    /** Éléments relus par conversation au rattrapage. */
+    static final int CATCH_UP_ITEMS = 200;
+
     /** Prend en charge le client et lit le profil actif de simplex-chat. */
     public SimplexTransport(SimplexChatClient client) {
         this.client = client;
@@ -86,6 +89,24 @@ public final class SimplexTransport implements TransportPort {
         listeners.add(listener);
     }
 
+    /**
+     * Rejoue les {@value #CATCH_UP_ITEMS} derniers éléments de chaque conversation : un fichier proposé
+     * ou un message reçu pendant que la box était arrêtée n'a été signalé à personne.
+     */
+    @Override
+    public void catchUp() {
+        JsonNode contacts = expect(client.command(SimplexCommands.listContacts(userId)), "contactsList");
+        int replayed = 0;
+        for (JsonNode contact : contacts.path("contacts")) {
+            JsonNode resp = expect(client.command(
+                    SimplexCommands.chatHistory(contact.path("contactId").asLong(), CATCH_UP_ITEMS)), "apiChat");
+            List<TransportEvent> events = eventMapper.history(resp.path("chat"));
+            events.forEach(this::dispatch);
+            replayed += events.size();
+        }
+        LOG.log(Level.INFO, "Rattrapage : {0} événement(s) rejoué(s)", replayed);
+    }
+
     @Override
     public void close() {
         client.close();
@@ -109,12 +130,16 @@ public final class SimplexTransport implements TransportPort {
             if (event instanceof TransportEvent.PeerConnected pc && !connectedPeers.add(pc.peer())) {
                 continue;
             }
-            for (Consumer<TransportEvent> listener : listeners) {
-                try {
-                    listener.accept(event);
-                } catch (RuntimeException e) {
-                    LOG.log(Level.WARNING, "Erreur dans un écouteur du transport", e);
-                }
+            dispatch(event);
+        }
+    }
+
+    private void dispatch(TransportEvent event) {
+        for (Consumer<TransportEvent> listener : listeners) {
+            try {
+                listener.accept(event);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Erreur dans un écouteur du transport", e);
             }
         }
     }
