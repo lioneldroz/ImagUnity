@@ -85,8 +85,9 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Phase 5 — Réception et restitution](docs/phase5-reception.md)
 - [Phase 6 — Accusé de bout en bout](docs/phase6-accuse.md)
 - [Phase 7 — API et console React](docs/phase7-console.md)
+- [Phase 8 — Campagne de tests](docs/phase8-campagne.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut
 
-Phases 0 à 7 faites : la chaîne PACS A → box A → relais SimpleX → box B → PACS B fonctionne, avec accusé de bout en bout, suivie en direct dans la console (relance des transferts en échec). Prochaine étape : campagne de tests (phase 8).
+Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais SimpleX → box B → PACS B fonctionne, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).

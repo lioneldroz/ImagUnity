@@ -68,7 +68,7 @@ La note exclut l'interface d'administration de la preuve de concept : la console
 | 5. Réception et restitution | Téléchargement, vérification des empreintes, dépaquetage, validation et normalisation DICOM, C-STORE vers le PACS destinataire | 1 semaine |
 | 6. Accusé de bout en bout | Message de retour attestant que l'examen est arrivé complet et identique | < 1 semaine |
 | 7. API et console React | REST (transferts, contacts, AET, état), flux SSE, tableau des transferts, détail, indicateurs techniques | 1 à 2 semaines |
-| 8. Campagne de tests | Scénarios de la note, automatisés (Testcontainers ou scripts Compose). **Livrable :** rapport de preuve de concept avec mesures | 1 à 2 semaines |
+| 8. Campagne de tests | Scénarios de la note, automatisés (Testcontainers ou scripts Compose). **Livrable :** rapport de preuve de concept avec mesures ([rapport](phase8-campagne.md)) | 1 à 2 semaines |
 
 **Durée totale indicative : 10 à 14 semaines pour une personne.**
 
