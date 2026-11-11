@@ -43,7 +43,7 @@ curl -s -X POST http://localhost:8081/api/v1/peers/invitations -H 'Content-Type:
 curl -s -X POST http://localhost:8082/api/v1/peers/connections -H 'Content-Type: application/json' -d '{"name":"box-a","link":"<lien renvoyé par la box A>"}'
 ```
 
-Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté et déposé pour la box B.
+Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, transmis à la box B, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.
 
 ## Réinitialisation
 

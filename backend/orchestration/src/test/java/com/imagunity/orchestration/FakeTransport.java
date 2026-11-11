@@ -60,9 +60,16 @@ final class FakeTransport implements TransportPort {
         return id;
     }
 
+    /** Téléchargements demandés : identifiant de fichier → emplacement cible. */
+    final java.util.Map<Long, Path> downloads = new java.util.LinkedHashMap<>();
+    boolean failReceive;
+
     @Override
     public void receiveFile(long fileId, Path target) {
-        throw new UnsupportedOperationException();
+        if (failReceive) {
+            throw new TransportException("relais XFTP injoignable");
+        }
+        downloads.put(fileId, target);
     }
 
     @Override
