@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.imagunity</groupId>
+        <artifactId>imagunity-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>imagunity-orchestration</artifactId>
+    <name>ImagUnity — orchestration</name>
+    <description>Orchestrateur des transferts (empaquetage, envoi, suivi d'état, reprise) et appairage</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-packaging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-transport</artifactId>
+        </dependency>
+        <!-- Messages de signalisation entre box (JSON) -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

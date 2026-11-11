@@ -45,7 +45,7 @@ class DicomInputConfigurationTest {
     void lifecycleStartsAndStopsTheScp() throws IOException {
         DicomStoreScp scp = configuration.dicomStoreScp(
                 properties(freePort(), List.of(new DicomProperties.Route("IU_TO_B", "box-b"))),
-                configuration.loggingStudyListener());
+                study -> { });
         SmartLifecycle lifecycle = configuration.dicomInputLifecycle(scp);
 
         lifecycle.start();
@@ -60,7 +60,7 @@ class DicomInputConfigurationTest {
         try (ServerSocket taken = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
             DicomStoreScp scp = configuration.dicomStoreScp(
                     properties(taken.getLocalPort(), List.of(new DicomProperties.Route("IU_TO_B", "box-b"))),
-                    configuration.loggingStudyListener());
+                    study -> { });
             SmartLifecycle lifecycle = configuration.dicomInputLifecycle(scp);
 
             assertThatThrownBy(lifecycle::start)
@@ -72,12 +72,17 @@ class DicomInputConfigurationTest {
     }
 
     @Test
-    void provisionalListenerOnlyLogs() {
+    void receivedStudiesGoToTheOrchestrator() {
         Instant now = Instant.now();
         ReceivedStudy study = new ReceivedStudy("2.25.1", "IU_TO_B", "box-b", Set.of("ORTHANC_A"),
                 List.of(new ReceivedInstance("1.2", "2.25.1.1.1", "2.25.1.1", "1.2", Path.of("x.dcm"), 10)), now, now);
+        List<Runnable> scheduled = new java.util.ArrayList<>();
+        var orchestrator = new com.imagunity.orchestration.SendOrchestrator(null, null, null, null, storage,
+                scheduled::add, java.time.Clock.systemUTC());
 
-        configuration.loggingStudyListener().studyReceived(study);
+        configuration.studyListener(orchestrator).studyReceived(study);
+
+        assertThat(scheduled).as("étude confiée au fil de l'orchestrateur").hasSize(1);
     }
 
     private static int freePort() throws IOException {

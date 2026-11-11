@@ -2,11 +2,9 @@ package com.imagunity.config;
 
 import com.imagunity.dicom.DicomStoreScp;
 import com.imagunity.dicom.StudyListener;
+import com.imagunity.orchestration.SendOrchestrator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
@@ -17,18 +15,10 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(prefix = "imagunity.dicom", name = "enabled", havingValue = "true", matchIfMissing = true)
 class DicomInputConfiguration {
 
-    private static final Logger LOG = LoggerFactory.getLogger(DicomInputConfiguration.class);
-
-    /**
-     * Consommateur provisoire des études reçues : il se contente de les journaliser.
-     * L'orchestrateur de la phase 4 le remplacera (empaquetage, envoi, suivi d'état).
-     */
+    /** Les études complètes sont confiées à l'orchestrateur (empaquetage, envoi, suivi d'état). */
     @Bean
-    @ConditionalOnMissingBean
-    StudyListener loggingStudyListener() {
-        return study -> LOG.info("Étude prête pour {} (en attente de l'orchestrateur, phase 4) : {} instance(s), "
-                        + "{} série(s), {} octets", study.destination(), study.instances().size(),
-                study.seriesCount(), study.totalSize());
+    StudyListener studyListener(SendOrchestrator orchestrator) {
+        return orchestrator::submit;
     }
 
     @Bean

@@ -24,6 +24,7 @@
         <module>packaging</module>
         <module>transport</module>
         <module>persistence</module>
+        <module>orchestration</module>
         <module>api</module>
         <module>app</module>
     </modules>
@@ -73,6 +74,11 @@
             <dependency>
                 <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.imagunity</groupId>
+                <artifactId>imagunity-orchestration</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
