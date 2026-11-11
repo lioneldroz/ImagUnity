@@ -1,0 +1,52 @@
+# --- Données médicales : ne jamais versionner ---
+*.dcm
+*.dicom
+DICOMDIR
+data/
+samples/
+exams/
+
+# --- Secrets, clés et certificats ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+
+# --- Builds et dépendances ---
+bin/
+obj/
+build/
+dist/
+out/
+target/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Logs et fichiers temporaires ---
+*.log
+logs/
+*.tmp
+*.swp
+
+# --- Fichiers verrous Office ---
+~$*
+
+# --- IDE / éditeurs ---
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# --- Système ---
+.DS_Store
+Thumbs.db
+desktop.ini
