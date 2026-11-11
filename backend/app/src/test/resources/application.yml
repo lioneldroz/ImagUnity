@@ -1,6 +1,9 @@
 imagunity:
   box:
     name: box-test
+  console:
+    user: operateur
+    password: mot-de-passe-de-test
   dicom:
     enabled: false
   orchestration:

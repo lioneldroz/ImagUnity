@@ -13,6 +13,7 @@ Données exclusivement synthétiques : patient « SYNTHETIQUE^CAMPAGNE », pixel
 """
 
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -50,9 +51,18 @@ def log(message):
     print(f"[{datetime.now():%H:%M:%S}] {message}", flush=True)
 
 
+# Compte opérateur des box de l'environnement de test (docker-compose.yml).
+CONSOLE_USER = os.environ.get("IMAGUNITY_CONSOLE_USER", "operateur")
+CONSOLE_PASSWORD = os.environ.get("IMAGUNITY_CONSOLE_PASSWORD", "essai-synthetique")
+
+
 def http(method, url, body=None, timeout=600, raw=False):
     data = body if isinstance(body, (bytes, type(None))) else json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method=method)
+    if url.startswith((BOX_A, BOX_B)):
+        token = base64.b64encode(f"{CONSOLE_USER}:{CONSOLE_PASSWORD}".encode()).decode()
+        request.add_header("Authorization", f"Basic {token}")
+        request.add_header("X-ImagUnity-Console", "1")
     if data is not None and not isinstance(body, bytes):
         request.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(request, timeout=timeout) as response:

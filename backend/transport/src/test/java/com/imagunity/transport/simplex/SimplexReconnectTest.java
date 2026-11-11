@@ -71,7 +71,9 @@ class SimplexReconnectTest {
 
     @Test
     void lostConnectionStartsReconnectionInBackground() throws InterruptedException {
-        client(Duration.ZERO, recording());
+        // La première tentative attend la seconde coupure : la reconnexion est bien en cours à ce moment-là.
+        CountDownLatch secondDrop = new CountDownLatch(1);
+        client(Duration.ZERO, d -> secondDrop.await(5, TimeUnit.SECONDS));
         CountDownLatch reconnected = new CountDownLatch(1);
         client.addReconnectListener(() -> {
             throw new IllegalStateException("écouteur défaillant");
@@ -80,6 +82,7 @@ class SimplexReconnectTest {
 
         client.onClosed(new java.io.IOException("connexion réinitialisée"));
         client.onClosed(null); // déjà en cours : pas de seconde reconnexion
+        secondDrop.countDown();
 
         assertThat(reconnected.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(connections).hasSize(1);
