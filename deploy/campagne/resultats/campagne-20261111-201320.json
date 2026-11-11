@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-11T20:13:07+00:00",
+  "simplexChat": "SimpleX Chat v7.1.2.0\nTo update run: curl -o- https://raw.githubusercontent.com/simplex-chat/simplex-chat/master/install.sh | bash",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.61,
+        "PACKAGED": 6.0,
+        "UPLOADED": 7.75,
+        "ANNOUNCED": 8.33,
+        "ACKNOWLEDGED": 11.26,
+        "restored": 11.27
+      },
+      "debitBoutEnBout_Mo_s": 4.7,
+      "depotRelais_s": 2.33,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    }
+  ]
+}

@@ -23,7 +23,7 @@ Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vi
 
 | Service | URL |
 |---|---|
-| Console box A | http://localhost:8081 (API : `/api/v1/box`) |
+| Console box A | http://localhost:8081 (API : `/api/v1/box`) ; compte `operateur` / `essai-synthetique` (test uniquement) |
 | Console box B | http://localhost:8082 |
 | Orthanc A (émetteur) | http://localhost:8042 |
 | Orthanc B (destinataire) | http://localhost:8043 |
@@ -43,8 +43,9 @@ Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vi
 Après le démarrage, appairer A et B (voir [phase 4](../docs/phase4-orchestrateur.md#2-appairage-sans-annuaire)) :
 
 ```bash
-curl -s -X POST http://localhost:8081/api/v1/peers/invitations -H 'Content-Type: application/json' -d '{"name":"box-b"}'
-curl -s -X POST http://localhost:8082/api/v1/peers/connections -H 'Content-Type: application/json' -d '{"name":"box-a","link":"<lien renvoyé par la box A>"}'
+H='X-ImagUnity-Console: 1'; U='operateur:essai-synthetique'   # compte de l'environnement de test
+curl -s -u "$U" -H "$H" -X POST http://localhost:8081/api/v1/peers/invitations -H 'Content-Type: application/json' -d '{"name":"box-b"}'
+curl -s -u "$U" -H "$H" -X POST http://localhost:8082/api/v1/peers/connections -H 'Content-Type: application/json' -d '{"name":"box-a","link":"<lien renvoyé par la box A>"}'
 ```
 
 Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, transmis à la box B, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.

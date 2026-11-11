@@ -29,7 +29,13 @@ export async function getJson<T>(url: string): Promise<T> {
   return (await response.json()) as T
 }
 
+/**
+ * En-tête exigé par la box sur les requêtes qui modifient l'état : un site tiers ne peut pas l'ajouter,
+ * ce qui protège des requêtes intersites. L'authentification (HTTP Basic) est gérée par le navigateur.
+ */
+const CONSOLE_HEADER = { 'X-ImagUnity-Console': '1' }
+
 export async function postJson<T>(url: string): Promise<T> {
-  const response = await check(await fetch(url, { method: 'POST' }))
+  const response = await check(await fetch(url, { method: 'POST', headers: CONSOLE_HEADER }))
   return (await response.json()) as T
 }

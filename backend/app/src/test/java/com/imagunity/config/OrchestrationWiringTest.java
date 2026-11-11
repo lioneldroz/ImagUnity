@@ -96,13 +96,13 @@ class OrchestrationWiringTest {
         String base = "http://127.0.0.1:" + environment.getProperty("local.server.port");
         HttpClient http = HttpClient.newHttpClient();
 
-        HttpResponse<String> list = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/peers")).build(),
+        HttpResponse<String> list = http.send(authorized(URI.create(base + "/api/v1/peers")).build(),
                 HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> invite = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/peers/invitations"))
+        HttpResponse<String> invite = http.send(authorized(URI.create(base + "/api/v1/peers/invitations"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"box-c\"}")).build(),
                 HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> badName = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/peers/connections"))
+        HttpResponse<String> badName = http.send(authorized(URI.create(base + "/api/v1/peers/connections"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"../x\",\"link\":\"l\"}")).build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -119,7 +119,7 @@ class OrchestrationWiringTest {
         HttpClient http = HttpClient.newHttpClient();
         // Flux SSE ouvert avant le transfert : il doit en recevoir les changements d'état.
         HttpResponse<java.util.stream.Stream<String>> stream = http.send(
-                HttpRequest.newBuilder(URI.create(base + "/api/v1/events")).build(),
+                authorized(URI.create(base + "/api/v1/events")).build(),
                 HttpResponse.BodyHandlers.ofLines());
         java.util.concurrent.BlockingQueue<String> lines = new java.util.concurrent.LinkedBlockingQueue<>();
         Thread.ofVirtual().start(() -> stream.body().forEach(lines::add));
@@ -132,18 +132,18 @@ class OrchestrationWiringTest {
                 Instant.now()));
         Transfer transfer = awaitTerminal("2.25.5");
 
-        HttpResponse<String> list = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/transfers")).build(),
+        HttpResponse<String> list = http.send(authorized(URI.create(base + "/api/v1/transfers")).build(),
                 HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> detail = http.send(HttpRequest.newBuilder(
+        HttpResponse<String> detail = http.send(authorized(
                 URI.create(base + "/api/v1/transfers/" + transfer.id())).build(), HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> overview = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/overview")).build(),
+        HttpResponse<String> overview = http.send(authorized(URI.create(base + "/api/v1/overview")).build(),
                 HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> retry = http.send(HttpRequest.newBuilder(
+        HttpResponse<String> retry = http.send(authorized(
                         URI.create(base + "/api/v1/transfers/" + transfer.id() + "/retry"))
                 .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> unknown = http.send(HttpRequest.newBuilder(
+        HttpResponse<String> unknown = http.send(authorized(
                 URI.create(base + "/api/v1/transfers/" + UUID.randomUUID())).build(), HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> inbound = http.send(HttpRequest.newBuilder(
+        HttpResponse<String> inbound = http.send(authorized(
                 URI.create(base + "/api/v1/inbound-transfers?limit=10")).build(), HttpResponse.BodyHandlers.ofString());
 
         assertThat(list.statusCode()).isEqualTo(200);
@@ -193,6 +193,14 @@ class OrchestrationWiringTest {
             Thread.sleep(50);
         }
         throw new AssertionError("Transfert non terminé");
+    }
+
+    /** Requête avec le compte opérateur de test et l'en-tête de la console. */
+    private static HttpRequest.Builder authorized(URI uri) {
+        String credentials = java.util.Base64.getEncoder()
+                .encodeToString("operateur:mot-de-passe-de-test".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return HttpRequest.newBuilder(uri).header("Authorization", "Basic " + credentials)
+                .header(SecurityConfiguration.CONSOLE_HEADER, "1");
     }
 
     private static int freePort() {

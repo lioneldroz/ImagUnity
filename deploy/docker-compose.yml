@@ -83,6 +83,9 @@ services:
       IMAGUNITY_DATA_DIR: /data
       # Console et entrée DICOM sur le réseau du site seulement : rien n'écoute côté relais (« Internet »).
       SERVER_ADDRESS: 172.31.1.10
+      # Compte opérateur de la console : mot de passe d'essai de cet environnement de test, à ne jamais
+      # reprendre ailleurs (en production : IMAGUNITY_CONSOLE_PASSWORD propre à chaque box, idéalement haché).
+      IMAGUNITY_CONSOLE_PASSWORD: essai-synthetique
       IMAGUNITY_DICOM_BIND_ADDRESS: 172.31.1.10
       # Entrée DICOM : seul Orthanc A peut pousser ; la destination IU_TO_B désigne la box B.
       IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_A
@@ -151,6 +154,9 @@ services:
       IMAGUNITY_DATA_DIR: /data
       # Console et entrée DICOM sur le réseau du site seulement : rien n'écoute côté relais (« Internet »).
       SERVER_ADDRESS: 172.31.2.10
+      # Compte opérateur de la console : mot de passe d'essai de cet environnement de test, à ne jamais
+      # reprendre ailleurs (en production : IMAGUNITY_CONSOLE_PASSWORD propre à chaque box, idéalement haché).
+      IMAGUNITY_CONSOLE_PASSWORD: essai-synthetique
       IMAGUNITY_DICOM_BIND_ADDRESS: 172.31.2.10
       # Sens retour (symétrique) : Orthanc B pousse vers IU_TO_A pour désigner la box A.
       IMAGUNITY_DICOM_ALLOWED_CALLING_AETS: ORTHANC_B

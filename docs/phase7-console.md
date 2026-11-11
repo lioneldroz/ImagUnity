@@ -20,7 +20,15 @@
 
 Les erreurs suivent le format `ProblemDetail` (RFC 9457) ; la console affiche leur `detail`.
 
-**Ce que l'API n'expose pas.** Aucune donnée démographique du patient : seulement des UID DICOM, des tailles, des états et des causes d'échec techniques. Les chemins de fichiers de la box ne sortent pas (nom du paquet seulement). L'API n'a **pas d'authentification** dans la preuve de concept : elle écoute sur le réseau local de la box et doit y rester ; l'authentification des opérateurs est à prévoir pour le pilote.
+**Ce que l'API n'expose pas.** Aucune donnée démographique du patient : seulement des UID DICOM, des tailles, des états et des causes d'échec techniques. Les chemins de fichiers de la box ne sortent pas (nom du paquet seulement).
+
+**Accès.** La console et l'API demandent un compte opérateur, en HTTP Basic et sans session :
+
+- compte réglé par `IMAGUNITY_CONSOLE_USER` (par défaut `operateur`) et `IMAGUNITY_CONSOLE_PASSWORD`, en clair ou haché avec son préfixe (`{bcrypt}$2a$...`) ; sans mot de passe, la box en génère un à chaque démarrage et le journalise ;
+- les requêtes qui modifient l'état (relance, appairage) doivent porter l'en-tête `X-ImagUnity-Console` : un site tiers ne peut pas l'ajouter (CORS fermé), ce qui protège des requêtes intersites qu'un navigateur authentifié enverrait de lui-même. La console l'ajoute ;
+- `/actuator/health` reste libre, pour la supervision ;
+- le navigateur demande le compte lui-même (réponse 401 `WWW-Authenticate: Basic`) ;
+- le compte circule en clair sur HTTP : servir la console derrière un **proxy TLS** sur le réseau du site. La console et l'API n'écoutent que sur l'interface du réseau local (`SERVER_ADDRESS`, [phase 8](phase8-campagne.md)).
 
 ## 2. Mises à jour en direct (SSE)
 
@@ -71,7 +79,7 @@ Un transfert est « en retard » s'il est annoncé depuis plus de `imagunity.con
 
 ## 6. Limites et suites
 
-- **Pas d'authentification** sur l'API et la console (pilote : comptes opérateurs, et la console derrière un proxy TLS).
+- **Un seul compte opérateur**, en HTTP Basic : pour le pilote, comptes nominatifs, journal des actions, et TLS (proxy).
 - **Pas de tests automatisés du frontend** (composants) : à ajouter si la console grossit.
 - **Configuration en lecture seule** : AET, routes et appairage se règlent encore par fichier et par l'API d'appairage.
 - **Pas d'historique paginé** : les 100 derniers transferts de chaque sens.
