@@ -29,5 +29,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Serveur WebSocket de test, qui joue le rôle de simplex-chat -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.6.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

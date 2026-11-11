@@ -61,6 +61,8 @@ cd backend
 java -jar app/target/imagunity-box.jar
 ```
 
+`./mvnw verify` mesure la couverture des tests (JaCoCo) et **échoue sous 95 % des lignes ou 75 % des branches**, module par module. Rapport par module : `<module>/target/site/jacoco/index.html`. Seuils modifiables en ligne de commande : `-Dcouverture.lignes.min=0.90 -Dcouverture.branches.min=0.70`.
+
 Frontend (http://localhost:5173, les appels `/api` sont relayés vers le backend) :
 
 ```bash

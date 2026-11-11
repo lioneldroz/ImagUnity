@@ -167,6 +167,69 @@ class DicomStoreScpTest {
         });
     }
 
+    @Test
+    void rejectsInvalidCommandUid() throws Exception {
+        int status = pacs.storeWithCommandUid("IU_TO_B", TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1"), "abc");
+
+        assertThat(status).isEqualTo(Status.CannotUnderstand);
+    }
+
+    @Test
+    void rejectsForgedSeriesUid() throws Exception {
+        List<Integer> statuses = pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, "1..2", "2.25.1001.1.1")));
+
+        assertThat(statuses).containsExactly(Status.CannotUnderstand);
+    }
+
+    @Test
+    void reportsStudiesInProgress() throws Exception {
+        scp.stop();
+        var slowConfig = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
+                storage, Duration.ofMinutes(5), 0);
+        scp = new DicomStoreScp(slowConfig, studies::add);
+        scp.start();
+
+        pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
+
+        assertThat(scp.pendingStudies()).isEqualTo(1);
+        assertThat(scp.studyIdleTimeout()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
+    void startAndStopAreIdempotent() throws Exception {
+        scp.start();
+        assertThat(pacs.echo("IU_TO_B")).isEqualTo(Status.Success);
+
+        scp.close();
+        scp.stop();
+    }
+
+    @Test
+    void listensOnAllInterfacesWithoutBindAddress() throws Exception {
+        scp.stop();
+        var anyConfig = new DicomInputConfig(" ", port, Set.of("ORTHANC_A"), Map.of("IU_TO_B", "box-b"),
+                storage, Duration.ofMillis(400), 0);
+        scp = new DicomStoreScp(anyConfig, studies::add);
+        scp.start();
+
+        assertThat(pacs.echo("IU_TO_B")).isEqualTo(Status.Success);
+    }
+
+    @Test
+    void ignoresPendingInstancesOfRemovedDestination() throws Exception {
+        pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
+        scp.stop();
+        assertThat(studies).isEmpty();
+
+        var otherRoutes = new DicomInputConfig("127.0.0.1", port, Set.of("ORTHANC_A"), Map.of("IU_TO_C", "box-c"),
+                storage, Duration.ofMillis(400), 0);
+        scp = new DicomStoreScp(otherRoutes, studies::add);
+        scp.start();
+
+        assertThat(studies.poll(1, TimeUnit.SECONDS)).isNull();
+        assertThat(storage.resolve("IU_TO_B").resolve(STUDY)).as("fichiers conservés").exists();
+    }
+
     private static int freePort() throws IOException {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();

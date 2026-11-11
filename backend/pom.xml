@@ -33,6 +33,13 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <dcm4che.version>5.35.2</dcm4che.version>
         <zstd-jni.version>1.5.7-26</zstd-jni.version>
+        <jacoco.version>0.8.16</jacoco.version>
+        <!-- Minimum coverage thresholds checked by "mvn verify" (see jacoco-maven-plugin),
+             applied to each module (BUNDLE). Measured on 2026-11-11: 98.5 % of lines,
+             96.3 % of branches (lowest module: dicom, 97.4 % / 93.9 %). Can be overridden on the
+             command line, e.g. -Dcouverture.lignes.min=0.90 -->
+        <couverture.lignes.min>0.95</couverture.lignes.min>
+        <couverture.branches.min>0.75</couverture.branches.min>
     </properties>
 
     <dependencyManagement>
@@ -79,6 +86,58 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <plugins>
+            <!-- Couverture des tests : mesurée à chaque "mvn verify", seuils bloquants par module -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${couverture.lignes.min}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${couverture.branches.min}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
     <repositories>
         <!-- dcm4che n'est pas publié sur Maven Central -->

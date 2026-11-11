@@ -112,4 +112,4 @@ IMAGUNITY_SIMPLEX_A=ws://localhost:5225 IMAGUNITY_SIMPLEX_B=ws://localhost:5226 
 
 ### 5.5 Remarque sur l'environnement de développement
 
-Sur le poste, le JDK refuse d'ouvrir son tube interne (socket Unix) dans le dossier temporaire par défaut (`Unable to establish loopback connection`). C'est lié au bac à sable de l'outil utilisé pour ces essais, pas au code. Contournement si nécessaire : `-Djdk.net.unixdomain.tmpdir=<dossier inscriptible>` (par exemple `-DargLine=...` avec Maven).
+Sur le poste, le JDK refuse d'ouvrir son tube interne (socket Unix) dans le dossier temporaire par défaut (`Unable to establish loopback connection`). C'est lié au bac à sable de l'outil utilisé pour ces essais, pas au code. Contournement si nécessaire : `-Djdk.net.unixdomain.tmpdir=<dossier inscriptible>`, de préférence par la variable d'environnement `JDK_JAVA_OPTIONS`. Ne pas passer par `-DargLine=...` : cela remplacerait l'agent JaCoCo et fausserait la mesure de couverture.
