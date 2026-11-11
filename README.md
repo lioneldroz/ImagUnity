@@ -41,7 +41,8 @@ backend/     Java 25, Spring Boot 4, Maven multi-modules
   dicom/        adaptateur DICOM (dcm4che)
   packaging/    manifeste, compression zstd, découpage par série
   transport/    port de transport et adaptateur simplex-chat
-  persistence/  état des transferts (H2 + Flyway)
+  persistence/  état des transferts et partenaires (H2 + Flyway)
+  orchestration/ orchestrateur des transferts, appairage
   api/          API REST (+ SSE) pour la console
   app/          assemblage Spring Boot de la box
 frontend/    console React + TypeScript (Vite)
@@ -80,6 +81,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
 - [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
 - [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
+- [Phase 4 — Orchestrateur](docs/phase4-orchestrateur.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut

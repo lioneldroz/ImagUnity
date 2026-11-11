@@ -14,6 +14,18 @@ imagunity:
     #   - called-aet: IU_TO_B
     #     destination: box-b
     routes: []
+  orchestration:
+    outbox-dir: ${IMAGUNITY_DATA_DIR:./data}/outbox
+    pairing-timeout: 1h
+    max-part-size: 900MB
+    compression-level: 3
+  transport:
+    simplex:
+      # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.
+      enabled: ${IMAGUNITY_SIMPLEX_ENABLED:true}
+      url: ${IMAGUNITY_SIMPLEX_URL:ws://localhost:5225}
+      startup-timeout: 2m
+      command-timeout: 60s
 
 spring:
   application:

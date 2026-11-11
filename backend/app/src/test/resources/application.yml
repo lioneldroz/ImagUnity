@@ -3,6 +3,11 @@ imagunity:
     name: box-test
   dicom:
     enabled: false
+  orchestration:
+    outbox-dir: ./target/test-outbox
+  transport:
+    simplex:
+      enabled: false
 
 spring:
   datasource:
