@@ -155,6 +155,7 @@ class IuTransportEarlyTest {
             assertThat(a.store().outgoing(fileId).orElseThrow().described()).isTrue();
             assertThat(a.store().outgoing(fileId).orElseThrow().state().paddingKey()).as("remplissage aléatoire")
                     .isNotNull();
+            assertThat(a.link().bytesPerSecond()).as("débit de la liaison mesuré").isPresent();
             a.close();
             b.close();
         }

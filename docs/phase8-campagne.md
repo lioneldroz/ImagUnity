@@ -156,3 +156,5 @@ Constat : le **remplissage par des zéros** du dernier morceau laisse voir au re
 
 **Étape 6 (annonce anticipée, remplissage aléatoire)**, mêmes scénarios, box 0.8.0 ([résultats bruts](../deploy/campagne/resultats/campagne-20261112-201012.json)) : liaison bridée **67,7 s** (103,9 s à l'étape 5, −35 %), examen de 2 Go **79,8 s** (92,0 s, −13 %), autres scénarios inchangés ; entropie minimale des morceaux sur le relais **8,0** bits/octet (5,05 avec des zéros). Toutes les instances identiques.
 
+**Taille de morceau adaptative** (box 0.9.0), scénarios `liaison-lente` et `coupure-liaison-lente` (2 Mbit/s, 20 Mo) : liaison lente **105,6 s** avec morceaux adaptatifs contre 134,7 s avec morceaux fixes de 4 Mio (restitution 1,8 s après la fin du téléversement, contre 19,0 s) ; coupure de 30 s **166,3 s** contre 221,5 s. 40/40 instances identiques. Détails : [spécification § 13.4](specification-protocole.md#134-avancement).
+

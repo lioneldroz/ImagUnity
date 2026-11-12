@@ -37,7 +37,7 @@ class TransportConfigurationTest {
 
     private final TransportConfiguration configuration = new TransportConfiguration();
     private static final IuTransportProperties NO_RELAY = new IuTransportProperties(null, Path.of("x"),
-            Duration.ofHours(72), 2, Duration.ofDays(8), true);
+            Duration.ofHours(72), 2, Duration.ofDays(8), true, "auto");
 
     @TempDir
     Path dir;
@@ -73,7 +73,7 @@ class TransportConfigurationTest {
     @Test
     void iuTransportNeedsTheDirectory() {
         var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
-                Duration.ofDays(8), true);
+                Duration.ofDays(8), true, "auto");
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
 
@@ -93,6 +93,19 @@ class TransportConfigurationTest {
         SmartLifecycle other = configuration.iuTransportLifecycle(new DisabledTransport());
         other.start();
         assertThat(other.isRunning()).isTrue();
+    }
+
+    @Test
+    void chunkSizeIsAutomaticOrOneOfTheAdmittedSizes() {
+        assertThat(NO_RELAY.chunkSizeBytes()).isZero();
+        assertThat(new IuTransportProperties(null, dir, Duration.ofHours(1), 1, Duration.ofDays(1), true, "1MB")
+                .chunkSizeBytes()).isEqualTo(1024 * 1024);
+        assertThat(new IuTransportProperties(null, dir, Duration.ofHours(1), 1, Duration.ofDays(1), true, " ")
+                .chunkSizeBytes()).isZero();
+        assertThat(new IuTransportProperties(null, dir, Duration.ofHours(1), 1, Duration.ofDays(1), true, null)
+                .chunkSizeBytes()).isZero();
+        assertThatThrownBy(() -> new IuTransportProperties(null, dir, Duration.ofHours(1), 1, Duration.ofDays(1),
+                true, "beaucoup").chunkSizeBytes()).hasMessageContaining("invalide");
     }
 
     @Test
@@ -134,7 +147,7 @@ class TransportConfigurationTest {
     @Test
     void switchingToIuKeepsVerifiedPartnersUnderTheirNames() {
         var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
-                Duration.ofDays(8), true);
+                Duration.ofDays(8), true, "auto");
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
         UUID boxB = UUID.randomUUID();

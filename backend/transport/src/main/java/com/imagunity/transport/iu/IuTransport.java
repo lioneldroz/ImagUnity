@@ -64,8 +64,6 @@ public final class IuTransport implements TransportPort {
     /** Taille d'un fragment de description : un message signé et chiffré reste sous 64 Kio. */
     static final int FRAGMENT = 20_000;
     static final int MAX_FRAGMENTS = 2_000;
-    /** Au-delà, morceaux de 8 Mio : la description est deux fois plus courte. */
-    static final long LARGE_FILE = 1024L * 1024 * 1024;
 
     /**
      * Réglages.
@@ -77,14 +75,25 @@ public final class IuTransport implements TransportPort {
      * @param keepState durée de conservation de l'état d'un transfert terminé, et d'un message jamais déposé
      * @param early     annonce anticipée (§ 6.6) : la description part dès la création des morceaux, et le
      *                  destinataire télécharge au fil du téléversement
+     * @param chunkSize taille de morceau imposée, ou 0 pour l'adapter à la liaison ({@link IuLink})
      */
-    public record Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early) {
+    public record Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early,
+                           int chunkSize) {
 
         public Settings {
             relay = URI.create(relay.toString().replaceAll("/+$", ""));
             if (parallel < 1) {
                 throw new IllegalArgumentException("Au moins un transfert à la fois");
             }
+            if (chunkSize != 0 && !ChunkLayout.SIZES.contains(chunkSize)) {
+                throw new IllegalArgumentException("Taille de morceau non admise : " + chunkSize
+                        + " (256 Kio, 1, 4 ou 8 Mio)");
+            }
+        }
+
+        /** Taille de morceau adaptée à la liaison. */
+        public Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early) {
+            this(relay, stateDir, ttl, parallel, keepState, early, 0);
         }
 
         /** Avec l'annonce anticipée. */
@@ -106,6 +115,7 @@ public final class IuTransport implements TransportPort {
     private final Retry retry;
     private final Retry.Sleeper sleeper;
     private final IuStore store;
+    private final IuLink link;
     private final IuMsgClient messages;
     private final IuFileUploader uploader;
     private final IuFileDownloader downloader;
@@ -133,6 +143,7 @@ public final class IuTransport implements TransportPort {
         this.retry = retry;
         this.sleeper = retry.sleeper();
         this.store = new IuStore(settings.stateDir());
+        this.link = new IuLink(settings.stateDir());
         this.messages = new IuMsgClient(http, clock);
         this.uploader = new IuFileUploader(new IuFileClient(settings.relay(), http, clock), boxId, identity, clock,
                 retry);
@@ -408,7 +419,10 @@ public final class IuTransport implements TransportPort {
             try {
                 long size = Files.size(file);
                 if (outgoing.state() == null) {
-                    int chunkSize = size > LARGE_FILE ? 8 * ChunkLayout.MIB : ChunkLayout.DEFAULT_SIZE;
+                    int chunkSize = link.chunkSize(size, settings.chunkSize());
+                    LOG.log(Level.INFO, "Envoi IU-T {0} : morceaux de {1} Kio (débit estimé : {2})", outgoing.fileId(),
+                            chunkSize / ChunkLayout.KIB, link.bytesPerSecond().isPresent()
+                                    ? Math.round(link.bytesPerSecond().getAsDouble() / 1024) + " Kio/s" : "inconnu");
                     outgoing = outgoing.with(uploader.prepare(file, chunkSize, settings.ttl()));
                     store.save(outgoing);
                 }
@@ -418,10 +432,17 @@ public final class IuTransport implements TransportPort {
                     store.save(outgoing);
                 }
                 IuStore.Outgoing base = outgoing;
+                long[] last = {uploadedBytes(outgoing.state()), System.nanoTime()};
                 IuFileUploader.UploadState state = uploader.upload(file, outgoing.state(),
                         s -> store.save(base.with(s)),
-                        done -> emit(new TransportEvent.FileProgress(base.fileId(),
-                                TransportEvent.Direction.SENDING, done, size)));
+                        done -> {
+                            long now = System.nanoTime();
+                            link.record(done - last[0], Duration.ofNanos(now - last[1]), clock.instant());
+                            last[0] = done;
+                            last[1] = now;
+                            emit(new TransportEvent.FileProgress(base.fileId(), TransportEvent.Direction.SENDING,
+                                    done, size));
+                        });
                 outgoing = outgoing.with(state);
                 if (!outgoing.described()) {
                     announceFile(outgoing, false);
@@ -444,6 +465,18 @@ public final class IuTransport implements TransportPort {
             store.deleteOutgoing(outgoing.fileId());
             emit(new TransportEvent.FileFailed(outgoing.fileId(), e.getMessage()));
         }
+    }
+
+    /** Octets déjà téléversés d'un envoi (reprise). */
+    private static long uploadedBytes(IuFileUploader.UploadState state) {
+        ChunkLayout layout = new ChunkLayout(state.size(), state.chunkSize(), state.chunks().size());
+        return state.chunks().stream().filter(IuFileUploader.ChunkState::uploaded)
+                .mapToLong(c -> layout.payload(c.index())).sum();
+    }
+
+    /** Pour les tests : débit estimé de la liaison. */
+    IuLink link() {
+        return link;
     }
 
     /**
