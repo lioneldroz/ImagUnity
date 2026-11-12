@@ -1,8 +1,8 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : brouillon v0.2, pour décision.** Rien n'est implémenté. Historique en fin de document.
-> Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour remplacer à terme SimpleX derrière le `TransportPort`.
-> Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md).
+> **Statut : v0.3, décisions prises, implémentation à venir** (plan au § 13). Historique en fin de document.
+> Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
+> Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
 ---
 
@@ -12,8 +12,8 @@
 
 | Motivation | Détail |
 |---|---|
-| Maîtrise du code | Code Java propriétaire, modifiable sans obligation de publication (le client et les serveurs SimpleX sont sous AGPL-3.0, en Haskell). |
-| Adapté à l'imagerie | Pas de limite de taille de fichier, reprise au morceau près, découpage et priorité par série DICOM, progression fine pour la console. |
+| Indépendance | Plus de dépendance à simplex-chat ni aux relais SMP et XFTP (Haskell, AGPL-3.0) : code Java maîtrisé, modifiable sans obligation de publication. |
+| Adapté à l'imagerie | Pas de limite de taille de fichier, reprise au morceau près, ordre et priorité par série DICOM, progression fine pour la console. |
 | Réseau fermé | Les box sont enrôlées et connues de l'annuaire : l'anonymat face à des inconnus, au cœur de SimpleX, n'est pas nécessaire. Le protocole peut être plus simple. |
 | Une seule pile | Plus de processus externe ni d'API WebSocket locale non authentifiée. |
 
@@ -26,14 +26,26 @@
 5. **Durée de séjour courte et bornée**, avec purge après retrait ou expiration (argument « transit, pas hébergement » vis-à-vis de l'HDS).
 6. **Habilitation décidée chez l'émetteur**, d'après l'annuaire.
 
-### 1.3 Hors périmètre de ce document
+### 1.3 Ce sur quoi IU-T s'appuie (déjà réalisé)
 
-- La gouvernance détaillée de l'annuaire (format complet, procédure d'enrôlement, interface d'administration) : spécification séparée. Seul ce dont le protocole a besoin est décrit au § 9.
+IU-T ne réinvente pas ce que le pilote a déjà construit et vérifié :
+
+| Brique | Rôle pour IU-T | Document |
+|---|---|---|
+| Annuaire signé, suite `IU1` | Identités des box (Ed25519 + ML-DSA-65), clés de chiffrement (X25519 + ML-KEM-768), révocation ; publie l'adresse de la file de chaque box (§ 9) | [annuaire-signe.md](annuaire-signe.md) |
+| Chiffrement applicatif des paquets | Chaque paquet est déjà chiffré pour la box destinataire (`.iu1`) : IU-T transporte un fichier chiffré de bout en bout (§ 5) | [chiffrement-applicatif.md](chiffrement-applicatif.md) |
+| Annonces et accusés signés | Contenu des messages IU-MSG (§ 8.4) | [annuaire-signe.md § 8](annuaire-signe.md) |
+| Clés protégées par le TPM | Protection des clés d'identité de la box | [cles-tpm.md](cles-tpm.md) |
+| Orchestrateur | États des transferts, reprise, relance ; inchangé derrière le `TransportPort` | [phase 4](phase4-orchestrateur.md), [phase 6](phase6-accuse.md) |
+
+### 1.4 Hors périmètre de ce document
+
+- La gouvernance de l'annuaire : voir [annuaire-signe.md](annuaire-signe.md). Seul ce dont le protocole a besoin est rappelé au § 9.
 - Le format interne du paquet d'examen (manifeste, archive, compression) : il relève du module `packaging`. Le protocole transporte un fichier opaque.
 
-### 1.4 Règle absolue : aucune cryptographie maison
+### 1.5 Règle absolue : aucune cryptographie maison
 
-Le protocole **assemble** des primitives standard et éprouvées ; il n'en invente aucune. Toute construction s'appuie sur une référence publiée (RFC, norme NIST, schéma de TLS 1.3). Un **audit de sécurité externe** est un prérequis à la mise en production.
+Le protocole **assemble** des primitives standard et éprouvées ; il n'en invente aucune. Toute construction s'appuie sur une référence publiée (RFC, norme NIST, schéma de TLS 1.3). Un **audit de sécurité externe** est un prérequis à la mise en production (§ 13, étape 7).
 
 ---
 
@@ -42,23 +54,23 @@ Le protocole **assemble** des primitives standard et éprouvées ; il n'en inven
 ```
  Box émettrice                     Relais                         Box réceptrice
 ┌──────────────┐  HTTPS sortant  ┌──────────────────────┐  HTTPS sortant  ┌──────────────┐
-│ paquet       │ ──────────────► │ IU-FILE  morceaux    │ ◄────────────── │ téléchargement│
-│ chiffrement  │                 │          chiffrés    │                 │ vérification  │
-│ découpage    │ ──────────────► │ IU-MSG   files de    │ ◄────────────── │ relève (long  │
-│              │   annonce       │          messages    │   polling)      │ polling)      │
-└──────┬───────┘                 └──────────────────────┘                 └──────┬───────┘
-       │ clé publique + file du destinataire                                     │
+│ paquet .iu1  │ ──────────────► │ IU-FILE  morceaux    │ ◄────────────── │ téléchargement│
+│ (déjà chiffré│                 │          (opaques)   │                 │ vérification  │
+│  pour B)     │ ──────────────► │ IU-MSG   files de    │ ◄────────────── │ relève (attente│
+│ découpage    │   annonce       │          messages    │   longue)       │ longue)       │
+└──────┬───────┘                 └──────────┬───────────┘                 └──────┬───────┘
+       │ clés et file du destinataire       │ box enrôlées (dépôt)                │
        └──────────────────────────► Annuaire de l'organisation ◄─────────────────┘
 ```
 
 Deux services sur le relais, sur le même point d'entrée HTTPS :
 
-- **IU-FILE** (équivalent de XFTP) : stockage temporaire de morceaux chiffrés de taille fixe.
+- **IU-FILE** (équivalent de XFTP) : stockage temporaire de morceaux de taille fixe.
 - **IU-MSG** (équivalent de SMP) : files de messages unidirectionnelles pour la signalisation (annonce d'un fichier, accusé de bout en bout).
 
-Un même relais peut offrir les deux services ; une organisation peut en utiliser plusieurs (redondance, proximité réseau).
+Un même relais offre les deux services ; une organisation peut en utiliser plusieurs (redondance, proximité réseau), plus tard (§ 13, étape 6).
 
-**Choix de HTTPS (HTTP/2 sur TLS 1.3)** plutôt qu'un protocole binaire dédié : passe tous les pare-feu et proxys qui autorisent le web, outillage standard (répartiteurs de charge, supervision), et implémentation directe en Java des deux côtés.
+**Choix de HTTPS** (TLS 1.3) plutôt qu'un protocole binaire dédié : passe tous les pare-feu et proxys qui autorisent le web, outillage standard (répartiteurs de charge, supervision), implémentation directe en Java des deux côtés. En production, le TLS est terminé par un proxy devant le relais ; pour les essais, certificat autosigné épinglé par les box.
 
 ---
 
@@ -68,8 +80,8 @@ Un même relais peut offrir les deux services ; une organisation peut en utilise
 
 | Acteur | Rôle | Fait confiance à |
 |---|---|---|
-| Box | Émet et reçoit les examens. Porte toute la sécurité. | Sa propre clé, la clé du responsable de son organisation (épinglée à l'enrôlement). |
-| Relais | Stocke temporairement morceaux et messages. | Personne : il vérifie seulement des signatures. |
+| Box | Émet et reçoit les examens. Porte toute la sécurité. | Sa propre clé, la clé du responsable de son organisation (épinglée à l'installation). |
+| Relais | Stocke temporairement morceaux et messages. | La clé du responsable de chaque organisation qu'il sert (épinglée), pour vérifier que les déposants sont des box enrôlées (§ 6.4). |
 | Annuaire | Publie les entrées signées des box de l'organisation. | — (ses entrées sont signées par le responsable ; l'annuaire lui-même n'est pas de confiance). |
 | Responsable de l'organisation | Valide l'enrôlement et la révocation des box. | — |
 
@@ -77,14 +89,14 @@ Un même relais peut offrir les deux services ; une organisation peut en utilise
 
 | Clé | Type | Où elle naît | Durée de vie | Usage |
 |---|---|---|---|---|
-| Identité de signature de la box | Ed25519 (+ ML-DSA-65 en hybride, § 4.2) | Dans la box (TPM / élément sécurisé à terme) | Vie de la box | Signer les annonces et les accusés |
-| Identité de chiffrement de la box | X25519 + ML-KEM-768 | Dans la box | Vie de la box, renouvelable | Recevoir les clés de fichier |
-| Clé du responsable | Ed25519 (+ ML-DSA-65) | Hors ligne, chez le responsable | Longue | Signer les entrées de l'annuaire |
-| Clé de fichier `K` | 256 bits aléatoires | Box émettrice | Un transfert | Chiffrer les morceaux |
-| Clé d'émetteur de morceau | Ed25519 | Box émettrice | Un morceau | Téléverser, supprimer |
+| Identité de signature de la box | Ed25519 + ML-DSA-65 | Dans la box (protégée par le TPM) | Vie de la box | Signer annonces, accusés et **requêtes de dépôt** (§ 6.3) |
+| Identité de chiffrement de la box | X25519 + ML-KEM-768 | Dans la box (protégée par le TPM) | Vie de la box, renouvelable | Recevoir les paquets et les messages chiffrés |
+| Clé du responsable | Ed25519 + ML-DSA-65 | Hors ligne, chez le responsable | Longue | Signer les entrées de l'annuaire |
+| Clé d'émetteur de morceau | Ed25519 | Box émettrice | Un morceau | Téléverser, supprimer, consulter l'état |
 | Clé de retrait de morceau | Ed25519 | Box émettrice, pour chaque destinataire | Un morceau | Télécharger, acquitter |
 | Clé de file (réception) | Ed25519 | Box réceptrice | Vie de la file | Relever et acquitter les messages |
-| Certificat client d'enrôlement | X.509 / Ed25519 | Box, signé par l'organisation | Renouvelable | Réserver le **dépôt** aux box enrôlées (§ 6.4) |
+
+La v0.2 prévoyait en plus une **clé de fichier** par transfert et un **certificat client d'enrôlement**. Ils sont abandonnés : le paquet est déjà chiffré pour le destinataire (§ 5), et le dépôt est authentifié par la signature d'identité de la box, vérifiée d'après l'annuaire (§ 6.4).
 
 Remplacement plutôt que restauration (note d'architecture) : aucune clé de box n'est sauvegardée. Une box en panne est remplacée et l'ancienne révoquée.
 
@@ -92,77 +104,68 @@ Remplacement plutôt que restauration (note d'architecture) : aucune clé de box
 
 | Adversaire | Capacités supposées | Ce que le protocole garantit | Ce qu'il ne garantit pas |
 |---|---|---|---|
-| Observateur réseau passif | Voit tout le trafic chiffré | Confidentialité du contenu et des identités (TLS + chiffrement de bout en bout) | Les métadonnées : qui parle à quel relais, quand, quels volumes |
-| Attaquant réseau actif | Intercepte, modifie, rejoue | Intégrité (AEAD, signatures, empreintes), anti-rejeu | Disponibilité (il peut couper la liaison) |
-| Opérateur de relais curieux ou compromis | Lit son stockage et ses journaux | Ne peut lire aucun morceau ni message ; ne peut pas relier un dépôt à un retrait par les identifiants | Il voit les volumes, les horaires et les adresses IP des box ; il peut supprimer ou retenir des données (déni de service) |
-| Box tierce de l'organisation | Enrôlée, malveillante | Ne peut ni lire ni retirer ce qui ne lui est pas destiné ; ne peut pas se faire passer pour une autre box (signatures) | Elle peut saturer une file (limites de débit, § 6.4) |
-| Box volée | Accès physique | Révocation dans l'annuaire ; clés dans un composant sécurisé | Les paquets déjà émis vers elle restent récupérables jusqu'à expiration (d'où la durée de séjour courte) |
-| Annuaire compromis | Modifie les entrées | Les entrées sont signées par le responsable : une substitution de clé est détectée | Il peut retirer des entrées (déni de service) |
-| Clé du responsable compromise | Signe de fausses entrées | — | **Point critique** : détournement possible. Parade : clé hors ligne, double signature envisagée |
-| Enregistrement aujourd'hui, déchiffrement demain | Stocke le trafic, ordinateur quantique futur | Échange de clés hybride post-quantique (§ 4.2) | — |
+| Observateur réseau passif | Voit tout le trafic chiffré | Confidentialité du contenu (TLS + chiffrement de bout en bout) | Les métadonnées : qui parle à quel relais, quand, quels volumes |
+| Attaquant réseau actif | Intercepte, modifie, rejoue | Intégrité (empreintes, AEAD, signatures), anti-rejeu | Disponibilité (il peut couper la liaison) |
+| Opérateur de relais curieux ou compromis | Lit son stockage et ses journaux | Ne peut lire aucun morceau ni message ; ne peut pas relier un retrait à une box par les identifiants | Il voit les volumes, les horaires, les adresses IP des box, **quelle box dépose** (morceaux, messages) et **dans quelle file** elle dépose un message (§ 12, question 5) ; il peut supprimer ou retenir des données (déni de service) |
+| Box tierce de l'organisation | Enrôlée, malveillante | Ne peut ni lire ni retirer ce qui ne lui est pas destiné ; ne peut pas se faire passer pour une autre box (signatures) | Elle peut saturer le relais ou une file (limites de débit et de volume, § 6.4) |
+| Box volée | Accès physique | Révocation dans l'annuaire, prise en compte par les box **et par le relais** (dépôt refusé) ; clés liées au TPM de la box | Les paquets déjà émis vers elle restent récupérables jusqu'à expiration (d'où la durée de séjour courte) |
+| Annuaire compromis | Modifie les entrées | Les entrées sont signées par le responsable : une substitution de clé ou d'adresse de file est détectée | Il peut retirer des entrées (déni de service) |
+| Clé du responsable compromise | Signe de fausses entrées | — | **Point critique** : détournement possible. Parade : clé hors ligne, chiffrée par phrase de passe |
+| Enregistrement aujourd'hui, déchiffrement demain | Stocke le trafic, ordinateur quantique futur | Paquets et messages chiffrés par KEM hybride X25519 + ML-KEM-768 ; signatures hybrides | — |
 
 ---
 
 ## 4. Primitives cryptographiques
 
-### 4.1 Suite de base
+### 4.1 Suite `IU1`
 
-Toutes les primitives sont disponibles **dans le JDK 25**, sans bibliothèque native.
+Toutes les primitives sont disponibles **dans le JDK 25**, sans bibliothèque native ; elles sont déjà employées par l'annuaire et le chiffrement applicatif.
 
 | Fonction | Primitive | Référence | API Java |
 |---|---|---|---|
-| Canal box ↔ relais | TLS 1.3 uniquement | RFC 8446 | `javax.net.ssl` |
-| Chiffrement authentifié des morceaux et messages | ChaCha20-Poly1305 | RFC 8439 | `Cipher "ChaCha20-Poly1305"` |
-| Échange de clés classique | X25519 | RFC 7748 | `KeyAgreement "XDH"` |
-| Échange de clés post-quantique | ML-KEM-768 | FIPS 203 | `KEM "ML-KEM"` (JDK 24+) |
-| Signature classique | Ed25519 | RFC 8032 | `Signature "Ed25519"` |
-| Signature post-quantique | ML-DSA-65 | FIPS 204 | `Signature "ML-DSA"` (JDK 24+) |
-| Dérivation de clés | HKDF-SHA-256 | RFC 5869 | `KDF "HKDF-SHA256"` (JDK 25) |
+| Canal box ↔ relais | TLS 1.3 uniquement | RFC 8446 | `javax.net.ssl`, `java.net.http.HttpClient` |
+| Accord de clé hybride (paquets, messages) | DHKEM X25519 + ML-KEM-768, combinés par HKDF-SHA256 | RFC 9180, FIPS 203, RFC 5869 | `KEM "DHKEM"`, `KEM "ML-KEM"`, `KDF "HKDF-SHA256"` |
+| Chiffrement authentifié (paquets, messages) | AES-256-GCM | NIST SP 800-38D | `Cipher "AES/GCM/NoPadding"` |
+| Signature d'identité (annonces, accusés, dépôts) | Ed25519 + ML-DSA-65, les deux valides | RFC 8032, FIPS 204 | `Signature "Ed25519"`, `Signature "ML-DSA-65"` |
+| Signature de capacité (morceaux, files) | Ed25519 | RFC 8032 | `Signature "Ed25519"` |
 | Empreintes | SHA-256 | FIPS 180-4 | `MessageDigest "SHA-256"` |
-| Aléa | `SecureRandom` (DRBG) | NIST SP 800-90A | `SecureRandom.getInstanceStrong()` |
+| Aléa | `SecureRandom` (DRBG) | NIST SP 800-90A | `SecureRandom` |
 
-Toute disponibilité d'API ci-dessus est à **vérifier sur le JDK retenu** au début de l'implémentation.
+La v0.2 retenait ChaCha20-Poly1305 ; la v0.3 retient AES-256-GCM, déjà employé par le chiffrement applicatif et la protection des clés : une seule construction à auditer.
 
 ### 4.2 Hybride post-quantique
 
-La note d'architecture demande d'examiner dès la conception les algorithmes résistants au calcul quantique, car des données de santé peuvent être enregistrées aujourd'hui pour être déchiffrées plus tard.
-
-- **Chiffrement de la clé de fichier** : encapsulation hybride X25519 + ML-KEM-768. Les deux secrets partagés sont concaténés puis passés dans HKDF avec le transcript (clés publiques et textes chiffrés d'encapsulation), sur le modèle du groupe hybride `X25519MLKEM768` de TLS 1.3. Le résultat reste sûr tant qu'**au moins une** des deux primitives tient.
-- **Signatures** des annonces, accusés et entrées d'annuaire : double signature Ed25519 + ML-DSA-65, les deux devant être valides.
-- **Clés de capacité des morceaux** (émetteur, retrait) : Ed25519 seul. Elles ne protègent que l'accès pendant la durée de séjour, pas la confidentialité : une attaque quantique future ne donne rien.
-- **Canal TLS** : groupe hybride `X25519MLKEM768` si la pile TLS du JDK le propose ; sinon X25519, la confidentialité de bout en bout ne dépendant pas de TLS.
+- **Paquets et messages** : chiffrés pour la clé hybride X25519 + ML-KEM-768 du destinataire ; la clé reste sûre tant qu'**au moins une** des deux primitives tient.
+- **Signatures d'identité** : double signature Ed25519 + ML-DSA-65, les deux devant être valides.
+- **Clés de capacité** (morceaux, files) : Ed25519 seul. Elles ne protègent que l'accès pendant la durée de séjour, pas la confidentialité : une attaque quantique future ne donne rien.
+- **Canal TLS** : groupe hybride `X25519MLKEM768` si la pile TLS le propose ; sinon X25519, la confidentialité de bout en bout ne dépendant pas de TLS.
 
 ### 4.3 Agilité cryptographique
 
-Chaque structure porte un identifiant de suite, par exemple `IU1`, qui désigne l'ensemble des algorithmes ci-dessus. Une nouvelle suite (`IU2`) peut être introduite sans casser les box existantes ; une suite compromise peut être refusée par configuration.
+Chaque structure porte un identifiant de suite (`IU1`). Une nouvelle suite (`IU2`) peut être introduite sans casser les box existantes ; une suite compromise peut être refusée par configuration.
 
 ---
 
-## 5. Chiffrement et découpage d'un fichier
+## 5. Découpage d'un paquet
 
-### 5.1 Préparation
+### 5.1 Le paquet est déjà chiffré
 
-Le module `packaging` produit un **paquet** : un fichier opaque (manifeste, instances DICOM compressées sans perte). La box calcule `D = SHA-256(paquet)`.
+Le module `packaging` produit le paquet d'examen ; le chiffrement applicatif le chiffre pour la box destinataire (fichier `.iu1`, [chiffrement-applicatif.md](chiffrement-applicatif.md)) : seul le destinataire peut l'ouvrir, et toute altération est détectée à l'ouverture. IU-T transporte ce fichier tel quel ; **il n'ajoute pas de seconde couche de chiffrement** (décision v0.3).
+
+Conséquence : **IU-T exige l'annuaire et le chiffrement applicatif**. Un paquet en clair n'est jamais confié à IU-T.
 
 ### 5.2 Taille des morceaux
 
 - Taille de morceau `S` fixée pour tout le transfert, choisie parmi un **ensemble fermé** : 256 Kio, 1 Mio, 4 Mio (par défaut), 8 Mio.
-- Le choix se fait selon la qualité de la liaison (savoir-faire de la box). Un petit morceau perdu coûte peu à renvoyer ; un gros morceau réduit le nombre de requêtes.
-- Le dernier morceau est complété (*padding*) jusqu'à `S` : le relais ne voit que des morceaux de tailles standard. Le nombre de morceaux révèle la taille approximative du paquet, ce qui est accepté (les volumes font partie des métadonnées visibles).
+- Le choix se fait selon la qualité de la liaison (savoir-faire de la box ; adaptatif plus tard, § 13 étape 6).
+- Le dernier morceau est **complété par des zéros** jusqu'à `S` : le relais ne voit que des morceaux de tailles standard. Le nombre de morceaux révèle la taille approximative du paquet, ce qui est accepté (les volumes font partie des métadonnées visibles).
 
-### 5.3 Chiffrement des morceaux
+### 5.3 Empreintes
 
-Pour un transfert :
+1. Découper le paquet chiffré en `n` morceaux de `S` octets, en complétant le dernier ; sa longueur réelle est dans la description (§ 7).
+2. Calculer `H_i = SHA-256(morceau_i complété)` pour chaque morceau, et `D = SHA-256(paquet chiffré)`.
 
-1. Tirer `K` (32 octets) et un identifiant de transfert `T` (16 octets), tous deux aléatoires.
-2. Découper le paquet en `n` morceaux de `S` octets, en complétant le dernier (longueur réelle conservée dans la description, § 7).
-3. Pour le morceau `i` (de 0 à `n-1`) :
-   - nonce = `i` codé sur 96 bits (gros-boutiste). Il est unique car `K` n'est utilisé que pour ce transfert ;
-   - données associées (AAD) = `"IU1-chunk" ‖ T ‖ i ‖ n ‖ S` ;
-   - `C_i = ChaCha20-Poly1305(K, nonce, AAD, morceau_i)`.
-4. Calculer `H_i = SHA-256(C_i)`, publié dans la description.
-
-L'AAD lie chaque morceau à son transfert, à sa position et au nombre total : un relais ne peut ni réordonner, ni tronquer, ni substituer un morceau d'un autre transfert sans que le déchiffrement échoue.
+`H_i` permet au destinataire de vérifier chaque morceau dès son téléchargement (et d'en refaire un seul en cas d'erreur) ; `D`, porté aussi par l'annonce signée, vérifie le paquet réassemblé. Un relais ne peut ni réordonner, ni tronquer, ni substituer un morceau sans que la vérification échoue.
 
 ---
 
@@ -179,13 +182,13 @@ Le relais ne reçoit que les clés publiques et attribue des **identifiants opaq
 
 ### 6.2 API
 
-Toutes les requêtes passent par TLS 1.3. Les requêtes authentifiées portent un en-tête de signature (§ 6.3).
+Toutes les requêtes passent par TLS. Les requêtes authentifiées portent les en-têtes de signature (§ 6.3).
 
 | Opération | Requête | Authentification | Réponse |
 |---|---|---|---|
-| Créer un morceau | `POST /iu/v1/chunks` corps : `{suite, size, digest, senderKey, recipientKeys[], ttl}` | Certificat client d'enrôlement (§ 6.4) | `{senderId, recipientIds[]}` |
-| Téléverser | `PUT /iu/v1/chunks/{senderId}` corps : `C_i` | Signature `sk_snd` | `204` ; le relais vérifie `size` et `digest` |
-| Télécharger | `GET /iu/v1/chunks/{recipientId}[?wait=<s>]` (`Range` autorisé) | Signature `sk_rcv` | `200` + `C_i` ; `425 Too Early` + `Retry-After` si le morceau n'est pas encore téléversé (§ 6.6) |
+| Créer un morceau | `POST /iu/v1/chunks` corps : `{suite, size, digest, senderKey, recipientKeys[], ttl}` | Signature d'identité de la box (dépôt, § 6.4) | `{senderId, recipientIds[]}` |
+| Téléverser | `PUT /iu/v1/chunks/{senderId}` corps : le morceau | Signature `sk_snd` | `204` ; le relais vérifie `size` et `digest` |
+| Télécharger | `GET /iu/v1/chunks/{recipientId}[?wait=<s>]` (`Range` autorisé) | Signature `sk_rcv` | `200` + morceau ; `425 Too Early` + `Retry-After` si pas encore téléversé |
 | Acquitter | `POST /iu/v1/chunks/{recipientId}/ack` | Signature `sk_rcv` | `204` ; accès révoqué pour ce destinataire |
 | Supprimer | `DELETE /iu/v1/chunks/{senderId}` | Signature `sk_snd` | `204` |
 | État | `GET /iu/v1/chunks/{senderId}` | Signature `sk_snd` | `{uploaded, recipientsAcked}` (sans identifier les destinataires) |
@@ -194,82 +197,63 @@ Règles du relais :
 
 - un morceau est **supprimé** quand tous ses destinataires l'ont acquitté, à la demande de l'émetteur, ou à l'expiration de son `ttl` ;
 - `ttl` est plafonné par la configuration du relais (proposition : 72 h par défaut, 7 jours au plus) ;
-- un morceau incomplet (téléversement inachevé) expire au bout d'une durée courte (proposition : 24 h) ;
-- un morceau créé mais pas encore téléversé répond `425 Too Early` au téléchargement ; avec `wait`, le relais garde la requête ouverte jusqu'à la fin du téléversement ou jusqu'au délai demandé (plafonné, proposition : 30 s) ;
+- un morceau créé mais pas téléversé expire au bout d'une durée courte (proposition : 24 h) ;
+- un morceau pas encore téléversé répond `425 Too Early` ; avec `wait`, le relais garde la requête ouverte jusqu'à la fin du téléversement ou jusqu'au délai demandé (plafonné, proposition : 30 s) ;
 - le relais ne journalise aucun identifiant de morceau associé à une adresse IP au-delà de ce qu'exige la lutte contre les abus.
 
 ### 6.3 Signature des requêtes
 
-En-têtes `IU-Key-Id` (identifiant du morceau ou de la file), `IU-Timestamp` (UTC, secondes), `IU-Request-Id` (16 octets aléatoires) et `IU-Signature`.
+En-têtes `IU-Key-Id` (identifiant du morceau ou de la file, ou identifiant de la box pour un dépôt), `IU-Timestamp` (UTC, secondes), `IU-Request-Id` (16 octets aléatoires) et `IU-Signature`.
 
-La signature Ed25519 porte sur la chaîne canonique :
+La signature porte sur la chaîne canonique :
 
 ```
 "IU1-req" ‖ méthode ‖ chemin ‖ IU-Timestamp ‖ IU-Request-Id ‖ SHA-256(corps)
 ```
 
-Le relais refuse une requête dont l'horodatage s'écarte de plus de 5 minutes, ou dont le `IU-Request-Id` a déjà été vu dans cette fenêtre (anti-rejeu). Une variante par défi (le relais fournit un nonce) est à étudier si l'horloge des box n'est pas fiable.
+(chaque élément séparé par un saut de ligne ; empreinte en hexadécimal). Requêtes de **capacité** : signature Ed25519 de la clé du morceau ou de la file. Requêtes de **dépôt** : double signature d'identité de la box (Ed25519 + ML-DSA-65, les deux valides), comme les messages signés de l'annuaire.
+
+Le relais refuse une requête dont l'horodatage s'écarte de plus de 5 minutes, ou dont le `IU-Request-Id` a déjà été vu dans cette fenêtre (anti-rejeu). Une variante par défi (le relais fournit un nonce) est à étudier si l'horloge des box n'est pas fiable (§ 12, question 2).
 
 ### 6.4 Réserver le dépôt aux box enrôlées
 
-La note d'architecture distingue :
-
-- **Dépôt** (création de morceau, création de file, dépôt de message) : réservé aux box enrôlées, pour que le relais ne serve pas à n'importe qui. Authentification par **certificat client TLS** délivré à l'enrôlement par l'organisation ; le relais vérifie seulement qu'il est signé par une organisation qu'il sert.
+- **Dépôt** (création de morceau, création de file, dépôt de message) : réservé aux **box enrôlées et actives**. La requête est signée par l'identité de la box (§ 6.3) ; le relais vérifie la signature d'après l'**entrée d'annuaire** de la box. Il épingle la clé du responsable de chaque organisation qu'il sert et lit l'annuaire comme une box (même bibliothèque, mêmes règles : signature du responsable, validité, révocation, pas de retour en arrière). Une box révoquée ne peut plus rien déposer. **Décision v0.3** : pas de certificats clients TLS, donc pas d'infrastructure de certificats à construire.
 - **Retrait** : **aucun contrôle d'identité**, uniquement la capacité (identifiant + signature). Un contrôle d'identité au retrait obligerait le relais à savoir qui récupère quoi, ce que la note proscrit.
 
-Le relais applique des limites de débit et de volume par certificat (protection contre la saturation par une box malveillante).
+Le relais applique des limites de débit et de volume par box déposante (protection contre la saturation par une box malveillante).
 
-### 6.5 Reprise et redondance
+### 6.5 Reprise
 
-- **Reprise** : l'unité de reprise est le morceau. La box enregistre en base l'état de chaque morceau (créé, téléversé, annoncé) et reprend après une coupure sans recommencer le transfert. `Range` permet aussi de reprendre un téléchargement en cours de morceau.
-- **Redondance** : un morceau peut être déposé sur plusieurs relais ; la description liste toutes les répliques et le destinataire prend la première disponible.
-- **Ordre et parallélisme** : libres côté box (savoir-faire propriétaire) ; par exemple les séries utiles au diagnostic d'abord.
+L'unité de reprise est le morceau. La box enregistre en base l'état de chaque morceau (créé, téléversé) et reprend après une coupure sans recommencer le transfert. `Range` permet aussi de reprendre un téléchargement en cours de morceau. L'ordre et le parallélisme sont libres côté box (savoir-faire propriétaire).
 
-### 6.6 Annonce anticipée : téléchargement pendant le téléversement
+### 6.6 Annonce anticipée (plus tard)
 
-**Constat de la phase 1** : avec XFTP, le destinataire ne reçoit la description qu'une fois **tout** le fichier téléversé. Le temps d'un transfert est donc la somme du téléversement et du téléchargement ([résultats de la phase 1](phase1-simplex.md#5-résultats)). Sur une liaison lente, c'est le facteur le plus coûteux.
+**Décision v0.3** : la v1 annonce un fichier **une fois tous ses morceaux téléversés** (mode `complete`, comme XFTP et comme l'orchestrateur actuel). L'annonce anticipée (mode `early`) vient à l'étape 6 (§ 13).
 
-IU-T sépare la **création** des morceaux de leur **téléversement**, ce qui permet d'annoncer le fichier dès que tous les morceaux sont créés :
-
-1. La box émettrice chiffre le paquet et calcule toutes les empreintes `H_i` (§ 5) : la description est complète avant tout téléversement.
-2. Elle **crée** tous les morceaux sur les relais (`POST /iu/v1/chunks`, requêtes légères sans données) et obtient tous les identifiants.
-3. Elle **annonce** aussitôt le fichier (`file.announce`, avec `"mode": "early"`).
-4. Elle téléverse les morceaux, dans l'ordre de son choix.
-5. Le destinataire télécharge en parallèle : un morceau pas encore disponible répond `425 Too Early` ; il le redemande avec `wait` (attente longue) ou passe à un autre morceau.
-
-Conséquences :
-
-- **Durée** : sur une liaison où le téléchargement suit le téléversement, le temps total tend vers celui du plus lent des deux, au lieu de leur somme.
-- **Ordre utile** : en téléversant d'abord les séries utiles au diagnostic, le destinataire peut commencer à les restituer avant la fin du transfert (à condition que le paquet soit découpé par série, phase 3).
-- **Destinataire hors ligne** : aucun changement. Il trouvera les morceaux déjà téléversés à son retour (poste restante).
-- **Abandon par l'émetteur** : il supprime ses morceaux et envoie `file.cancel` (§ 8.4). Sans ce message, le destinataire conclut à l'abandon quand des morceaux restent indisponibles au-delà de la durée d'expiration des morceaux incomplets (§ 6.2).
-- **Métadonnées** : le relais voit un retrait commencer avant la fin du dépôt, ce qui lui permet plus facilement d'associer un dépôt et un retrait par leurs horaires. C'est le prix du gain de temps ; le mode classique reste disponible quand cette corrélation doit être évitée.
-
-Le **mode classique** (`"mode": "complete"`, annonce après le téléversement complet, comme XFTP) reste possible. Le choix revient à la box émettrice, transfert par transfert.
+Principe, pour mémoire : la box crée tous les morceaux (requêtes légères), les annonce aussitôt, puis les téléverse ; le destinataire télécharge en parallèle, un morceau pas encore disponible répondant `425 Too Early` (ou attendant avec `wait`). Le temps total tend vers celui du plus lent des deux, au lieu de leur somme ([résultats de la phase 1](phase1-simplex.md#5-résultats)). En contrepartie, le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires ; l'abandon par l'émetteur passe par le message `file.cancel` (§ 8.4).
 
 ---
 
 ## 7. Description de fichier
 
-La description donne au destinataire tout ce qu'il faut pour retrouver, vérifier et déchiffrer le paquet.
+La description donne au destinataire tout ce qu'il faut pour retrouver et vérifier le paquet chiffré.
 
 ```json
 {
   "suite": "IU1",
-  "transferId": "<T, base64url>",
-  "mode": "early",
+  "transferId": "<16 octets aléatoires, base64url>",
+  "mode": "complete",
+  "fileName": "<groupe>-1-of-4.tar.zst.iu1",
   "chunkSize": 4194304,
   "chunkCount": 312,
   "size": 1306525184,
-  "digest": "<D = SHA-256(paquet), base64url>",
-  "fileKey": "<K, base64url>",
-  "content": { "type": "dicom-study", "manifestDigest": "<…>" },
+  "digest": "<D = SHA-256(paquet chiffré), hexadécimal>",
   "chunks": [
     {
       "index": 0,
-      "digest": "<H_0>",
+      "digest": "<H_0, hexadécimal>",
       "replicas": [
-        { "relay": "https://relais-1.org.example", "recipientId": "<…>", "retrievalKey": "<sk_rcv, base64url>" }
+        { "relay": "https://relais-1.org.example", "recipientId": "<…>", "retrievalKey": "<sk_rcv, PKCS#8 base64>" }
       ]
     }
   ],
@@ -277,10 +261,9 @@ La description donne au destinataire tout ce qu'il faut pour retrouver, vérifie
 }
 ```
 
-- Encodage : JSON canonique (RFC 8785) pour que les signatures soient reproductibles. Un encodage binaire (CBOR déterministe, RFC 8949) reste une option si la taille devient un problème.
-- Taille : environ 200 octets par morceau et par réplique. Un paquet de 4 Gio en morceaux de 4 Mio donne environ 200 Kio de description. Au-delà de la taille maximale d'un message IU-MSG (§ 8.3), la description est elle-même déposée comme un fichier IU-FILE, et le message ne contient qu'une **description de redirection** (même mécanisme que XFTP).
-
-La description n'est jamais envoyée en clair : elle est placée dans un message chiffré et signé (§ 8.4).
+- Elle contient des **clés de retrait** : elle n'est jamais envoyée en clair, mais dans un message chiffré et signé (§ 8.4).
+- **Encodage** : JSON. Pas de canonicalisation : comme pour l'annuaire, les signatures portent sur les **octets exacts** du texte signé ([annuaire-signe.md § 2.1](annuaire-signe.md)), ce qui évite RFC 8785.
+- **Taille** : environ 250 octets par morceau et par réplique. Un paquet de 900 Mo (taille maximale actuelle d'un paquet) en morceaux de 4 Mio donne environ 60 Kio de description, sous la taille maximale d'un message (§ 8.3). Au-delà, la description est elle-même déposée comme un fichier IU-FILE, et le message ne contient qu'une **description de redirection** (même mécanisme que XFTP).
 
 ---
 
@@ -290,20 +273,20 @@ La description n'est jamais envoyée en clair : elle est placée dans un message
 
 Chaque box crée une **file de réception** sur un relais de son organisation. La file a deux identifiants opaques :
 
-- `sendId` : permet de **déposer** un message ; publié dans l'entrée d'annuaire de la box ;
+- `sendId` : permet de **déposer** un message ; publié dans l'entrée d'annuaire de la box (§ 9) ;
 - `recvId` : permet de **relever** les messages ; connu de la box seule, protégé par la clé de file.
 
-La box relève sa file par connexions sortantes (attente longue, *long polling*). Aucune connexion entrante n'est nécessaire.
+La box relève sa file par connexions sortantes (attente longue). Aucune connexion entrante n'est nécessaire. Comme l'adresse de la file est dans l'annuaire signé, **l'appairage passe par l'annuaire** : plus de lien d'invitation ni de poignée de main sur un canal anonyme.
 
 ### 8.2 API
 
 | Opération | Requête | Authentification | Réponse |
 |---|---|---|---|
-| Créer une file | `POST /iu/v1/queues` corps : `{suite, queueKey}` | Certificat client d'enrôlement | `{sendId, recvId}` |
-| Déposer | `POST /iu/v1/queues/{sendId}/messages` corps : enveloppe (§ 8.4) | Certificat client d'enrôlement | `202 {messageId}` |
+| Créer une file | `POST /iu/v1/queues` corps : `{suite, queueKey}` | Signature d'identité de la box (dépôt) | `{sendId, recvId}` |
+| Déposer | `POST /iu/v1/queues/{sendId}/messages` corps : enveloppe (§ 8.4) | Signature d'identité de la box (dépôt) | `202 {messageId}` |
 | Relever | `GET /iu/v1/queues/{recvId}/messages?wait=30` | Signature clé de file | `200 [messages]` ou `204` après attente |
 | Acquitter | `DELETE /iu/v1/queues/{recvId}/messages/{messageId}` | Signature clé de file | `204` ; message supprimé |
-| Renouveler | `POST /iu/v1/queues/{recvId}/rotate` | Signature clé de file | nouveaux `{sendId, recvId}` |
+| Renouveler | `POST /iu/v1/queues/{recvId}/rotate` | Signature clé de file | nouveaux `{sendId, recvId}` (à republier dans l'annuaire) |
 
 Les messages non relevés expirent selon la même politique que les morceaux.
 
@@ -313,64 +296,53 @@ Taille maximale : **64 Kio** par message (contre environ 16 Ko pour SMP). Les me
 
 ### 8.4 Enveloppe et types de messages
 
-Une enveloppe déposée contient :
+Une enveloppe déposée est un **document chiffré pour le destinataire** avec la construction du chiffrement applicatif (KEM hybride X25519 + ML-KEM-768, HKDF-SHA256, AES-256-GCM), appliquée à un contenu en mémoire :
 
 ```
-suite ‖ encapsulation hybride (X25519 éphémère + ML-KEM-768) vers le destinataire
-      ‖ ChaCha20-Poly1305(clé dérivée, contenu signé)
+"IU1M" ‖ version ‖ en-tête (destinataire, encapsulations) ‖ AES-256-GCM(clé dérivée, contenu signé ‖ remplissage)
 ```
 
-Le **contenu signé** comprend l'identifiant de la box émettrice, un identifiant de message unique, un horodatage, le type et le corps, signés Ed25519 + ML-DSA-65 par l'identité de l'émetteur. Le destinataire vérifie la signature d'après l'annuaire et rejette les messages déjà vus (anti-rejeu par identifiant de message).
+Le **contenu signé** est un message signé de l'annuaire (version 2 : type, identifiant de la box émettrice, corps, double signature Ed25519 + ML-DSA-65), complété d'un **identifiant de message unique** et d'un **horodatage**. Le destinataire vérifie la signature d'après l'annuaire et rejette les messages déjà vus (anti-rejeu par identifiant de message, gardé pendant la durée de séjour).
 
-Le relais ne voit ni l'émetteur, ni le type, ni le contenu.
+Le relais ne voit ni le type, ni le contenu ; il sait quelle box dépose et dans quelle file (§ 3.3).
 
 | Type | Sens | Corps |
 |---|---|---|
-| `file.announce` | émetteur → destinataire | description de fichier (§ 7) ou description de redirection |
-| `file.ack` | destinataire → émetteur | `transferId`, résultat : `complete` / `failed`, nombre d'instances vérifiées, empreinte du manifeste (§ 10) |
-| `file.reject` | destinataire → émetteur | `transferId`, motif (expéditeur non appairé, examen invalide…) |
-| `file.cancel` | émetteur → destinataire | `transferId`, motif : l'émetteur abandonne un transfert annoncé (utile en annonce anticipée, § 6.6) |
+| `file.announce` | émetteur → destinataire | annonce de transfert (paquets et leurs empreintes, comme aujourd'hui) **et** une description de fichier (§ 7) par paquet |
+| `file.ack` | destinataire → émetteur | accusé de transfert (restitué / en échec, instances, empreinte des paquets), comme aujourd'hui |
+| `file.cancel` | émetteur → destinataire | abandon d'un transfert annoncé (annonce anticipée, étape 6) |
 | `ping` | les deux | diagnostic de liaison |
 
 ---
 
 ## 9. Ce que le protocole attend de l'annuaire
 
-Une **entrée de box**, signée par le responsable de l'organisation :
+L'entrée de box signée par le responsable ([annuaire-signe.md § 2.2](annuaire-signe.md)) porte déjà les clés de signature et de chiffrement. IU-T y ajoute l'**adresse de la file de réception**, dans le champ `transport` existant :
 
 ```json
-{
-  "boxId": "<identifiant stable>",
-  "organization": "<identifiant de l'organisation>",
-  "displayName": "CHU de … — service d'imagerie",
-  "signingKeys": { "ed25519": "<…>", "mlDsa65": "<…>" },
-  "encryptionKeys": { "x25519": "<…>", "mlKem768": "<…>" },
-  "inbox": { "relay": "https://relais-1.org.example", "sendId": "<…>" },
-  "validFrom": "…", "validUntil": "…",
-  "revoked": false
-}
+"transport": { "iu": "https://relais-1.org.example/iu/v1/queues/<sendId>" }
 ```
 
-- La box **épingle** la clé du responsable à l'enrôlement, après vérification de son empreinte hors bande (QR code ou code court, comme prévu par la note).
-- Avant tout envoi, la box émettrice vérifie la signature de l'entrée du destinataire et qu'elle n'est ni expirée ni révoquée.
-- Une révocation empêche tout nouvel envoi ; les paquets déjà émis restent récupérables jusqu'à leur expiration.
+- La box crée sa file au premier démarrage sur le relais configuré, puis sa **demande d'enrôlement** porte cette adresse ; le responsable la signe dans l'entrée. Une substitution d'adresse par un annuaire compromis est donc détectée.
+- Avant tout envoi, la box émettrice vérifie l'entrée du destinataire (signature, validité, révocation) et y prend ses clés de chiffrement et l'adresse de sa file.
+- Le **relais** lit le même annuaire pour vérifier les déposants (§ 6.4).
+- Une révocation empêche tout nouvel envoi et tout nouveau dépôt ; les paquets déjà émis restent récupérables jusqu'à leur expiration.
 
 ---
 
 ## 10. Déroulé complet d'un envoi
 
-1. Le PACS envoie l'examen à la box (C-STORE) ; la box identifie le destinataire (AET appelé).
+1. Le PACS envoie l'examen à la box (C-STORE ou STOW-RS) ; la box identifie le destinataire (route fixe ou règles de routage).
 2. La box lit l'entrée du destinataire dans l'annuaire et vérifie sa signature.
-3. Elle produit le paquet, choisit `S`, chiffre et découpe (§ 5).
-4. Elle crée tous les morceaux sur un ou plusieurs relais (§ 6). État enregistré morceau par morceau.
-5. Elle construit la description (§ 7), la chiffre et la signe pour le destinataire, et la dépose dans sa file (§ 8) : état `ANNOUNCED`. En annonce anticipée (par défaut, § 6.6), elle le fait **avant** de téléverser ; en mode classique, après l'étape suivante.
-6. Elle téléverse les morceaux (§ 6.2), dans l'ordre de son choix.
-7. La box réceptrice relève le message, vérifie la signature de l'émetteur et qu'il appartient à son organisation.
-8. Elle télécharge les morceaux (en parallèle du téléversement en annonce anticipée), vérifie chaque `H_i`, déchiffre, contrôle `D`, et acquitte chaque morceau auprès du relais.
-9. Elle dépaquette, vérifie l'empreinte de chaque instance DICOM, pousse l'examen vers le mini-PACS.
-10. Elle renvoie un `file.ack` signé : l'émetteur passe le transfert à `ACKNOWLEDGED`.
+3. Elle produit les paquets et les chiffre pour le destinataire (chiffrement applicatif).
+4. Pour chaque paquet, elle choisit `S`, découpe et calcule les empreintes (§ 5), crée les morceaux sur le relais (§ 6), puis les téléverse. État enregistré morceau par morceau.
+5. Une fois tous les paquets téléversés, elle construit l'annonce et les descriptions (§ 7), les chiffre et les signe pour le destinataire, et les dépose dans sa file (§ 8) : état `ANNOUNCED`.
+6. La box réceptrice relève le message, vérifie la signature de l'émetteur, qu'il est enrôlé et actif, et qu'il est appairé.
+7. Elle télécharge les morceaux, vérifie chaque `H_i` puis `D`, et acquitte chaque morceau auprès du relais.
+8. Elle déchiffre, dépaquette, vérifie l'empreinte de chaque instance DICOM, pousse l'examen vers le PACS.
+9. Elle renvoie un accusé signé : l'émetteur passe le transfert à `ACKNOWLEDGED` et supprime ce qui reste de ses morceaux.
 
-Les étapes 4, 6 et 8 reprennent là où elles s'étaient arrêtées après une coupure.
+Les étapes 4 et 7 reprennent là où elles s'étaient arrêtées après une coupure.
 
 ---
 
@@ -379,56 +351,72 @@ Les étapes 4, 6 et 8 reprennent là où elles s'étaient arrêtées après une 
 | Aspect | XFTP / SMP (SimpleX) | IU-T |
 |---|---|---|
 | Langage, licence | Haskell, AGPL-3.0 | Java, propriétaire (spécification publiable) |
-| Transport | TLS, protocole binaire dédié | HTTPS (HTTP/2, TLS 1.3) |
+| Transport | TLS, protocole binaire dédié | HTTPS (TLS 1.3) |
 | Identités | Aucune, contacts anonymes | Box enrôlées, annuaire signé |
-| Dépôt | Ouvert ou protégé par mot de passe | Certificat client d'enrôlement |
+| Dépôt | Ouvert ou protégé par mot de passe | Box enrôlées et actives (signature d'identité vérifiée d'après l'annuaire) |
 | Retrait | Capacité (identifiant + signature) | Identique |
+| Chiffrement de bout en bout | Par le protocole | Par le chiffrement applicatif des paquets, hybride post-quantique |
 | Taille de fichier | Limitée (1 Go en v5.0.0) | Non limitée par le protocole |
 | Taille de morceau | Quelques tailles fixes | Ensemble fermé, choisi selon la liaison |
 | Reprise | Par morceau | Par morceau, plus `Range` dans un morceau |
-| Début du téléchargement | Après le téléversement complet (mesuré en phase 1) | Dès l'annonce, en parallèle du téléversement (§ 6.6) ; mode classique possible |
-| Post-quantique | En cours d'intégration (messages) | Hybride dès la v1 pour les clés de fichier et les signatures |
-| Double ratchet, confidentialité persistante | Oui (messages) | Non : clé éphémère par transfert et par message (§ 12) |
-| Métadonnées | Minimisées (pas d'identité) | Le relais voit les adresses IP des box enrôlées ; le contenu et le couple émetteur / destinataire restent cachés |
+| Début du téléchargement | Après le téléversement complet | Idem en v1 ; dès l'annonce avec l'annonce anticipée (étape 6) |
+| Appairage | Lien d'invitation ou adresse de contact | Par l'annuaire signé |
+| Double ratchet, confidentialité persistante | Oui (messages) | Non : encapsulation neuve par paquet et par message (§ 12, question 1) |
+| Métadonnées | Minimisées (pas d'identité) | Le relais voit les box déposantes, les files où elles déposent, les adresses IP ; il ne voit ni le contenu, ni qui retire quoi |
 
 ---
 
 ## 12. Questions ouvertes
 
-1. **Confidentialité persistante des messages** : l'encapsulation éphémère par message protège chaque message isolément, mais la compromission de la clé d'identité de chiffrement d'une box exposerait les descriptions encore stockées. Faut-il une rotation fréquente des clés de chiffrement (publiée dans l'annuaire) ou un ratchet ?
+1. **Confidentialité persistante** : l'encapsulation neuve par paquet et par message protège chacun isolément, mais la compromission de la clé de chiffrement d'une box exposerait ce qui est encore stocké sur les relais. Parade prévue : rotation des clés de chiffrement par réémission de l'entrée, et durée de séjour courte.
 2. **Horloge des box** : l'anti-rejeu par horodatage suppose une horloge juste. Les sites éloignés ont-ils un NTP fiable, ou faut-il la variante par défi ?
-3. **Taille des descriptions** : JSON canonique suffit-il, ou faut-il CBOR dès la v1 ?
-4. **Opérateur des relais** : organisation, région, ou établissements (question déjà ouverte dans la note). La spécification permet les trois.
-5. **Métadonnées** : faut-il masquer davantage le trafic (envois de remplissage, horaires lissés) ? Coût en bande passante sur les liaisons lentes.
-6. **Base du relais** : le relais IU-T a besoin d'un stockage de métadonnées (morceaux, clés publiques, files, expirations) partagé par plusieurs box et consulté en concurrence. **PostgreSQL** y est adapté, alors qu'il n'avait pas de place sur les relais SimpleX. Les données des morceaux restent sur disque ou dans un stockage objet.
-7. **Interopérabilité SimpleX** : faut-il garder l'adaptateur SimpleX en parallèle pendant une période de transition ?
+3. **Opérateur des relais** : organisation, région, ou établissements (question déjà ouverte dans la note). La spécification permet les trois.
+4. **Métadonnées de trafic** : faut-il masquer davantage le trafic (envois de remplissage, horaires lissés) ? Coût en bande passante sur les liaisons lentes.
+5. **Couple émetteur / file au dépôt de message** : le dépôt étant authentifié par l'identité de la box, le relais sait quelle box dépose dans quelle file, donc à qui elle écrit. La v0.2 sous-estimait ce point (un certificat client révèle la même chose). Si l'organisation l'exige, pistes : relais opéré par l'organisation elle-même (le couple lui est connu de toute façon), ou jetons de dépôt anonymes (signatures aveugles) dans une version ultérieure.
+
+Questions de la v0.2 tranchées : JSON sans canonicalisation (signature des octets exacts) ; PostgreSQL pour les métadonnées du relais ; adaptateur SimpleX gardé en parallèle jusqu'à la bascule (§ 13).
 
 ---
 
-## 13. Mise en œuvre proposée
+## 13. Mise en œuvre
 
 ### 13.1 Modules
 
 | Module | Contenu |
 |---|---|
-| `backend/protocol` (nouveau) | Formats (description, enveloppe, requêtes signées), suite `IU1`, primitives cryptographiques. Partagé par la box et le relais. Couvert par des vecteurs de test. |
-| `backend/transport` | Nouvel adaptateur `iu` qui implémente `TransportPort`, à côté de `simplex`. |
-| `relay/` (nouvelle application) | Relais IU-FILE + IU-MSG : Spring Boot, PostgreSQL pour les métadonnées, disque pour les morceaux. |
+| `backend/protocol` (nouveau) | Requêtes signées (chaîne canonique, anti-rejeu), enveloppe des messages, découpage et empreintes, formats (description, annonce). Partagé par la box et le relais. Couvert par des vecteurs de test. S'appuie sur `backend/directory` (suite `IU1`, annuaire). |
+| `backend/transport` | Nouvel adaptateur `iu` qui implémente `TransportPort`, à côté de `simplex` ; le choix se fait par configuration. |
+| `backend/relay` (nouvelle application) | Relais IU-FILE + IU-MSG : Spring Boot, PostgreSQL pour les métadonnées, disque pour les morceaux ; lit l'annuaire pour vérifier les déposants. |
 
-### 13.2 Étapes
+### 13.2 Correspondance avec le `TransportPort`
 
-| Étape | Contenu | Estimation |
+| `TransportPort` | Adaptateur `iu` |
+|---|---|
+| `contactAddress()` | Adresse de la file de réception (créée au premier appel), publiée par la demande d'enrôlement |
+| `createInvitation()`, `acceptInvitation()`, `acceptContactRequest()` | Sans objet : appairage par l'annuaire (la console appaire une box de l'annuaire, comme aujourd'hui, sans échange sur le transport) |
+| `sendMessage(peer, text)` | Dépôt d'une enveloppe dans la file du partenaire (§ 8) |
+| `sendFile(peer, file)` | Découpage, création et téléversement des morceaux ; `FileSent` quand tout est téléversé ; la description part avec l'annonce |
+| `receiveFile(fileId, target)` | Téléchargement des morceaux, vérification, réassemblage |
+| `discardSentFile(fileId)` | Suppression des morceaux sur le relais |
+| `catchUp()` | Relève de la file : les messages non acquittés sont rejoués |
+| Événements | `MessageReceived`, `FileOffered`, `FileReceived`, `FileSent`, `FileFailed`, `FileProgress`, comme avec SimpleX |
+
+L'orchestrateur, le DICOM, l'empaquetage et la console ne changent pas.
+
+### 13.3 Étapes
+
+Chaque étape se termine par des tests automatiques, un essai réel sur la pile Docker, la documentation, puis la fusion.
+
+| Étape | Contenu | Résultat vérifiable |
 |---|---|---|
-| 1 | Revue et validation de cette spécification ; modèle de menace détaillé | 1 à 2 semaines |
-| 2 | Module `protocol` : primitives, formats, vecteurs de test | 2 à 3 semaines |
-| 3 | Relais IU-FILE + client, reprise par morceau | 3 à 4 semaines |
-| 4 | Relais IU-MSG + client, enveloppes signées | 2 à 3 semaines |
-| 5 | Adaptateur `iu` du `TransportPort` ; scénarios de la phase 8 sur IU-T et SimpleX en parallèle | 2 semaines |
-| 6 | Audit de sécurité externe et corrections | selon l'auditeur |
-
-**Total indicatif : 2,5 à 3,5 mois pour une personne, hors audit.**
-
-Calendrier recommandé : mener la preuve de concept sur SimpleX (phases 1 à 8), valider cette spécification en parallèle, puis implémenter IU-T pour le pilote. Le `TransportPort` permet de changer de transport sans toucher au DICOM, à l'empaquetage ni à l'orchestrateur.
+| 0 | Cette spécification v0.3 | Validée |
+| 1 | Module `protocol` : requêtes signées, enveloppe, découpage, formats, vecteurs de test | Mêmes octets produits côté box et côté relais |
+| 2 | Relais IU-FILE et son client : création, téléversement, téléchargement (`Range`), acquittement, suppression ; expiration, quotas, purge ; dépôt réservé aux box enrôlées | Fichier de 2 Go par le relais, coupure en cours de route comprise ; box révoquée refusée |
+| 3 | Relais IU-MSG et son client : files, dépôt, relève par attente longue, acquittement, expiration | Messages entre deux box par le relais, box éteinte comprise |
+| 4 | Adaptateur `iu` du `TransportPort` ; adresse de file dans l'annuaire ; appairage par l'annuaire ; reprise par morceau en base | Transfert de bout en bout sur IU-T, accusé compris |
+| 5 | Bascule : campagne de la phase 8 sur IU-T (nominal, coupure, destinataire éteint, 2 Go, pare-feu et scan de ports), SimpleX en parallèle ; Compose sans SimpleX ; retrait de SimpleX | Résultats au moins égaux à SimpleX ; plus aucun conteneur SimpleX |
+| 6 | Plus tard : annonce anticipée, plusieurs relais, taille de morceau adaptative (recoupe la priorité 6 du plan) | Gain mesuré sur liaison bridée |
+| 7 | Audit de sécurité externe et corrections | Rapport de l'auditeur |
 
 ---
 
@@ -438,3 +426,4 @@ Calendrier recommandé : mener la preuve de concept sur SimpleX (phases 1 à 8),
 |---|---|---|
 | 0.1 | 2026-11-11 | Premier brouillon. |
 | 0.2 | 2026-11-11 | Annonce anticipée (§ 6.6) : téléchargement en parallèle du téléversement, réponse `425 Too Early` et attente longue sur les morceaux, champ `mode` de la description, message `file.cancel`, déroulé du § 10 mis à jour. Motivée par les mesures de la phase 1. |
+| 0.3 | 2026-11-12 | Décisions pour l'implémentation : appui sur les briques réalisées (annuaire signé, chiffrement applicatif, messages signés, TPM) ; **pas de seconde couche de chiffrement** des morceaux (paquets déjà chiffrés pour le destinataire, § 5) ; **dépôt authentifié par la signature d'identité de la box**, vérifiée par le relais d'après l'annuaire, au lieu de certificats clients (§ 6.4) ; AES-256-GCM au lieu de ChaCha20-Poly1305 (§ 4.1) ; **annonce anticipée reportée** à l'étape 6 (§ 6.6) ; adresse de la file dans le champ `transport` de l'entrée d'annuaire et appairage par l'annuaire (§ 9) ; JSON signé sur ses octets exacts (§ 7) ; correspondance avec le `TransportPort` (§ 13.2) ; métadonnée « couple émetteur / file » rendue explicite (§ 12, question 5) ; SimpleX gardé en parallèle jusqu'à la bascule. |

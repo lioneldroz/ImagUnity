@@ -93,7 +93,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Clés de la box protégées par le TPM (pilote)](docs/cles-tpm.md)
 - [Routage par champ DICOM (pilote)](docs/routage-dicom.md)
 - [Réception DICOMweb STOW-RS (pilote)](docs/stow-rs.md)
-- [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
+- [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (v0.3, implémentation en cours)
 
 ## Statut
 
