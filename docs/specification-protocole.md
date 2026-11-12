@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.4, implémentation en cours** : étapes 1 à 4 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort` : les box transfèrent de bout en bout par IU-T, § 13.4). Historique en fin de document.
+> **Statut : v0.4, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Restent les étapes 6 (performances) et 7 (audit externe). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -483,7 +483,7 @@ L'outil d'essai gagne `file-creer`, `message-envoyer` et `message-relever`.
 
 Les box n'utilisent pas encore IU-MSG : l'adaptateur `iu` du `TransportPort`, la publication de l'adresse de la file dans l'annuaire et l'appairage par l'annuaire sont l'étape 4.
 
-**Étape 4 — adaptateur `iu` du `TransportPort` (fait).** `IuTransport` (`backend/transport`, paquet `iu`), choisi par `IMAGUNITY_IU_ENABLED=true` et `IMAGUNITY_IU_RELAY` ; il exige l'annuaire. L'orchestrateur, le DICOM, l'empaquetage et la console ne changent pas.
+**Étape 4 — adaptateur `iu` du `TransportPort` (fait).** `IuTransport` (`backend/transport`, paquet `iu`), choisi par `IMAGUNITY_IU_RELAY` (à l'étape 4, aussi `IMAGUNITY_IU_ENABLED=true`) ; il exige l'annuaire. L'orchestrateur, le DICOM, l'empaquetage et la console ne changent pas.
 
 | `TransportPort` | Mise en œuvre |
 |---|---|
@@ -514,7 +514,24 @@ Précisions :
 | Relais après les accusés | 0 morceau en base, 0 fichier sur disque, 0 message en attente |
 | Box B réinstallée (nouvelle identité, TPM neuf) : demande d'enrôlement avec l'adresse réservée, enrôlement, appairage depuis la console de A | File créée avec l'identifiant réservé dès l'entrée publiée ; appairage et poignée de main en 1 s ; transfert **100/100** en 12,0 s |
 
-Reste pour la bascule (étape 5) : campagne complète de la phase 8 sur IU-T, Compose sans SimpleX, retrait de SimpleX.
+**Étape 5 — bascule (fait).**
+
+*Campagne de la phase 8 sur IU-T* ([rapport, § 7](phase8-campagne.md#7-campagne-rejouée-sur-iu-t)), pile sans aucun conteneur SimpleX, box en version signée 0.7.0 :
+
+| Scénario | Accusé IU-T | SimpleX (phase 8) | Vérification |
+|---|---|---|---|
+| Nominal, 50 Mo | 12,7 s | 10,2 s | 100/100 |
+| Pare-feu (tout entrant bloqué), scan de ports | 10,3 s ; aucun port ouvert sur les box | 10,7 s | 100/100 |
+| Liaison bridée à 20 Mbit/s, 100 Mo | 103,9 s | 101,1 s | 200/200 |
+| Coupure de 60 s pendant le dépôt, 300 Mo | **95,9 s** (annonce 9,6 s après le rétablissement) | 143,4 s | 600/600 |
+| Destinataire éteint ; inspection du relais | restitution 11,1 s après le rallumage ; aucune donnée en clair dans 1 329 fichiers du relais | 8,1 s | 100/100 |
+| 2 Go, 4 paquets | **92,0 s** | 157,4 s | 1 024/1 024 |
+
+Résultats au moins équivalents à SimpleX, nettement meilleurs sur la coupure et le gros examen ; le nominal (+2,5 s) reste dans le bruit d'une mesure unique. Constat à traiter à l'étape 6 : le remplissage par des zéros du dernier morceau révèle au relais la taille exacte du paquet chiffré.
+
+*Compose sans SimpleX* : le Compose de base comprend le relais IU-T et sa base, l'annuaire (plus de profil : il est requis) et les box sur IU-T ; plus de `simplex-chat`, ni de relais SMP et XFTP. Les surcouches `compose.annuaire.yml`, `compose.iu.yml`, `compose.iu-box.yml`, `compose.iu-campagne.yml` et `compose.sans-ipv6.yml` sont intégrées ou retirées.
+
+*Retrait de SimpleX du code* : adaptateur `simplex` (client WebSocket, commandes, événements) et dépendance `Java-WebSocket` retirés ; plus de lien d'invitation ni de demande de contact : `TransportPort.connect(adresse)` appaire la box de l'annuaire qui publie cette adresse, `PairingService` suppose l'annuaire, l'API `/api/v1/peers` ne fait plus que lister. Sans relais configuré, le transport est désactivé (les transferts échouent, la box démarre). La reprise des partenaires d'un parc SimpleX (§ étape 4) reste en place pour les box à basculer.
 
 ---
 

@@ -115,6 +115,6 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 
 ## Statut
 
-Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais → box B → PACS B fonctionne, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
+Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais → box B → PACS B fonctionne. Depuis l'étape 5 de la [spécification](docs/specification-protocole.md), elle passe par le transport propre IU-T, sans SimpleX ; la campagne de tests y a été rejouée avec des résultats au moins équivalents, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
 
 Pilote, en cours : annuaire signé des box (enrôlement, révocation, annonces et accusés signés, clés protégées par phrase de passe) chiffrement applicatif des paquets pour la box destinataire (X25519 + ML-KEM-768) et mises à jour signées (lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière) clés de la box protégées par un secret scellé dans son TPM, routage des examens par champ DICOM et réception DICOMweb STOW-RS, tous vérifiés sur la pile Docker.
