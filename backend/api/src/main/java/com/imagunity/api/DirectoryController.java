@@ -49,7 +49,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/directory")
 public class DirectoryController {
 
-    static final String SIMPLEX = "simplex";
 
     /** Une box de l'annuaire. */
     /**
@@ -109,7 +108,7 @@ public class DirectoryController {
         List<BoxView> boxes = local.entries().stream()
                 .sorted(Comparator.comparing(BoxEntry::displayName))
                 .map(e -> new BoxView(e.boxId(), e.displayName(), e.serial(), e.statusAt(now), e.validUntil(),
-                        e.transport().containsKey(SIMPLEX), paired.get(e.boxId()), e.encryptionKeys() != null))
+                        e.transport().containsKey(transport.addressKind()), paired.get(e.boxId()), e.encryptionKeys() != null))
                 .toList();
         return new DirectoryView(true, me.boxId(), me.keys().publicKey().shortCode(),
                 new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes);
@@ -125,7 +124,7 @@ public class DirectoryController {
         String displayName = name == null || name.isBlank() ? box.name() : name;
         Map<String, String> addresses = new HashMap<>();
         try {
-            addresses.put(SIMPLEX, transport.contactAddress());
+            addresses.put(transport.addressKind(), transport.contactAddress());
         } catch (TransportException e) {
             LOG.log(System.Logger.Level.WARNING, "Demande d''enrôlement sans adresse de contact : {0}", e.getMessage());
         }
@@ -152,7 +151,7 @@ public class DirectoryController {
         if (entry.statusAt(clock.instant()) != BoxEntry.Status.ACTIVE) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » non active dans l'annuaire");
         }
-        String address = entry.transport().get(SIMPLEX);
+        String address = entry.transport().get(transport.addressKind());
         if (address == null) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » sans adresse de contact publiée");
         }

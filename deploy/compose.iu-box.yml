@@ -1,0 +1,23 @@
+# Box sur IU-T (étape 4 de docs/specification-protocole.md) : les deux box passent par le relais IU-T de
+# l'organisation au lieu de simplex-chat. Exige l'annuaire ; à ajouter après compose.annuaire.yml et compose.iu.yml :
+#
+#   docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.iu.yml -f compose.iu-box.yml \
+#       --profile annuaire up -d
+#
+# Chaque box crée sa file de réception au premier démarrage ; sa demande d'enrôlement porte alors l'adresse
+# de cette file (champ transport.iu), que le responsable signe dans l'entrée. Les clients simplex-chat restent
+# démarrés pendant la transition, mais les box ne s'en servent plus.
+
+x-iu: &iu
+  IMAGUNITY_IU_ENABLED: "true"
+  IMAGUNITY_IU_RELAY: http://relay:8443
+
+services:
+  box-a:
+    environment:
+      <<: *iu
+    depends_on: [relay]
+  box-b:
+    environment:
+      <<: *iu
+    depends_on: [relay]

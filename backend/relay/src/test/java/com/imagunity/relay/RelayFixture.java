@@ -27,6 +27,8 @@ final class RelayFixture {
     static final Organization ORGANIZATION = new Organization("chu-exemple", ORG_KEYS);
     static final HybridKeyPair ACTIVE_KEYS = HybridKeyPair.generate();
     static final UUID ACTIVE = UUID.randomUUID();
+    /** Identifiant de dépôt réservé par la box active et publié dans son entrée. */
+    static final String ACTIVE_SEND_ID = "reserve-par-la-box-active-0123456789abcdefg";
     static final HybridKeyPair REVOKED_KEYS = HybridKeyPair.generate();
     static final UUID REVOKED = UUID.randomUUID();
     static final List<SignedDocument> PUBLISHED = new ArrayList<>();
@@ -41,7 +43,8 @@ final class RelayFixture {
             return;
         }
         Instant now = Instant.now();
-        PUBLISHED.add(ORGANIZATION.enroll(EnrollmentRequest.create(ACTIVE_KEYS, ACTIVE, "Site A", Map.of(), now),
+        PUBLISHED.add(ORGANIZATION.enroll(EnrollmentRequest.create(ACTIVE_KEYS, ACTIVE, "Site A",
+                Map.of("iu", "https://relais.example/iu/v1/queues/" + ACTIVE_SEND_ID), now),
                 now.minusSeconds(60), Duration.ofDays(30), 1));
         SignedDocument revoked = ORGANIZATION.enroll(EnrollmentRequest.create(REVOKED_KEYS, REVOKED, "Site volé",
                 Map.of(), now), now.minusSeconds(60), Duration.ofDays(30), 1);

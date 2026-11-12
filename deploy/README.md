@@ -93,16 +93,27 @@ Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le parten
 
 Avec un mot de passe `IMAGUNITY_DICOMWEB_PASSWORD` (compte `pacs` par défaut, distinct de l'opérateur), le PACS peut déposer des instances par HTTP sur `POST /dicomweb/<AET>/studies` (route fixe ou destination de routage). `campagne/compose.routage.yml` configure Orthanc A pour déposer ainsi sur `IU_AUTO`. Voir [STOW-RS](../docs/stow-rs.md).
 
-### Relais IU-T (en cours)
+### Transport IU-T (en cours de bascule)
 
-Le relais IU-T (étapes 2 et 3 de la [spécification](../docs/specification-protocole.md) : morceaux IU-FILE et files de messages IU-MSG) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
+Le relais IU-T ([spécification](../docs/specification-protocole.md) : morceaux IU-FILE et files de messages IU-MSG) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
 
 ```bash
 export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable>
-docker compose -f docker-compose.yml -f compose.iu.yml --profile annuaire up -d relay
+docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.iu.yml --profile annuaire up -d relay
 ```
 
-Les box ne l'utilisent pas encore (étape 4) ; l'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par lui (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`). Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
+**Box sur IU-T** (étape 4) : `compose.iu-box.yml` les fait passer par ce relais au lieu de simplex-chat (`IMAGUNITY_IU_ENABLED=true`, `IMAGUNITY_IU_RELAY=http://relay:8443`) ; l'annuaire est requis.
+
+```bash
+docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.iu.yml -f compose.iu-box.yml \
+    --profile annuaire up -d
+```
+
+- **Box neuve** : sa demande d'enrôlement (console, onglet Annuaire) porte l'adresse de sa future file ; une fois l'entrée publiée, la box crée sa file d'elle-même. L'appairage se fait ensuite depuis la console, sur la box de l'annuaire, sans lien d'invitation.
+- **Bascule d'une box déjà enrôlée** : au premier démarrage sur IU-T, ses partenaires liés à une box de l'annuaire sont repris sous leur nom (les routes DICOM restent valables) et sa file est créée ; télécharger alors sa nouvelle demande d'enrôlement, qui porte l'adresse IU, et faire réémettre son entrée par le responsable (`enroler --serie <n+1>`, puis `publier`). À faire sans transfert en cours.
+- L'état du transport (file, contacts, transferts en cours) est dans `/data/iu` ; un transfert interrompu par un redémarrage reprend où il en était.
+
+L'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par le relais (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`). Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
 
 ## Réinitialisation
 

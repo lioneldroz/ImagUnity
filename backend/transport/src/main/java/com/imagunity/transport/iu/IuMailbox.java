@@ -72,13 +72,22 @@ public final class IuMailbox implements AutoCloseable {
 
     /** Crée la file de réception de la box sur ce relais. */
     public static Queue create(IuMsgClient client, URI relay, UUID boxId, HybridKeyPair identity) throws IOException {
+        return create(client, relay, boxId, identity, null);
+    }
+
+    /**
+     * Crée la file de réception de la box avec l'identifiant de dépôt qu'elle a réservé (publié dans son entrée
+     * d'annuaire), ou un identifiant tiré par le relais si {@code sendId} vaut {@code null}.
+     */
+    public static Queue create(IuMsgClient client, URI relay, UUID boxId, HybridKeyPair identity, String sendId)
+            throws IOException {
         KeyPair key;
         try {
             key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
-        IuMsgClient.Ids ids = client.createQueue(relay, boxId, identity, key.getPublic());
+        IuMsgClient.Ids ids = client.createQueue(relay, boxId, identity, key.getPublic(), sendId);
         return new Queue(relay.toString().replaceAll("/+$", ""), ids.sendId(), ids.recvId(),
                 Codec.base64Url(key.getPrivate().getEncoded()));
     }
@@ -91,6 +100,7 @@ public final class IuMailbox implements AutoCloseable {
     private final Clock clock;
     private final Map<String, Instant> seen = new LinkedHashMap<>();
     private volatile Thread poller;
+    private volatile boolean running;
 
     /**
      * @param keys      clés de chiffrement de la box (ouvrir les enveloppes)
@@ -147,9 +157,10 @@ public final class IuMailbox implements AutoCloseable {
 
     /** Relève en continu sur un fil virtuel, jusqu'à {@link #close()}. */
     public void start(Retry.Sleeper sleeper) {
+        running = true;
         poller = Thread.ofVirtual().name("iu-relève").start(() -> {
             Duration pause = Duration.ofSeconds(1);
-            while (!Thread.currentThread().isInterrupted() && poller != null) {
+            while (!Thread.currentThread().isInterrupted() && running) {
                 try {
                     pollOnce(Duration.ofSeconds(30));
                     pause = Duration.ofSeconds(1);
@@ -182,10 +193,11 @@ public final class IuMailbox implements AutoCloseable {
 
     @Override
     public void close() {
-        Thread running = poller;
+        running = false;
+        Thread thread = poller;
         poller = null;
-        if (running != null) {
-            running.interrupt();
+        if (thread != null) {
+            thread.interrupt();
         }
     }
 }

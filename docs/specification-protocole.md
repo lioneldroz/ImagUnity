@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.3, décisions prises, implémentation en cours** : étapes 1 à 3 faites (module `protocol`, relais IU-FILE et IU-MSG et leurs clients, § 13.4). Historique en fin de document.
+> **Statut : v0.4, implémentation en cours** : étapes 1 à 4 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort` : les box transfèrent de bout en bout par IU-T, § 13.4). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -282,7 +282,7 @@ La box relève sa file par connexions sortantes (attente longue). Aucune connexi
 
 | Opération | Requête | Authentification | Réponse |
 |---|---|---|---|
-| Créer une file | `POST /iu/v1/queues` corps : `{suite, queueKey}` | Signature d'identité de la box (dépôt) | `{sendId, recvId}` |
+| Créer une file | `POST /iu/v1/queues` corps : `{suite, queueKey, sendId?}` | Signature d'identité de la box (dépôt) | `{sendId, recvId}` ; `sendId` réservé par la box (§ 9) ou tiré par le relais |
 | Déposer | `POST /iu/v1/queues/{sendId}/messages` corps : enveloppe (§ 8.4) | Signature d'identité de la box (dépôt) | `202 {messageId}` |
 | Relever | `GET /iu/v1/queues/{recvId}/messages?wait=30` | Signature clé de file | `200 [messages]` ou `204` après attente |
 | Acquitter | `DELETE /iu/v1/queues/{recvId}/messages/{messageId}` | Signature clé de file | `204` ; message supprimé |
@@ -323,7 +323,8 @@ L'entrée de box signée par le responsable ([annuaire-signe.md § 2.2](annuaire
 "transport": { "iu": "https://relais-1.org.example/iu/v1/queues/<sendId>" }
 ```
 
-- La box crée sa file au premier démarrage sur le relais configuré, puis sa **demande d'enrôlement** porte cette adresse ; le responsable la signe dans l'entrée. Une substitution d'adresse par un annuaire compromis est donc détectée.
+- Le relais ne crée de file que pour une box déjà enrôlée et active (§ 6.4) : une box neuve **réserve** donc l'identifiant de dépôt de sa future file (32 octets aléatoires) et sa **demande d'enrôlement** porte l'adresse correspondante ; le responsable la signe dans l'entrée. Une fois l'entrée publiée, la box crée sa file en demandant cet identifiant ; le relais ne l'accepte que s'il est celui de l'adresse publiée dans l'entrée signée de **cette** box (sinon `409`), et pas encore pris : aucune autre box ne peut s'approprier l'adresse. Une substitution d'adresse par un annuaire compromis est détectée par la signature de l'entrée.
+- Une box enrôlée avant de passer à IU-T (entrée sans adresse) crée sa file avec un identifiant tiré par le relais ; sa demande d'enrôlement suivante porte cette adresse, à faire signer une fois.
 - Avant tout envoi, la box émettrice vérifie l'entrée du destinataire (signature, validité, révocation) et y prend ses clés de chiffrement et l'adresse de sa file.
 - Le **relais** lit le même annuaire pour vérifier les déposants (§ 6.4).
 - Une révocation empêche tout nouvel envoi et tout nouveau dépôt ; les paquets déjà émis restent récupérables jusqu'à leur expiration.
@@ -482,6 +483,39 @@ L'outil d'essai gagne `file-creer`, `message-envoyer` et `message-relever`.
 
 Les box n'utilisent pas encore IU-MSG : l'adaptateur `iu` du `TransportPort`, la publication de l'adresse de la file dans l'annuaire et l'appairage par l'annuaire sont l'étape 4.
 
+**Étape 4 — adaptateur `iu` du `TransportPort` (fait).** `IuTransport` (`backend/transport`, paquet `iu`), choisi par `IMAGUNITY_IU_ENABLED=true` et `IMAGUNITY_IU_RELAY` ; il exige l'annuaire. L'orchestrateur, le DICOM, l'empaquetage et la console ne changent pas.
+
+| `TransportPort` | Mise en œuvre |
+|---|---|
+| `contactAddress()` | Adresse de la file de la box (créée au premier démarrage, ou réservée tant que la box n'est pas enrôlée, § 9) ; `addressKind()` vaut `iu`, la clé du champ `transport` de l'entrée |
+| `acceptInvitation(adresse)` | Appairage par l'annuaire : la box qui publie cette adresse devient un contact et reçoit un message `iu.contact` ; en face, le premier message signé d'une box active de l'annuaire crée le contact (`PeerConnected`), que la poignée de main existante lie à sa box |
+| `sendMessage` | Message `iu.text`, signé, chiffré pour le destinataire, enregistré dans une **boîte d'envoi** puis déposé en arrière-plan |
+| `sendFile` | Téléversement des morceaux (4 Mio, 8 Mio au-delà de 1 Gio), puis description envoyée par messages `iu.file`, **en fragments** de 20 000 caractères si elle dépasse la taille d'un message ; `FileSent` ensuite |
+| `receiveFile` | Téléchargement, vérification, réassemblage ; `FileReceived` |
+| `discardSentFile` | Suppression des morceaux sur le relais (après l'accusé) |
+| `catchUp()` | Rejoue les fichiers proposés mais pas encore acceptés, reçus ou envoyés |
+
+Précisions :
+- **Boîte d'envoi** : un relais injoignable ne bloque pas l'orchestrateur. L'ordre est conservé par destinataire, l'adresse relue dans l'annuaire à chaque essai ; un message mal formé ou trop long (refus définitif) est abandonné, un message jamais déposé l'est après 8 jours.
+- **Reprise** : l'état de chaque envoi et réception est enregistré à chaque morceau dans le dossier de données de la box (`/data/iu` : file, contacts, messages à déposer, transferts en cours), et non dans sa base, pour garder le transport indépendant du modèle de données. Après un redémarrage, les transferts reprennent où ils en étaient. L'état d'un transfert terminé est oublié après 8 jours.
+- **Sécurité** : les morceaux ne sont téléchargés que depuis le relais configuré (une description qui désigne un autre serveur est écartée) ; les messages d'une box absente ou non active de l'annuaire sont écartés ; deux transferts de fichiers à la fois.
+- **Bascule depuis SimpleX** : les identifiants locaux IU-T commencent à 1 000 000, loin de ceux de SimpleX. Au premier démarrage sur IU-T, les partenaires déjà liés à une box de l'annuaire sont repris sous leur nom (les routes DICOM qui les désignent restent valables) ; les contacts jamais vérifiés sont oubliés. Les entrées doivent être réémises avec l'adresse IU de chaque box. La bascule se fait sans transfert en cours.
+- Défaut corrigé au passage : les fils de relève (`IuMailbox`, étape 3) et d'envoi pouvaient s'arrêter dès leur lancement, faute d'indicateur posé avant le démarrage du fil.
+
+*Vérifié en réel* (pile Docker de la campagne, box A et B en version signée 0.6.3, relais sur PostgreSQL, novembre 2026) :
+
+| Essai | Résultat |
+|---|---|
+| Bascule de deux box appairées par SimpleX | Partenaires repris sous leur nom, entrées réémises avec l'adresse IU |
+| Nominal, 100 instances (50 Mo) | ACKNOWLEDGED en 12,2 s, **100/100** identiques |
+| Sans aucun conteneur SimpleX (clients simplex-chat, relais SMP et XFTP arrêtés) | ACKNOWLEDGED en 10,3 s, **100/100** |
+| Box destinataire éteinte pendant l'envoi, rallumée 30 s après l'annonce | Restituée 11 s après son redémarrage, **100/100** |
+| 600 instances (300 Mo), relais et sa base redémarrés pendant le téléversement, relais redémarré pendant le téléchargement | ACKNOWLEDGED en 51 s, **600/600** |
+| Relais après les accusés | 0 morceau en base, 0 fichier sur disque, 0 message en attente |
+| Box B réinstallée (nouvelle identité, TPM neuf) : demande d'enrôlement avec l'adresse réservée, enrôlement, appairage depuis la console de A | File créée avec l'identifiant réservé dès l'entrée publiée ; appairage et poignée de main en 1 s ; transfert **100/100** en 12,0 s |
+
+Reste pour la bascule (étape 5) : campagne complète de la phase 8 sur IU-T, Compose sans SimpleX, retrait de SimpleX.
+
 ---
 
 ## Historique
@@ -491,3 +525,4 @@ Les box n'utilisent pas encore IU-MSG : l'adaptateur `iu` du `TransportPort`, la
 | 0.1 | 2026-11-11 | Premier brouillon. |
 | 0.2 | 2026-11-11 | Annonce anticipée (§ 6.6) : téléchargement en parallèle du téléversement, réponse `425 Too Early` et attente longue sur les morceaux, champ `mode` de la description, message `file.cancel`, déroulé du § 10 mis à jour. Motivée par les mesures de la phase 1. |
 | 0.3 | 2026-11-12 | Décisions pour l'implémentation : appui sur les briques réalisées (annuaire signé, chiffrement applicatif, messages signés, TPM) ; **pas de seconde couche de chiffrement** des morceaux (paquets déjà chiffrés pour le destinataire, § 5) ; **dépôt authentifié par la signature d'identité de la box**, vérifiée par le relais d'après l'annuaire, au lieu de certificats clients (§ 6.4) ; AES-256-GCM au lieu de ChaCha20-Poly1305 (§ 4.1) ; **annonce anticipée reportée** à l'étape 6 (§ 6.6) ; adresse de la file dans le champ `transport` de l'entrée d'annuaire et appairage par l'annuaire (§ 9) ; JSON signé sur ses octets exacts (§ 7) ; correspondance avec le `TransportPort` (§ 13.2) ; métadonnée « couple émetteur / file » rendue explicite (§ 12, question 5) ; SimpleX gardé en parallèle jusqu'à la bascule. |
+| 0.4 | 2026-11-12 | Étape 4 : identifiant de dépôt **réservé par la box** et publié dans sa demande d'enrôlement, accepté par le relais seulement s'il figure dans l'entrée signée de cette box (§ 8.2, § 9) — la création de file exigeant une box déjà enrôlée, la v0.3 ne permettait pas de publier l'adresse à l'enrôlement ; adaptateur `iu`, boîte d'envoi, description en fragments, reprise et bascule depuis SimpleX (§ 13.4). |
