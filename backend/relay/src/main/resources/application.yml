@@ -11,6 +11,8 @@ imagunity:
     # Volume maximal déposé par une box, et espace disque à garder libre.
     quota-per-box: ${IMAGUNITY_RELAY_QUOTA_PER_BOX:100GB}
     min-free-space: ${IMAGUNITY_RELAY_MIN_FREE_SPACE:1GB}
+    # Files de messages (IU-MSG) qu'une box peut ouvrir.
+    max-queues-per-box: ${IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX:4}
     # Annuaire de l'organisation : seules ses box enrôlées et actives peuvent déposer.
     directory:
       url: ${IMAGUNITY_RELAY_DIRECTORY_URL:}

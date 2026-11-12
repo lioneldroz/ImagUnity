@@ -3,18 +3,12 @@ package com.imagunity.transport.iu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.imagunity.directory.EnrollmentRequest;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.KeyFiles;
-import com.imagunity.directory.Organization;
-import com.imagunity.directory.SignedDocument;
 import com.imagunity.protocol.ChunkLayout;
 import com.imagunity.protocol.FileDescription;
-import com.imagunity.relay.RelayApplication;
 import com.imagunity.transport.TransportException;
-import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -31,21 +25,15 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
 
 /** Client IU-FILE contre un vrai relais démarré en mémoire (H2), avec un annuaire simulé (données synthétiques). */
 class IuFileTest {
 
-    private static final HybridKeyPair ORG = HybridKeyPair.generate();
-    private static final HybridKeyPair BOX_KEYS = HybridKeyPair.generate();
-    private static final UUID BOX = UUID.randomUUID();
-    private static HttpServer directory;
-    private static ConfigurableApplicationContext relay;
+    private static final HybridKeyPair BOX_KEYS = RelayHarness.A_KEYS;
+    private static final UUID BOX = RelayHarness.A;
     private static URI relayUrl;
 
     @TempDir
@@ -56,41 +44,8 @@ class IuFileTest {
 
     @BeforeAll
     static void startRelay() throws Exception {
-        Organization organization = new Organization("chu-exemple", ORG);
-        Instant now = Instant.now();
-        SignedDocument entry = organization.enroll(EnrollmentRequest.create(BOX_KEYS, BOX, "Site A", Map.of(), now),
-                now.minusSeconds(60), Duration.ofDays(30), 1);
-        directory = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        directory.createContext("/directory/v1/entries", exchange -> {
-            byte[] body = ("{\"organization\":\"chu-exemple\",\"entries\":[" + entry.toJson() + "]}")
-                    .getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
-        directory.start();
-        Path key = Files.createTempFile("organisation", ".pub.json");
-        KeyFiles.writeOrganizationPublic(key, "chu-exemple", ORG.publicKey());
-        relay = new SpringApplicationBuilder(RelayApplication.class).run(
-                "--server.port=0", "--spring.jmx.enabled=false",
-                "--spring.datasource.url=jdbc:h2:mem:relais-client;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-                "--spring.datasource.username=sa",
-                "--imagunity.relay.storage-dir=" + Files.createTempDirectory("relais"),
-                "--imagunity.relay.min-free-space=1MB",
-                "--imagunity.relay.directory.url=http://127.0.0.1:" + directory.getAddress().getPort(),
-                "--imagunity.relay.directory.organization-key=" + key,
-                "--imagunity.relay.directory.organization-code=" + ORG.publicKey().shortCode());
-        relayUrl = URI.create("http://127.0.0.1:" + relay.getEnvironment().getProperty("local.server.port") + "/");
-        com.imagunity.directory.LocalDirectory local = relay.getBean(com.imagunity.directory.LocalDirectory.class);
-        for (int i = 0; i < 100 && local.entry(BOX).isEmpty(); i++) {
-            Thread.sleep(50);
-        }
-    }
-
-    @AfterAll
-    static void stopRelay() {
-        relay.close();
-        directory.stop(0);
+        RelayHarness.start();
+        relayUrl = RelayHarness.relayUrl;
     }
 
     private IuFileClient client() {

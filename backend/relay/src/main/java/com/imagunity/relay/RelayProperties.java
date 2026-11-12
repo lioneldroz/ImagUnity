@@ -17,6 +17,7 @@ import org.springframework.util.unit.DataSize;
  * @param maxWait       attente longue maximale d'un morceau pas encore téléversé
  * @param quotaPerBox   volume maximal déposé par une box
  * @param minFreeSpace  espace disque à garder libre
+ * @param maxQueuesPerBox nombre maximal de files de messages d'une box
  * @param directory     annuaire de l'organisation
  */
 @ConfigurationProperties("imagunity.relay")
@@ -28,6 +29,7 @@ public record RelayProperties(
         @DefaultValue("30s") Duration maxWait,
         @DefaultValue("100GB") DataSize quotaPerBox,
         @DefaultValue("1GB") DataSize minFreeSpace,
+        @DefaultValue("4") int maxQueuesPerBox,
         @DefaultValue Directory directory) {
 
     /**

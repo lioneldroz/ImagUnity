@@ -57,6 +57,8 @@ class ChunkApiTest {
     @Autowired
     private ChunkService chunks;
     @Autowired
+    private QueueService queues;
+    @Autowired
     private javax.sql.DataSource dataSource;
 
     private final HttpClient http = HttpClient.newHttpClient();
@@ -226,7 +228,7 @@ class ChunkApiTest {
         String senderId = ids.get("senderId").asString();
         Thread.sleep(1500);
 
-        new RelayConfiguration.Purge(chunks).run();
+        new RelayConfiguration.Purge(chunks, queues).run();
         assertThat(chunks.purge()).as("déjà purgé par la tâche planifiée").isZero();
         assertThat(send(capability("GET", "/iu/v1/chunks/" + senderId, senderId, sender.getPrivate(), null))
                 .statusCode()).isEqualTo(404);

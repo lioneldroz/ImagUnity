@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.3, décisions prises, implémentation en cours** : étapes 1 et 2 faites (module `protocol`, relais IU-FILE et son client, § 13.4). Historique en fin de document.
+> **Statut : v0.3, décisions prises, implémentation en cours** : étapes 1 à 3 faites (module `protocol`, relais IU-FILE et IU-MSG et leurs clients, § 13.4). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -455,6 +455,32 @@ Précisions apportées par l'implémentation : la chaîne canonique sépare ses 
 - **box révoquée** dans l'annuaire : son dépôt est refusé, « HTTP 403 — Box non active dans l'annuaire (REVOKED) ».
 
 À ce stade, le relais parle HTTP : en production, il est placé derrière un proxy TLS. Il sert une seule organisation (une clé de responsable) ; la limite de débit par box (§ 6.4) reste à ajouter, seul le volume l'est.
+
+**Étape 3 — files de messages IU-MSG (fait).**
+
+*Relais* : API du § 8.2 (création, dépôt, relève en attente longue, acquittement, renouvellement), tables `queue` et `queue_message` (migration `V2`) :
+- création et dépôt réservés aux box enrôlées et actives, comme pour IU-FILE ; relève, acquittement et renouvellement signés avec la clé de la file (Ed25519), anti-rejeu ;
+- le `recvId` ne sert qu'à relever et le `sendId` qu'à déposer : l'un ne se déduit pas de l'autre, et un `sendId` présenté à la relève est inconnu ;
+- enveloppe de 72 Kio au plus (64 Kio de contenu, plus en-tête et étiquette ; au-delà `413`), 10 000 messages en attente par file et 4 files par box (`507`, réglable par `IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`), 20 messages par relève ;
+- renouvellement : nouveaux identifiants, messages en attente conservés, anciens identifiants aussitôt inconnus ;
+- messages expirés purgés avec les morceaux (même durée de séjour par défaut).
+
+*Client* (`backend/transport`, paquet `iu`) : `IuMsgClient` (une requête signée par opération), `QueueAddress` (adresse publiable `<relais>/iu/v1/queues/<sendId>`), `IuMessenger` (signe, chiffre pour le destinataire et dépose, avec nouvelles tentatives), `IuMailbox` (relève en continu sur un fil virtuel ; chaque message est ouvert, sa signature vérifiée d'après l'annuaire, traité, puis acquitté). Règles de la relève :
+- message traité puis acquitté : si le traitement échoue, il reste sur le relais et revient à la relève suivante ;
+- émetteur absent de l'annuaire local (annuaire pas encore à jour) : message laissé sur le relais, sans acquittement ;
+- message illisible, destiné à une autre box ou mal signé : écarté et acquitté, pour ne pas bloquer la file ;
+- message déjà traité (même identifiant, rejeu ou acquittement perdu) : acquitté sans être traité une seconde fois (mémoire de 8 jours).
+
+L'outil d'essai gagne `file-creer`, `message-envoyer` et `message-relever`.
+
+*Vérifié en réel* (pile Docker, relais sur PostgreSQL, novembre 2026), avec deux box d'essai X et Y nouvellement enrôlées avec leurs clés de chiffrement :
+- Y ouvre sa file puis s'éteint ; X lui dépose **3 messages** ; en base, 3 messages en attente et aucun texte clair ;
+- le relais **et sa base** sont redémarrés : les 3 messages sont toujours là ;
+- Y se rallume et relève : 3 messages reçus dans l'ordre, signatures vérifiées d'après l'annuaire ; la file est ensuite vide en base, et une seconde relève ne rend rien ;
+- **attente longue** : Y relève avec 25 s d'attente, X dépose 6 s plus tard ; le message est remis environ 0,6 s après son dépôt ;
+- une box **absente de l'annuaire** est refusée au dépôt : « HTTP 403 — Box absente de l'annuaire de l'organisation ».
+
+Les box n'utilisent pas encore IU-MSG : l'adaptateur `iu` du `TransportPort`, la publication de l'adresse de la file dans l'annuaire et l'appairage par l'annuaire sont l'étape 4.
 
 ---
 
