@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.3, décisions prises, implémentation à venir** (plan au § 13). Historique en fin de document.
+> **Statut : v0.3, décisions prises, implémentation en cours** : étape 1 faite (module `protocol`, § 13.4). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -417,6 +417,23 @@ Chaque étape se termine par des tests automatiques, un essai réel sur la pile 
 | 5 | Bascule : campagne de la phase 8 sur IU-T (nominal, coupure, destinataire éteint, 2 Go, pare-feu et scan de ports), SimpleX en parallèle ; Compose sans SimpleX ; retrait de SimpleX | Résultats au moins égaux à SimpleX ; plus aucun conteneur SimpleX |
 | 6 | Plus tard : annonce anticipée, plusieurs relais, taille de morceau adaptative (recoupe la priorité 6 du plan) | Gain mesuré sur liaison bridée |
 | 7 | Audit de sécurité externe et corrections | Rapport de l'auditeur |
+
+### 13.4 Avancement
+
+**Étape 1 — module `protocol` (fait).** `backend/protocol`, partagé par la box et le relais :
+
+| Classe | Rôle | § |
+|---|---|---|
+| `SignedRequest` | Chaîne canonique, signature de capacité (Ed25519) et de dépôt (Ed25519 + ML-DSA-65, forme `<ed25519>.<mlDsa65>` en base64url), en-têtes `IU-*` | 6.3 |
+| `ReplayGuard` | Fenêtre de 5 minutes, identifiants de requête déjà vus, mémoire bornée (au-delà, refus plutôt qu'oubli) | 6.3 |
+| `ChunkLayout`, `Chunks` | Tailles de morceau admises, remplissage par des zéros, empreintes ; réassemblage dans n'importe quel ordre, avec vérification de l'empreinte et du remplissage de chaque morceau | 5 |
+| `FileDescription` | Description de fichier, validée à la lecture (suite, identifiants, découpage, ordre des morceaux, adresses de relais, clés de retrait) | 7 |
+| `MessageEnvelope` | Enveloppe chiffrée pour le destinataire, contenu complété aux paliers de 4, 16 et 64 Kio | 8.3, 8.4 |
+| `SignedMessage` | Contenu signé (identifiant de message, date, type, box émettrice, corps), vérifié d'après l'annuaire | 8.4 |
+
+Précisions apportées par l'implémentation : la chaîne canonique sépare ses éléments par un saut de ligne et donne l'empreinte du corps en hexadécimal ; les identifiants de requête, de transfert et de message font 16 octets (22 caractères base64url), ceux des morceaux 32 octets ; l'enveloppe est préfixée par `IU1M`, sa clé est à usage unique (nonce nul) et l'empreinte de l'en-tête est en données associées.
+
+**Vecteurs de test** (`backend/protocol/src/test/resources/vecteurs-iu1.json`), figés : la box et le relais doivent produire et accepter exactement ces octets. Les valeurs déterministes sont recalculées à chaque test (chaîne canonique, signature Ed25519 d'une clé fixe, empreintes des morceaux d'un paquet de 600 000 octets) ; les pièces aléatoires (signature de dépôt, enveloppe, message signé) sont vérifiées ou ouvertes avec les clés fournies.
 
 ---
 
