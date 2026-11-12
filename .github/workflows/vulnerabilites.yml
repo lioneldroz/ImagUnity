@@ -1,0 +1,67 @@
+name: Vulnérabilités (CVE)
+
+# Recherche des vulnérabilités connues (base OSV : avis GitHub, PyPI, npm, Maven…) dans les dépendances :
+#   - backend : nomenclature CycloneDX produite par Maven (versions réellement résolues, transitives comprises,
+#     hors dépendances de test) ;
+#   - frontend : package-lock.json ;
+#   - campagne de tests : deploy/campagne/requirements.txt.
+# Bloquant dès qu'une vulnérabilité est trouvée. Exceptions justifiées et datées : osv-scanner.toml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'   # chaque lundi : un avis publié après coup est vu sans attendre un push
+  workflow_dispatch:       # lancement manuel depuis l'onglet « Actions »
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cve-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OSV_SCANNER_VERSION: v2.7.1
+  # Empreinte publiée avec la version (osv-scanner_SHA256SUMS) : le binaire téléchargé est vérifié.
+  OSV_SCANNER_SHA256: fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8
+  CYCLONEDX_MAVEN_VERSION: 2.9.3
+
+jobs:
+  osv:
+    name: Dépendances (OSV-Scanner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Nomenclature du backend (CycloneDX)
+        working-directory: backend
+        # OSV-Scanner ne sait pas résoudre nos modules internes (0.1.0-SNAPSHOT) depuis les pom.xml :
+        # Maven donne lui-même la liste exacte des dépendances.
+        run: >
+          sh ./mvnw -B -ntp
+          org.cyclonedx:cyclonedx-maven-plugin:${CYCLONEDX_MAVEN_VERSION}:makeAggregateBom
+          -DoutputFormat=json -DoutputName=sbom.cdx
+
+      - name: Installation d'OSV-Scanner
+        run: |
+          curl -fsSL -o osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  osv-scanner" | sha256sum -c -
+          chmod +x osv-scanner
+
+      - name: Recherche des vulnérabilités
+        run: |
+          code=0
+          ./osv-scanner scan source --config osv-scanner.toml --format markdown --output-file resultat.md \
+            -L backend/target/sbom.cdx.json \
+            -L frontend/package-lock.json \
+            -L deploy/campagne/requirements.txt || code=$?
+          cat resultat.md
+          { echo "## Vulnérabilités connues des dépendances"; echo; cat resultat.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code

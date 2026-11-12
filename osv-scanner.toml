@@ -1,0 +1,11 @@
+# Exceptions de la recherche de vulnérabilités (.github/workflows/vulnerabilites.yml).
+#
+# À n'utiliser que si aucune version corrigée n'existe encore, ou si la faille ne concerne pas ImagUnity.
+# Chaque exception porte une justification et une date d'expiration : passée cette date, la CI échoue
+# de nouveau et l'exception doit être réexaminée. Indiquer tous les identifiants d'une même faille
+# (GHSA, PYSEC, CVE…) tels que les affiche le rapport.
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2026-12-31
+# reason = "Fonction vulnérable non utilisée (…) ; à revoir à la prochaine version de …"

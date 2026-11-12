@@ -64,6 +64,23 @@ java -jar app/target/imagunity-box.jar
 
 `./mvnw verify` mesure la couverture des tests (JaCoCo) et **échoue sous 95 % des lignes ou 75 % des branches**, module par module. Rapport par module : `<module>/target/site/jacoco/index.html`. Seuils modifiables en ligne de commande : `-Dcouverture.lignes.min=0.90 -Dcouverture.branches.min=0.70`.
 
+### Vulnérabilités des dépendances
+
+Le workflow **Vulnérabilités (CVE)** (`.github/workflows/vulnerabilites.yml`) passe les dépendances au crible de la base [OSV](https://osv.dev) avec OSV-Scanner :
+- **backend** : nomenclature CycloneDX produite par Maven, avec les versions réellement résolues, transitives comprises (hors dépendances de test) ;
+- **frontend** : `frontend/package-lock.json` ;
+- **campagne de tests** : `deploy/campagne/requirements.txt`.
+
+Il tourne à chaque push sur `main`, sur chaque pull request, **chaque lundi** (un avis publié après coup est vu sans attendre un push) et à la demande (onglet *Actions*). Il **échoue dès qu'une vulnérabilité connue est trouvée** ; le rapport s'affiche dans le résumé de l'exécution.
+
+Exceptions : `osv-scanner.toml`, chacune avec sa justification et une **date d'expiration** ; passée cette date, la CI échoue de nouveau. En local :
+
+```bash
+(cd backend && ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json -DoutputName=sbom.cdx)
+osv-scanner scan source --config osv-scanner.toml -L backend/target/sbom.cdx.json \
+    -L frontend/package-lock.json -L deploy/campagne/requirements.txt
+```
+
 Frontend (http://localhost:5173, les appels `/api` sont relayés vers le backend) :
 
 ```bash
