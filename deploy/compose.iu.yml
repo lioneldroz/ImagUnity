@@ -1,0 +1,40 @@
+# Relais IU-T (docs/specification-protocole.md) : IU-FILE, à côté des relais SimpleX pendant la transition.
+# Il vérifie les box déposantes d'après l'annuaire : à ajouter avec le profil « annuaire ».
+#
+#   export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable, vérifiée hors bande>
+#   docker compose -f docker-compose.yml -f compose.iu.yml --profile annuaire up -d relay
+
+services:
+  relay-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: relais
+      POSTGRES_USER: relais
+      POSTGRES_PASSWORD: essai-synthetique   # environnement de test uniquement
+    volumes:
+      - relay-db-data:/var/lib/postgresql/data
+    networks: [relais]
+
+  relay:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/relay/Dockerfile
+    environment:
+      IMAGUNITY_RELAY_DB_URL: jdbc:postgresql://relay-db:5432/relais
+      IMAGUNITY_RELAY_DB_PASSWORD: essai-synthetique
+      IMAGUNITY_RELAY_STORAGE_DIR: /data/morceaux
+      IMAGUNITY_RELAY_DIRECTORY_URL: http://directory:8090
+      IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_RELAY_ORGANIZATION_CODE: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:?empreinte du responsable, vérifiée hors bande}
+      IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:-5m}
+    volumes:
+      - relay-data:/data
+      - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro
+    depends_on: [relay-db, directory]
+    networks: [relais]
+    ports:
+      - "8443:8443"
+
+volumes:
+  relay-db-data:
+  relay-data:

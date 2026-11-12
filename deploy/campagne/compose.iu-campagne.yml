@@ -1,0 +1,8 @@
+# Campagne de tests : image du relais IU-T construite à partir du jar préparé par prepare.sh (sans réseau).
+# À ajouter après compose.iu.yml.
+services:
+  relay:
+    image: imagunity/relay:campagne
+    build:
+      context: ./campagne/build
+      dockerfile: relay.Dockerfile

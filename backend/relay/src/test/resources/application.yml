@@ -1,0 +1,10 @@
+imagunity:
+  relay:
+    storage-dir: ./target/morceaux-test
+    min-free-space: 1MB
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:relais-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""

@@ -1,0 +1,43 @@
+imagunity:
+  relay:
+    # Contenu des morceaux (les métadonnées sont en base).
+    storage-dir: ${IMAGUNITY_RELAY_STORAGE_DIR:./data/morceaux}
+    # Durée de séjour : demandée par la box, plafonnée ; morceau créé mais jamais téléversé : purgé plus tôt.
+    default-ttl: 72h
+    max-ttl: 7d
+    incomplete-ttl: 24h
+    # Attente longue d'un morceau pas encore téléversé (paramètre « wait »), plafonnée.
+    max-wait: 30s
+    # Volume maximal déposé par une box, et espace disque à garder libre.
+    quota-per-box: ${IMAGUNITY_RELAY_QUOTA_PER_BOX:100GB}
+    min-free-space: ${IMAGUNITY_RELAY_MIN_FREE_SPACE:1GB}
+    # Annuaire de l'organisation : seules ses box enrôlées et actives peuvent déposer.
+    directory:
+      url: ${IMAGUNITY_RELAY_DIRECTORY_URL:}
+      organization-key: ${IMAGUNITY_RELAY_ORGANIZATION_KEY:./organisation.pub.json}
+      # Empreinte courte du responsable, vérifiée hors bande : sinon le relais refuse de démarrer.
+      organization-code: ${IMAGUNITY_RELAY_ORGANIZATION_CODE:}
+      sync-interval: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:5m}
+
+spring:
+  application:
+    name: imagunity-relay
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${IMAGUNITY_RELAY_DB_URL:jdbc:postgresql://localhost:5432/relais}
+    username: ${IMAGUNITY_RELAY_DB_USER:relais}
+    password: ${IMAGUNITY_RELAY_DB_PASSWORD:}
+
+server:
+  port: ${IMAGUNITY_RELAY_PORT:8443}
+  # Les morceaux arrivent en flux : pas de limite de corps propre à Spring ; la taille est contrôlée par le relais.
+  tomcat:
+    max-swallow-size: 16MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

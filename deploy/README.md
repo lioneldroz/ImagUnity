@@ -93,6 +93,17 @@ Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le parten
 
 Avec un mot de passe `IMAGUNITY_DICOMWEB_PASSWORD` (compte `pacs` par défaut, distinct de l'opérateur), le PACS peut déposer des instances par HTTP sur `POST /dicomweb/<AET>/studies` (route fixe ou destination de routage). `campagne/compose.routage.yml` configure Orthanc A pour déposer ainsi sur `IU_AUTO`. Voir [STOW-RS](../docs/stow-rs.md).
 
+### Relais IU-T (en cours)
+
+Le relais IU-T (étape 2 de la [spécification](../docs/specification-protocole.md) : IU-FILE) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
+
+```bash
+export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable>
+docker compose -f docker-compose.yml -f compose.iu.yml --profile annuaire up -d relay
+```
+
+Les box ne l'utilisent pas encore (étape 4) ; l'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par lui.
+
 ## Réinitialisation
 
 ```bash

@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.3, décisions prises, implémentation en cours** : étape 1 faite (module `protocol`, § 13.4). Historique en fin de document.
+> **Statut : v0.3, décisions prises, implémentation en cours** : étapes 1 et 2 faites (module `protocol`, relais IU-FILE et son client, § 13.4). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -434,6 +434,27 @@ Chaque étape se termine par des tests automatiques, un essai réel sur la pile 
 Précisions apportées par l'implémentation : la chaîne canonique sépare ses éléments par un saut de ligne et donne l'empreinte du corps en hexadécimal ; les identifiants de requête, de transfert et de message font 16 octets (22 caractères base64url), ceux des morceaux 32 octets ; l'enveloppe est préfixée par `IU1M`, sa clé est à usage unique (nonce nul) et l'empreinte de l'en-tête est en données associées.
 
 **Vecteurs de test** (`backend/protocol/src/test/resources/vecteurs-iu1.json`), figés : la box et le relais doivent produire et accepter exactement ces octets. Les valeurs déterministes sont recalculées à chaque test (chaîne canonique, signature Ed25519 d'une clé fixe, empreintes des morceaux d'un paquet de 600 000 octets) ; les pièces aléatoires (signature de dépôt, enveloppe, message signé) sont vérifiées ou ouvertes avec les clés fournies.
+
+**Étape 2 — relais IU-FILE et son client (fait).**
+
+*Relais* (`backend/relay`, application Spring Boot ; image `deploy/relay/Dockerfile`, Compose `deploy/compose.iu.yml`) :
+- API du § 6.2 : création (dépôt), téléversement, téléchargement avec `Range` et attente longue (`wait`, réponse `425 Too Early` + `Retry-After`), acquittement, suppression, état ;
+- **dépôt réservé aux box enrôlées et actives** : le relais épingle la clé du responsable (empreinte confirmée, sinon refus de démarrer), lit l'annuaire comme une box (vue locale en base, synchronisation périodique) et vérifie la double signature de la box ;
+- capacités Ed25519 par morceau, anti-rejeu (§ 6.3) ;
+- téléversement écrit en flux dans un fichier temporaire, vérifié (taille, empreinte) avant d'être mis en place ; renvoi d'un morceau déjà reçu sans effet ; corps trop long coupé (`413`) ;
+- morceau supprimé quand tous ses destinataires l'ont acquitté, à la demande de l'émetteur, ou à expiration (purge chaque minute ; durée de séjour demandée, plafonnée ; morceau jamais téléversé purgé plus tôt) ;
+- volume maximal par box (`507`), espace disque minimal ;
+- métadonnées dans PostgreSQL (morceaux, destinataires, annuaire), contenu sur disque.
+
+*Client* (`backend/transport`, paquet `iu`) : `IuFileClient` (une requête signée par opération ; reprise d'un téléchargement interrompu par `Range`), `IuFileUploader` (découpage, création de tous les morceaux, téléversement ; état enregistrable après chaque morceau pour reprendre), `IuFileDownloader` (téléchargement, vérification, écriture à sa place, acquittement ; reprise sans retélécharger les morceaux déjà écrits), `Retry` (nouvelles tentatives sur coupure, relais surchargé ou en panne, morceau pas encore prêt ; pas sur un refus définitif), et un outil d'essai en ligne de commande (`IuFileTool envoyer|recevoir`).
+
+*Vérifié en réel* (pile Docker, relais sur PostgreSQL, annuaire de la campagne, novembre 2026), avec une box d'essai enrôlée et un fichier synthétique de **2 Go** (512 morceaux de 4 Mio) :
+- **envoi** : le relais est redémarré après 100 morceaux, puis le client est tué après environ 300 ; relancé, il reprend à 370 morceaux sur 512 (état enregistré) et termine ;
+- **réception** : même scénario (relais redémarré, client tué, reprise à 303 sur 512) ; fichier reçu **identique** (même SHA-256, comparaison octet par octet) ;
+- après les acquittements, le relais est **vide** (0 fichier, 0 ligne) ;
+- **box révoquée** dans l'annuaire : son dépôt est refusé, « HTTP 403 — Box non active dans l'annuaire (REVOKED) ».
+
+À ce stade, le relais parle HTTP : en production, il est placé derrière un proxy TLS. Il sert une seule organisation (une clé de responsable) ; la limite de débit par box (§ 6.4) reste à ajouter, seul le volume l'est.
 
 ---
 
