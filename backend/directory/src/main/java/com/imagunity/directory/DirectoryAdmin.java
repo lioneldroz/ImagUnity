@@ -28,28 +28,48 @@ import java.util.UUID;
  * revoquer           --cles &lt;clé organisation&gt; --entree &lt;fichier&gt; --motif &lt;texte&gt; --sortie &lt;fichier&gt;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
  * publier            --annuaire &lt;url&gt; --entree &lt;fichier&gt; [--compte &lt;utilisateur:mot de passe&gt;]
+ * proteger           --cles &lt;fichier&gt; [--box]
  * </pre>
+ * Les clés privées sont chiffrées par phrase de passe : elle vient de {@code IMAGUNITY_PHRASE_ORGANISATION} (clé du
+ * responsable) ou {@code IMAGUNITY_PHRASE_BOX} (clé d'une box), sinon elle est demandée au terminal (deux fois à la
+ * création). {@code --sans-phrase} crée une clé en clair (déconseillé).
  * Pour {@code publier}, le compte peut venir de la variable {@code IMAGUNITY_ANNUAIRE_COMPTE} (préférable : un
  * argument de ligne de commande est visible des autres utilisateurs de la machine).
  */
 public final class DirectoryAdmin {
 
     static final String ACCOUNT_VARIABLE = "IMAGUNITY_ANNUAIRE_COMPTE";
+    static final String ORGANIZATION_PASSPHRASE = "IMAGUNITY_PHRASE_ORGANISATION";
+    static final String BOX_PASSPHRASE = "IMAGUNITY_PHRASE_BOX";
+
+    /** Saisie masquée au terminal ; {@code null} si aucun terminal. */
+    @FunctionalInterface
+    interface Prompt {
+        char[] ask(String label);
+    }
 
     private final PrintStream out;
     private final PrintStream err;
     private final Clock clock;
     private final Map<String, String> environment;
+    private final Prompt prompt;
 
     DirectoryAdmin(PrintStream out, PrintStream err, Clock clock, Map<String, String> environment) {
+        this(out, err, clock, environment, label -> null);
+    }
+
+    DirectoryAdmin(PrintStream out, PrintStream err, Clock clock, Map<String, String> environment, Prompt prompt) {
         this.out = out;
         this.err = err;
         this.clock = clock;
         this.environment = environment;
+        this.prompt = prompt;
     }
 
     public static void main(String[] args) {
-        System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC(), System.getenv()).run(args));
+        java.io.Console console = System.console();
+        Prompt prompt = console == null ? label -> null : label -> console.readPassword("%s : ", label);
+        System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC(), System.getenv(), prompt).run(args));
     }
 
     /** Exécute une commande ; renvoie le code de sortie (0 : succès, 1 : refus ou erreur, 2 : usage). */
@@ -72,6 +92,7 @@ public final class DirectoryAdmin {
                 case "revoquer" -> revoke(options);
                 case "verifier" -> verify(options);
                 case "publier" -> publish(options);
+                case "proteger" -> protect(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -86,10 +107,12 @@ public final class DirectoryAdmin {
         String organization = Organization.requireValidId(require(o, "organisation"));
         Path keys = Path.of(require(o, "cles"));
         HybridKeyPair pair = HybridKeyPair.generate();
-        KeyFiles.writePrivate(keys, pair);
+        char[] passphrase = newPassphrase(o, ORGANIZATION_PASSPHRASE, "Phrase de passe de la clé du responsable");
+        KeyFiles.writePrivate(keys, pair, passphrase);
         Path publicFile = Path.of(keys + ".pub.json");
         KeyFiles.writeOrganizationPublic(publicFile, organization, pair.publicKey());
-        out.println("Clé du responsable de « " + organization + " » créée : " + keys + " (à garder hors ligne)");
+        out.println("Clé du responsable de « " + organization + " » créée : " + keys + " (à garder hors ligne"
+                + (passphrase == null ? ", NON protégée" : ", protégée par phrase de passe") + ")");
         out.println("Clé publique, à installer dans les box : " + publicFile);
         out.println("Empreinte à communiquer hors bande : " + pair.publicKey().shortCode());
         return 0;
@@ -105,10 +128,10 @@ public final class DirectoryAdmin {
         Path keysFile = Path.of(require(o, "cles"));
         HybridKeyPair keys;
         if (Files.exists(keysFile)) {
-            keys = KeyFiles.readPrivate(keysFile);
+            keys = readKeys(keysFile, BOX_PASSPHRASE, "Phrase de passe de la clé de la box");
         } else {
             keys = HybridKeyPair.generate();
-            KeyFiles.writePrivate(keysFile, keys);
+            KeyFiles.writePrivate(keysFile, keys, newPassphrase(o, BOX_PASSPHRASE, "Phrase de passe de la clé de la box"));
             out.println("Identité de la box créée : " + keysFile);
         }
         Map<String, String> transport = new LinkedHashMap<>();
@@ -191,11 +214,70 @@ public final class DirectoryAdmin {
     private Organization organization(Map<String, String> o) throws IOException {
         Path keys = Path.of(require(o, "cles"));
         KeyFiles.OrganizationPublicKey publicKey = KeyFiles.readOrganizationPublic(Path.of(keys + ".pub.json"));
-        HybridKeyPair pair = KeyFiles.readPrivate(keys);
+        HybridKeyPair pair = readKeys(keys, ORGANIZATION_PASSPHRASE, "Phrase de passe de la clé du responsable");
         if (!pair.publicKey().fingerprint().equals(publicKey.key().fingerprint())) {
             throw new DirectoryException("La clé privée ne correspond pas à la clé publique de l'organisation");
         }
         return new Organization(publicKey.organization(), pair);
+    }
+
+    private int protect(Map<String, String> o) throws IOException {
+        Path keys = Path.of(require(o, "cles"));
+        boolean box = o.containsKey("box");
+        char[] passphrase = passphrase(box ? BOX_PASSPHRASE : ORGANIZATION_PASSPHRASE,
+                "Nouvelle phrase de passe", true);
+        if (passphrase == null) {
+            throw new MissingOptionException("Phrase de passe manquante : " + (box ? BOX_PASSPHRASE
+                    : ORGANIZATION_PASSPHRASE) + " ou saisie au terminal");
+        }
+        KeyFiles.protect(keys, passphrase);
+        out.println("Clé protégée par phrase de passe : " + keys);
+        return 0;
+    }
+
+    /** Lit une clé privée ; demande sa phrase de passe si elle est protégée, avertit sinon. */
+    private HybridKeyPair readKeys(Path file, String variable, String label) throws IOException {
+        if (!KeyFiles.isProtected(file)) {
+            err.println("Attention : clé non protégée par phrase de passe (" + file + ") ; la protéger avec « proteger »");
+            return KeyFiles.readPrivate(file);
+        }
+        char[] passphrase = passphrase(variable, label, false);
+        if (passphrase == null) {
+            throw new MissingOptionException("Clé protégée : phrase de passe dans " + variable + " ou saisie au terminal");
+        }
+        return KeyFiles.readPrivate(file, passphrase);
+    }
+
+    /** Phrase de passe d'une nouvelle clé ; {@code null} seulement avec {@code --sans-phrase}. */
+    private char[] newPassphrase(Map<String, String> o, String variable, String label) {
+        if (o.containsKey("sans-phrase")) {
+            err.println("Attention : clé créée sans phrase de passe (déconseillé)");
+            return null;
+        }
+        char[] passphrase = passphrase(variable, label, true);
+        if (passphrase == null) {
+            throw new MissingOptionException("Phrase de passe requise : " + variable
+                    + ", saisie au terminal, ou --sans-phrase (déconseillé)");
+        }
+        KeyProtection.requireStrong(passphrase);
+        return passphrase;
+    }
+
+    /** Phrase de passe : variable d'environnement, sinon terminal (confirmée si {@code confirm}). */
+    private char[] passphrase(String variable, String label, boolean confirm) {
+        String fromEnvironment = environment.get(variable);
+        if (fromEnvironment != null && !fromEnvironment.isEmpty()) {
+            return fromEnvironment.toCharArray();
+        }
+        char[] first = prompt.ask(label);
+        if (first == null || !confirm) {
+            return first;
+        }
+        char[] second = prompt.ask(label + " (confirmation)");
+        if (second == null || !java.util.Arrays.equals(first, second)) {
+            throw new IllegalArgumentException("Les deux saisies de la phrase de passe diffèrent");
+        }
+        return first;
     }
 
     private static SignedDocument read(Path file) throws IOException {
@@ -216,17 +298,31 @@ public final class DirectoryAdmin {
                   enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
                   verifier           --cle-publique <fichier> --entree <fichier>
-                  publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]""");
+                  publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]
+                  proteger           --cles <fichier> [--box]
+                Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
+                --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;
     }
 
+    /** Options {@code --nom valeur} et drapeaux sans valeur ({@code --sans-phrase}, {@code --box}). */
+    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box");
+
     private static Map<String, String> options(String[] args) {
         Map<String, String> options = new HashMap<>();
-        for (int i = 1; i < args.length; i += 2) {
-            if (!args[i].startsWith("--") || i + 1 >= args.length) {
+        for (int i = 1; i < args.length; i++) {
+            if (!args[i].startsWith("--")) {
                 throw new IllegalArgumentException("Option mal formée : " + args[i]);
             }
-            options.put(args[i].substring(2), args[i + 1]);
+            String name = args[i].substring(2);
+            if (FLAGS.contains(name)) {
+                options.put(name, "oui");
+                continue;
+            }
+            if (i + 1 >= args.length) {
+                throw new IllegalArgumentException("Option mal formée : " + args[i]);
+            }
+            options.put(name, args[++i]);
         }
         return options;
     }

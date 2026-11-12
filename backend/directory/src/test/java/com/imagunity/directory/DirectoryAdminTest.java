@@ -31,12 +31,23 @@ class DirectoryAdminTest {
         err.reset();
     }
 
-    private java.util.Map<String, String> environment = java.util.Map.of();
+    private static final java.util.Map<String, String> PHRASES = java.util.Map.of(
+            DirectoryAdmin.ORGANIZATION_PASSPHRASE, "phrase du responsable", DirectoryAdmin.BOX_PASSPHRASE,
+            "phrase de la box de test");
+    private java.util.Map<String, String> environment = PHRASES;
+    private java.util.Deque<String> typed = new java.util.ArrayDeque<>();
 
     private int run(String... args) {
         return new DirectoryAdmin(new PrintStream(out, true, StandardCharsets.UTF_8),
-                new PrintStream(err, true, StandardCharsets.UTF_8), Clock.fixed(now, ZoneOffset.UTC), environment)
+                new PrintStream(err, true, StandardCharsets.UTF_8), Clock.fixed(now, ZoneOffset.UTC), environment,
+                label -> typed.isEmpty() ? null : typed.poll().toCharArray())
                 .run(args);
+    }
+
+    private static java.util.Map<String, String> with(String key, String value) {
+        java.util.Map<String, String> map = new java.util.HashMap<>(PHRASES);
+        map.put(key, value);
+        return map;
     }
 
     private String p(String name) {
@@ -132,7 +143,7 @@ class DirectoryAdminTest {
                     .isZero();
             assertThat(output()).contains("Entrée publiée");
             status[0] = 200;
-            environment = java.util.Map.of(DirectoryAdmin.ACCOUNT_VARIABLE, "responsable:secret");
+            environment = with(DirectoryAdmin.ACCOUNT_VARIABLE, "responsable:secret");
             assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"))).isZero();
             assertThat(output()).contains("déjà publiée");
             status[0] = 409;
@@ -141,7 +152,7 @@ class DirectoryAdminTest {
 
             String basic = "Basic " + java.util.Base64.getEncoder().encodeToString("responsable:secret".getBytes());
             assertThat(received).hasSize(3).allSatisfy(r -> assertThat(r).startsWith(basic).contains("\"payload\""));
-            environment = java.util.Map.of();
+            environment = PHRASES;
             assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"))).as("compte manquant").isEqualTo(2);
             assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"), "--compte", "sans-deux-points"))
                     .isEqualTo(2);
@@ -150,5 +161,71 @@ class DirectoryAdminTest {
         }
         assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"), "--compte", "a:b"))
                 .as("annuaire injoignable").isEqualTo(1);
+    }
+
+    @Test
+    void keysAreProtectedByPassphrase() throws Exception {
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"))).isZero();
+        assertThat(output()).contains("protégée par phrase de passe");
+        assertThat(KeyFiles.isProtected(dir.resolve("org.json"))).isTrue();
+        run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie", p("d.json"));
+        assertThat(KeyFiles.isProtected(dir.resolve("box.json"))).isTrue();
+
+        environment = java.util.Map.of();
+        assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json")))
+                .as("phrase manquante").isEqualTo(2);
+        typed.add("mauvaise phrase de passe");
+        assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json")))
+                .as("phrase incorrecte").isEqualTo(1);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("Phrase de passe incorrecte");
+        typed.add("phrase du responsable");
+        assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json")))
+                .as("phrase saisie au terminal").isZero();
+    }
+
+    @Test
+    void creationNeedsAPassphraseOrAnExplicitChoice() throws Exception {
+        environment = java.util.Map.of();
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json")))
+                .isEqualTo(2);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("--sans-phrase");
+
+        typed.addAll(java.util.List.of("phrase saisie deux fois", "phrase saisie autrement"));
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json")))
+                .as("confirmation différente").isEqualTo(1);
+        typed.clear();
+        typed.addAll(java.util.List.of("courte", "courte"));
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org2.json")))
+                .as("trop courte").isEqualTo(1);
+        typed.clear();
+        typed.addAll(java.util.List.of("phrase saisie deux fois", "phrase saisie deux fois"));
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org3.json"))).isZero();
+        assertThat(KeyFiles.isProtected(dir.resolve("org3.json"))).isTrue();
+
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("clair.json"),
+                "--sans-phrase")).isZero();
+        assertThat(KeyFiles.isProtected(dir.resolve("clair.json"))).isFalse();
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("sans phrase de passe (déconseillé)");
+    }
+
+    @Test
+    void existingClearKeysCanBeProtected() throws Exception {
+        run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"), "--sans-phrase");
+        run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie", p("d.json"),
+                "--sans-phrase");
+        err.reset();
+        assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json"))).isZero();
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("clé non protégée");
+
+        assertThat(run("proteger", "--cles", p("org.json"))).isZero();
+        assertThat(run("proteger", "--cles", p("box.json"), "--box")).isZero();
+        assertThat(KeyFiles.isProtected(dir.resolve("org.json"))).isTrue();
+        assertThat(KeyFiles.isProtected(dir.resolve("box.json"))).isTrue();
+        assertThat(run("proteger", "--cles", p("org.json"))).as("déjà protégée").isEqualTo(1);
+        environment = java.util.Map.of();
+        assertThat(run("proteger", "--cles", p("org.json"))).as("phrase manquante").isEqualTo(2);
+        assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie",
+                p("d.json"))).as("clé de box protégée sans phrase").isEqualTo(2);
+        assertThat(run("proteger", "--cles", p("org.json"), "inattendu")).isEqualTo(2);
     }
 }

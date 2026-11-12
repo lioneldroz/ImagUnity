@@ -71,23 +71,51 @@ class DirectoryConfiguration {
     /** Identité de la box : créée au premier démarrage, puis relue. */
     @Bean
     BoxIdentity boxIdentity(DirectoryProperties properties) throws IOException {
-        return loadOrCreateIdentity(properties.identityFile());
+        return loadOrCreateIdentity(properties.identityFile(), properties.passphrase());
     }
 
     static BoxIdentity loadOrCreateIdentity(Path keysFile) throws IOException {
+        return loadOrCreateIdentity(keysFile, null);
+    }
+
+    /**
+     * Identité de la box : créée au premier démarrage (chiffrée si une phrase de passe est fournie), puis relue. Une
+     * identité en clair est chiffrée sur place dès qu'une phrase de passe est fournie.
+     *
+     * @throws IllegalStateException si l'identité est protégée et qu'aucune phrase de passe n'est fournie
+     */
+    static BoxIdentity loadOrCreateIdentity(Path keysFile, char[] passphrase) throws IOException {
         Path idFile = Path.of(keysFile + ".id");
         if (Files.exists(keysFile)) {
+            boolean protectedKey = KeyFiles.isProtected(keysFile);
+            if (protectedKey && passphrase == null) {
+                throw new IllegalStateException("Identité de la box protégée par phrase de passe : la fournir par "
+                        + "IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE (ou ..._PASSPHRASE)");
+            }
+            if (!protectedKey && passphrase != null) {
+                KeyFiles.protect(keysFile, passphrase);
+                LOG.info("Identité de la box désormais protégée par phrase de passe");
+            } else if (!protectedKey) {
+                warnUnprotected();
+            }
             BoxIdentity identity = new BoxIdentity(UUID.fromString(Files.readString(idFile, StandardCharsets.UTF_8)
-                    .strip()), KeyFiles.readPrivate(keysFile));
+                    .strip()), KeyFiles.readPrivate(keysFile, passphrase));
             LOG.info("Identité de la box {} ({})", identity.boxId(), identity.keys().publicKey().shortCode());
             return identity;
         }
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
-        KeyFiles.writePrivate(keysFile, identity.keys());
+        KeyFiles.writePrivate(keysFile, identity.keys(), passphrase);
         Files.writeString(idFile, identity.boxId().toString(), StandardCharsets.UTF_8);
+        if (passphrase == null) {
+            warnUnprotected();
+        }
         LOG.info("Identité de la box créée : {} ({}) — à faire enrôler par le responsable", identity.boxId(),
                 identity.keys().publicKey().shortCode());
         return identity;
+    }
+
+    private static void warnUnprotected() {
+        LOG.warn("Clé de la box NON protégée par phrase de passe : fournir IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE");
     }
 
     @Bean
