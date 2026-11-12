@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
  *
  * @param suite      {@code IU1}
  * @param transferId 16 octets aléatoires, base64url
- * @param mode       {@code complete} : annoncé une fois téléversé (l'annonce anticipée viendra plus tard)
+ * @param mode       {@code complete} : annoncé une fois téléversé ; {@code early} : annoncé dès la création des
+ *                   morceaux, téléchargeables au fil de leur téléversement (attente longue, § 6.6)
  * @param fileName   nom du paquet (pour le destinataire)
  * @param chunkSize  taille des morceaux
  * @param chunkCount nombre de morceaux
@@ -30,6 +31,7 @@ public record FileDescription(String suite, String transferId, String mode, Stri
                               int chunkCount, long size, String digest, List<Chunk> chunks, Instant expiresAt) {
 
     public static final String COMPLETE = "complete";
+    public static final String EARLY = "early";
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final Pattern ID16 = Pattern.compile("[A-Za-z0-9_-]{22}");
     private static final Pattern ID32 = Pattern.compile("[A-Za-z0-9_-]{43}");
@@ -40,7 +42,7 @@ public record FileDescription(String suite, String transferId, String mode, Stri
             throw new ProtocolException("Suite non prise en charge : " + suite);
         }
         require(transferId != null && ID16.matcher(transferId).matches(), "identifiant de transfert");
-        require(COMPLETE.equals(mode), "mode « " + mode + " »");
+        require(COMPLETE.equals(mode) || EARLY.equals(mode), "mode « " + mode + " »");
         require(fileName != null && NAME.matcher(fileName).matches() && !fileName.contains(".."), "nom de fichier");
         ChunkLayout layout = new ChunkLayout(size, chunkSize, chunkCount);
         require(digest != null && SHA256.matcher(digest).matches(), "empreinte du paquet");
@@ -50,6 +52,11 @@ public record FileDescription(String suite, String transferId, String mode, Stri
         for (int i = 0; i < chunks.size(); i++) {
             require(chunks.get(i).index() == i, "ordre des morceaux");
         }
+    }
+
+    /** Vrai si le fichier est annoncé avant la fin de son téléversement. */
+    public boolean early() {
+        return EARLY.equals(mode);
     }
 
     /** Découpage du paquet décrit. */

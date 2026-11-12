@@ -49,15 +49,31 @@ final class IuStore {
     }
 
     /** Envoi d'un fichier ; {@code state} vaut {@code null} tant que les morceaux ne sont pas créés. */
+    /**
+     * Envoi d'un fichier.
+     *
+     * @param state     morceaux, {@code null} tant qu'ils ne sont pas créés
+     * @param announced téléversé et décrit au destinataire ({@code FileSent} émis)
+     * @param described description déjà envoyée (annonce anticipée : avant la fin du téléversement)
+     */
     record Outgoing(long fileId, long peerId, UUID boxId, String path, IuFileUploader.UploadState state,
-                    boolean announced, Instant createdAt) {
+                    boolean announced, Instant createdAt, boolean described) {
+
+        Outgoing(long fileId, long peerId, UUID boxId, String path, IuFileUploader.UploadState state,
+                 boolean announced, Instant createdAt) {
+            this(fileId, peerId, boxId, path, state, announced, createdAt, announced);
+        }
 
         Outgoing with(IuFileUploader.UploadState updated) {
-            return new Outgoing(fileId, peerId, boxId, path, updated, announced, createdAt);
+            return new Outgoing(fileId, peerId, boxId, path, updated, announced, createdAt, described);
+        }
+
+        Outgoing describedNow() {
+            return new Outgoing(fileId, peerId, boxId, path, state, announced, createdAt, true);
         }
 
         Outgoing announcedNow() {
-            return new Outgoing(fileId, peerId, boxId, path, state, true, createdAt);
+            return new Outgoing(fileId, peerId, boxId, path, state, true, createdAt, true);
         }
     }
 

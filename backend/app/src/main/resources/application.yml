@@ -81,6 +81,8 @@ imagunity:
       relay: ${IMAGUNITY_IU_RELAY:}
       state-dir: ${IMAGUNITY_DATA_DIR:./data}/iu
       ttl: ${IMAGUNITY_IU_TTL:72h}
+      # Annonce anticipée : le destinataire télécharge pendant le téléversement (false : après).
+      early: ${IMAGUNITY_IU_EARLY:true}
 
 spring:
   application:

@@ -38,6 +38,33 @@ class ChunksTest {
     }
 
     @Test
+    void randomPaddingIsReproducibleAndHidesTheExactSize() throws IOException {
+        byte[] packet = new byte[300_000];
+        new Random(4).nextBytes(packet);
+        Path source = Files.write(dir.resolve("aleatoire.iu1"), packet);
+        ChunkLayout layout = ChunkLayout.of(packet.length, 256 * ChunkLayout.KIB);
+        byte[] key = new byte[Chunks.PADDING_KEY];
+        new Random(5).nextBytes(key);
+
+        byte[] last = Chunks.read(source, layout, 1, key);
+        assertThat(Chunks.read(source, layout, 1, key)).as("reproductible à la reprise").isEqualTo(last);
+        int payload = layout.payload(1);
+        byte[] padding = java.util.Arrays.copyOfRange(last, payload, last.length);
+        assertThat(padding).as("pas de zéros").isNotEqualTo(new byte[padding.length]);
+        assertThat(Chunks.read(source, layout, 0, key)).as("morceau plein : pas de remplissage")
+                .isEqualTo(Chunks.read(source, layout, 0));
+        List<String> digests = Chunks.digests(source, layout, key);
+        assertThat(digests.get(1)).isEqualTo(Codec.sha256Hex(last)).isNotEqualTo(Chunks.digests(source, layout).get(1));
+
+        Path target = dir.resolve("aleatoire-recu.iu1");
+        for (int i = 0; i < layout.chunkCount(); i++) {
+            Chunks.write(target, layout, i, Chunks.read(source, layout, i, key), digests.get(i));
+        }
+        assertThat(Files.readAllBytes(target)).isEqualTo(packet);
+        assertThatThrownBy(() -> Chunks.read(source, layout, 1, new byte[3])).hasMessageContaining("remplissage");
+    }
+
+    @Test
     void alteredChunksAreRefused() throws IOException {
         byte[] packet = new byte[300_000];
         new Random(3).nextBytes(packet);
@@ -55,8 +82,8 @@ class ChunksTest {
                 .hasMessageContaining("taille");
         byte[] dirtyPadding = chunk.clone();
         dirtyPadding[dirtyPadding.length - 1] = 9;
-        assertThatThrownBy(() -> Chunks.write(target, layout, 1, dirtyPadding, Codec.sha256Hex(dirtyPadding)))
-                .hasMessageContaining("remplissage");
+        assertThatThrownBy(() -> Chunks.write(target, layout, 1, dirtyPadding, digests.get(1)))
+                .as("remplissage couvert par l'empreinte").hasMessageContaining("altéré");
 
         Files.write(source, new byte[10]);
         assertThatThrownBy(() -> Chunks.read(source, layout, 0)).hasMessageContaining("modifié");
