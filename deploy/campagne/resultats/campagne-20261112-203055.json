@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-12T20:22:58+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.9.0",
+  "scenarios": [
+    {
+      "scenario": "liaison-lente",
+      "instances": 40,
+      "tailleMo": 20.0,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.6,
+        "RECEIVED": 5.45,
+        "PACKAGED": 6.04,
+        "ANNOUNCED": 115.75,
+        "ACKNOWLEDGED": 134.71,
+        "restored": 134.71
+      },
+      "debitBoutEnBout_Mo_s": 0.15,
+      "depotRelais_s": 109.71,
+      "verification": {
+        "instancesA": 40,
+        "instancesB": 40,
+        "identiques": 40
+      },
+      "degradation": "tbf rate 2mbit burst 32kb latency 400ms (sortie de chaque box et du relais)",
+      "tailleMorceaux": "4MB",
+      "restitutionApresTeleversement_s": 18.96
+    },
+    {
+      "scenario": "coupure-liaison-lente",
+      "instances": 40,
+      "tailleMo": 20.0,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.6,
+        "PACKAGED": 6.05,
+        "ANNOUNCED": 201.86,
+        "restored": 220.88,
+        "ACKNOWLEDGED": 221.47
+      },
+      "debitBoutEnBout_Mo_s": 0.09,
+      "depotRelais_s": 195.81,
+      "verification": {
+        "instancesA": 40,
+        "instancesB": 40,
+        "identiques": 40
+      },
+      "coupure_s": 31.06,
+      "retablissement_s": 61.58,
+      "tailleMorceaux": "4MB"
+    }
+  ]
+}

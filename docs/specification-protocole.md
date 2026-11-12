@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.5, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée et remplissage aléatoire faits. Reste l'étape 7 (audit externe). Historique en fin de document.
+> **Statut : v0.6, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée, remplissage aléatoire et taille de morceau adaptative faits. Reste l'étape 7 (audit externe). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -538,7 +538,7 @@ Résultats au moins équivalents à SimpleX, nettement meilleurs sur la coupure 
 
 *Retrait de SimpleX du code* : adaptateur `simplex` (client WebSocket, commandes, événements) et dépendance `Java-WebSocket` retirés ; plus de lien d'invitation ni de demande de contact : `TransportPort.connect(adresse)` appaire la box de l'annuaire qui publie cette adresse, `PairingService` suppose l'annuaire, l'API `/api/v1/peers` ne fait plus que lister. Sans relais configuré, le transport est désactivé (les transferts échouent, la box démarre). La reprise des partenaires d'un parc SimpleX (§ étape 4) reste en place pour les box à basculer.
 
-**Étape 6 — performances (en cours).** Fait : annonce anticipée et remplissage aléatoire (v0.5).
+**Étape 6 — performances (en cours).** Fait : annonce anticipée et remplissage aléatoire (v0.5), taille de morceau adaptée à la liaison (v0.6).
 
 - **Annonce anticipée** (§ 6.6), mode `early` par défaut : description envoyée dès la création des morceaux ; téléchargement en attente longue au fil du téléversement ; abandon signalé au destinataire par le retrait des morceaux (`404`).
 - **Remplissage aléatoire** du dernier morceau (§ 5.2), au lieu de zéros.
@@ -553,7 +553,18 @@ Résultats au moins équivalents à SimpleX, nettement meilleurs sur la coupure 
 | Nominal, pare-feu, destinataire éteint | 12,7 / 10,3 / 108,3 s | 12,7 / 10,2 / 108,2 s | inchangés |
 | Entropie des morceaux sur le relais (minimum) | 5,05 bits/octet (dernier morceau, zéros) | **8,0** | taille exacte du paquet masquée |
 
-Toutes les instances identiques ; aucune donnée en clair sur le relais. Restent, à décider : redondance entre plusieurs relais, taille de morceau adaptée à la liaison, priorité aux séries utiles au diagnostic (priorité 6 du plan).
+Toutes les instances identiques ; aucune donnée en clair sur le relais.
+
+Fait ensuite : **taille de morceau adaptée à la liaison** (v0.6, § 5.2). *Mesuré* sur une liaison bridée à **2 Mbit/s** (sortie de chaque box et du relais), étude de 20 Mo (40 instances), box 0.9.0, box A sans estimation de départ (comme sur un site lent) puis un transfert de rodage ([morceaux de 4 Mio](../deploy/campagne/resultats/campagne-20261112-203055.json), [adaptatifs](../deploy/campagne/resultats/campagne-20261112-203743.json)) :
+
+| Scénario | Morceaux fixes de 4 Mio | Adaptatifs (256 Kio choisis, débit estimé ≈ 115 Kio/s) | Gain |
+|---|---|---|---|
+| Liaison lente | 134,7 s ; restitution **19,0 s** après la fin du téléversement | **105,6 s** ; restitution **1,8 s** après | **−22 %** |
+| Coupure de 30 s pendant le téléversement | 221,5 s | **166,3 s** | **−25 %** |
+
+Une part du gain vient aussi du remplissage : avec 4 Mio, le dernier morceau d'un paquet de 20 Mo téléverse jusqu'à 4 Mio de remplissage. 40/40 instances identiques dans tous les cas. Limite : la moyenne glissante pondère chaque mesure à 0,3 ; une box qui change de liaison (de rapide à lente) s'adapte en quelques envois.
+
+Restent, à décider : redondance entre plusieurs relais, priorité aux séries utiles au diagnostic (priorité 6 du plan).
 
 ---
 
@@ -566,3 +577,4 @@ Toutes les instances identiques ; aucune donnée en clair sur le relais. Restent
 | 0.3 | 2026-11-12 | Décisions pour l'implémentation : appui sur les briques réalisées (annuaire signé, chiffrement applicatif, messages signés, TPM) ; **pas de seconde couche de chiffrement** des morceaux (paquets déjà chiffrés pour le destinataire, § 5) ; **dépôt authentifié par la signature d'identité de la box**, vérifiée par le relais d'après l'annuaire, au lieu de certificats clients (§ 6.4) ; AES-256-GCM au lieu de ChaCha20-Poly1305 (§ 4.1) ; **annonce anticipée reportée** à l'étape 6 (§ 6.6) ; adresse de la file dans le champ `transport` de l'entrée d'annuaire et appairage par l'annuaire (§ 9) ; JSON signé sur ses octets exacts (§ 7) ; correspondance avec le `TransportPort` (§ 13.2) ; métadonnée « couple émetteur / file » rendue explicite (§ 12, question 5) ; SimpleX gardé en parallèle jusqu'à la bascule. |
 | 0.4 | 2026-11-12 | Étape 4 : identifiant de dépôt **réservé par la box** et publié dans sa demande d'enrôlement, accepté par le relais seulement s'il figure dans l'entrée signée de cette box (§ 8.2, § 9) — la création de file exigeant une box déjà enrôlée, la v0.3 ne permettait pas de publier l'adresse à l'enrôlement ; adaptateur `iu`, boîte d'envoi, description en fragments, reprise et bascule depuis SimpleX (§ 13.4). |
 | 0.5 | 2026-11-12 | Étape 6 (première partie) : **annonce anticipée** par défaut (§ 6.6 : attente jusqu'à l'expiration, abandon par retrait des morceaux, sans message `file.cancel`), **remplissage pseudo-aléatoire** du dernier morceau (§ 5.2), mode de la description (§ 7) ; mesures (§ 13.4). |
+| 0.6 | 2026-11-12 | Étape 6 : **taille de morceau adaptée à la liaison** (§ 5.2 : 3 s par morceau au débit mesuré, 512 morceaux au plus par paquet) ; mesures sur liaison à 2 Mbit/s (§ 13.4). |
