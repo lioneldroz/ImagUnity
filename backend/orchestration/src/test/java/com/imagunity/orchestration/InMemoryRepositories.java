@@ -188,5 +188,10 @@ final class InMemoryRepositories {
         public List<Peer> findAll() {
             return List.copyOf(peers.values());
         }
+
+        @Override
+        public void delete(String name) {
+            peers.remove(name);
+        }
     }
 }

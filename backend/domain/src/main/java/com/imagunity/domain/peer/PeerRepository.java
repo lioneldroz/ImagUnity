@@ -18,4 +18,7 @@ public interface PeerRepository {
 
     /** Partenaires, par nom. */
     List<Peer> findAll();
+
+    /** Oublie ce partenaire (contact provisoire jamais vérifié, contact en double). */
+    void delete(String name);
 }

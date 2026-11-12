@@ -6,6 +6,16 @@ import java.nio.file.Path;
 public sealed interface TransportEvent {
 
     /** Un partenaire est connecté : on peut lui envoyer messages et fichiers. */
+    /**
+     * Une box demande à se connecter par l'adresse de contact de cette box ; à accepter par
+     * {@link TransportPort#acceptContactRequest} (ou à ignorer).
+     *
+     * @param requestId   identifiant de la demande dans le transport
+     * @param displayName nom de profil annoncé par le demandeur (information seulement)
+     */
+    record ContactRequested(long requestId, String displayName) implements TransportEvent {
+    }
+
     record PeerConnected(PeerId peer, String displayName) implements TransportEvent {
     }
 

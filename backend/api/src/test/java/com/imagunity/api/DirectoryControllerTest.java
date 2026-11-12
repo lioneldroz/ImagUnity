@@ -35,6 +35,56 @@ class DirectoryControllerTest {
     private final BoxIdentity me = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
     private final BoxIdentity partner = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
 
+    /** Transport : adresse de contact de cette box, connexions demandées. */
+    private static final class Transport implements com.imagunity.transport.TransportPort {
+        final List<String> joined = new java.util.ArrayList<>();
+        boolean noAddress;
+
+        @Override
+        public String contactAddress() {
+            if (noAddress) {
+                throw new com.imagunity.transport.TransportException("transport désactivé");
+            }
+            return "simplex:/contact#box-a";
+        }
+
+        @Override
+        public void acceptInvitation(String link) {
+            joined.add(link);
+        }
+
+        @Override
+        public com.imagunity.transport.Invitation createInvitation() {
+            return null;
+        }
+
+        @Override
+        public void sendMessage(com.imagunity.transport.PeerId peer, String text) {
+        }
+
+        @Override
+        public long sendFile(com.imagunity.transport.PeerId peer, java.nio.file.Path file) {
+            return 0;
+        }
+
+        @Override
+        public void receiveFile(long fileId, java.nio.file.Path target) {
+        }
+
+        @Override
+        public void addListener(java.util.function.Consumer<com.imagunity.transport.TransportEvent> listener) {
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private final Transport transport = new Transport();
+    private final MemoryRepositories.Peers peers = new MemoryRepositories.Peers();
+    private final BoxIdentity silent = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
+    private final BoxIdentity revoked = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
+
     private LocalDirectory directory() {
         EntryCache noCache = new EntryCache() {
             @Override
@@ -48,11 +98,16 @@ class DirectoryControllerTest {
         };
         LocalDirectory directory = new LocalDirectory(new EntryVerifier("chu-exemple", organization.publicKey(),
                 SerialMemory.inMemory(), clock), noCache, clock);
+        SignedDocument revokedEntry = organization.enroll(EnrollmentRequest.create(revoked.keys(), revoked.boxId(),
+                "Site D", Map.of("simplex", "simplex:/contact#d"), NOW), NOW, Duration.ofDays(30), 1);
         directory.synchronize(() -> List.of(
-                organization.enroll(EnrollmentRequest.create(partner.keys(), partner.boxId(), "Site B", Map.of(), NOW),
+                organization.enroll(EnrollmentRequest.create(partner.keys(), partner.boxId(), "Site B",
+                        Map.of("simplex", "simplex:/contact#b"), NOW), NOW, Duration.ofDays(30), 1),
+                organization.enroll(EnrollmentRequest.create(me.keys(), me.boxId(), "Site A",
+                        Map.of("simplex", "simplex:/contact#a"), NOW), NOW, Duration.ofDays(30), 1),
+                organization.enroll(EnrollmentRequest.create(silent.keys(), silent.boxId(), "Site C", Map.of(), NOW),
                         NOW, Duration.ofDays(30), 1),
-                organization.enroll(EnrollmentRequest.create(me.keys(), me.boxId(), "Site A", Map.of(), NOW),
-                        NOW, Duration.ofDays(30), 1)));
+                organization.revoke(revokedEntry, NOW, "Box volée")));
         return directory;
     }
 
@@ -60,7 +115,8 @@ class DirectoryControllerTest {
         return new DirectoryController(
                 enabled ? Providers.of(BoxIdentity.class, me) : Providers.none(BoxIdentity.class),
                 enabled ? Providers.of(LocalDirectory.class, directory()) : Providers.none(LocalDirectory.class),
-                new BoxProperties("box-a"), clock);
+                new BoxProperties("box-a"), clock, transport,
+                new PairingService(peers, transport, clock, Duration.ofHours(1)), peers);
     }
 
     @Test
@@ -70,10 +126,14 @@ class DirectoryControllerTest {
         assertThat(view.enabled()).isTrue();
         assertThat(view.boxId()).isEqualTo(me.boxId());
         assertThat(view.shortCode()).isEqualTo(me.keys().publicKey().shortCode());
-        assertThat(view.lastSync().accepted()).isEqualTo(2);
+        assertThat(view.lastSync().accepted()).isEqualTo(4);
         assertThat(view.lastSync().error()).isNull();
-        assertThat(view.boxes()).extracting(DirectoryController.BoxView::displayName).containsExactly("Site A", "Site B");
-        assertThat(view.boxes()).allSatisfy(b -> assertThat(b.status()).isEqualTo(BoxEntry.Status.ACTIVE));
+        assertThat(view.boxes()).extracting(DirectoryController.BoxView::displayName)
+                .containsExactly("Site A", "Site B", "Site C", "Site D");
+        assertThat(view.boxes()).extracting(DirectoryController.BoxView::status).containsExactly(
+                BoxEntry.Status.ACTIVE, BoxEntry.Status.ACTIVE, BoxEntry.Status.ACTIVE, BoxEntry.Status.REVOKED);
+        assertThat(view.boxes()).extracting(DirectoryController.BoxView::reachable)
+                .containsExactly(true, true, false, true);
     }
 
     @Test
@@ -93,6 +153,10 @@ class DirectoryControllerTest {
 
         EnrollmentRequest request = EnrollmentRequest.verify(SignedDocument.fromJson(response.getBody()));
         assertThat(request.boxId()).isEqualTo(me.boxId());
+        assertThat(request.transport()).containsEntry("simplex", "simplex:/contact#box-a");
+        transport.noAddress = true;
+        assertThat(EnrollmentRequest.verify(SignedDocument.fromJson(controller(true).enrollmentRequest(null).getBody()))
+                .transport()).isEmpty();
         assertThat(request.displayName()).isEqualTo("box-a");
         assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("demande-" + me.boxId());
         assertThat(EnrollmentRequest.verify(SignedDocument.fromJson(named.getBody())).displayName())
@@ -111,5 +175,41 @@ class DirectoryControllerTest {
         assertThat(controller.peers()).extracting(PeerController.PeerView::name, PeerController.PeerView::directoryStatus)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("box-b", BoxEntry.Status.ACTIVE),
                         org.assertj.core.groups.Tuple.tuple("box-c", null));
+    }
+
+    @Test
+    void pairsWithAnActiveBoxOfTheOrganization() {
+        DirectoryController controller = controller(true);
+
+        controller.pair(partner.boxId(), new DirectoryController.PairRequest("site-b"));
+
+        assertThat(transport.joined).containsExactly("simplex:/contact#b");
+        peers.save(new Peer("site-b", 5, "Site B", NOW).boundTo(partner.boxId()));
+        assertThat(controller.directory().boxes()).filteredOn(b -> b.boxId().equals(partner.boxId()))
+                .extracting(DirectoryController.BoxView::pairedAs).containsExactly("site-b");
+        assertThatThrownBy(() -> controller.pair(partner.boxId(), new DirectoryController.PairRequest("x")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("déjà appairée");
+    }
+
+    @Test
+    void pairingRefusals() {
+        DirectoryController controller = controller(true);
+
+        assertThatThrownBy(() -> controller(false).pair(partner.boxId(), new DirectoryController.PairRequest("b")))
+                .isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> controller.pair(UUID.randomUUID(), new DirectoryController.PairRequest("b")))
+                .isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> controller.pair(me.boxId(), new DirectoryController.PairRequest("b")))
+                .hasMessageContaining("cette box");
+        assertThatThrownBy(() -> controller.pair(revoked.boxId(), new DirectoryController.PairRequest("b")))
+                .hasMessageContaining("non active");
+        assertThatThrownBy(() -> controller.pair(silent.boxId(), new DirectoryController.PairRequest("b")))
+                .hasMessageContaining("sans adresse");
+        assertThatThrownBy(() -> controller.pair(partner.boxId(), new DirectoryController.PairRequest("../x")))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(controller.conflict(new IllegalStateException("x")).getStatus()).isEqualTo(409);
+        assertThat(controller.invalid(new IllegalArgumentException("x")).getStatus()).isEqualTo(400);
+        assertThat(controller.transportUnavailable(new com.imagunity.transport.TransportException("x")).getStatus())
+                .isEqualTo(502);
     }
 }

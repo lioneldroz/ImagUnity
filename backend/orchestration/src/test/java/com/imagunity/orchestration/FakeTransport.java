@@ -60,6 +60,18 @@ final class FakeTransport implements TransportPort {
         return id;
     }
 
+    /** Demandes de contact acceptées. */
+    final List<Long> acceptedRequests = new ArrayList<>();
+    boolean failAcceptRequest;
+
+    @Override
+    public void acceptContactRequest(long requestId) {
+        if (failAcceptRequest) {
+            throw new TransportException("demande expirée");
+        }
+        acceptedRequests.add(requestId);
+    }
+
     /** Fichiers retirés des relais. */
     final List<Long> discarded = new ArrayList<>();
     boolean failDiscard;

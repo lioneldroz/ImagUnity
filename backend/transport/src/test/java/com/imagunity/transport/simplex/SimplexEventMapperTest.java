@@ -155,4 +155,11 @@ class SimplexEventMapperTest {
         assertThat(eventMapper.history(mapper.readTree("{\"chatInfo\": {\"type\": \"group\"}}")))
                 .isEmpty();
     }
+
+    @Test
+    void mapsContactRequests() {
+        assertThat(eventMapper.map(mapper.readTree("""
+                {"type": "receivedContactRequest", "contactRequest": {"contactRequestId": 4, "localDisplayName": "box-a"}}
+                """))).containsExactly(new TransportEvent.ContactRequested(4, "box-a"));
+    }
 }

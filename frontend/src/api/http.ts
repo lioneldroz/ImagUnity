@@ -39,3 +39,14 @@ export async function postJson<T>(url: string): Promise<T> {
   const response = await check(await fetch(url, { method: 'POST', headers: CONSOLE_HEADER }))
   return (await response.json()) as T
 }
+
+/** POST d’un corps JSON, sans réponse attendue (202). */
+export async function postBody(url: string, body: unknown): Promise<void> {
+  await check(
+    await fetch(url, {
+      method: 'POST',
+      headers: { ...CONSOLE_HEADER, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}

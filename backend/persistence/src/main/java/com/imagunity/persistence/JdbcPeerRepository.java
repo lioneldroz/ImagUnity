@@ -52,6 +52,11 @@ public final class JdbcPeerRepository implements PeerRepository {
         return jdbc.sql("SELECT * FROM peer ORDER BY name").query(JdbcPeerRepository::peer).list();
     }
 
+    @Override
+    public void delete(String name) {
+        jdbc.sql("DELETE FROM peer WHERE name = ?").param(name).update();
+    }
+
     private static Peer peer(ResultSet rs, int row) throws SQLException {
         return new Peer(rs.getString("name"), rs.getLong("transport_peer_id"), rs.getString("display_name"),
                 JdbcTransferRepository.instant(rs, "paired_at"), rs.getObject("box_id", java.util.UUID.class));

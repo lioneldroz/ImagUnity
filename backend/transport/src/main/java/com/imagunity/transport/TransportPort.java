@@ -52,6 +52,22 @@ public interface TransportPort extends AutoCloseable {
     /** Accepte un fichier annoncé et le télécharge à l'emplacement donné. */
     void receiveFile(long fileId, Path target);
 
+    /**
+     * Adresse de contact durable de cette box (créée au premier appel), publiée dans l'annuaire : une box de
+     * l'organisation s'y connecte avec {@link #acceptInvitation}, et cette box reçoit un
+     * {@link TransportEvent.ContactRequested}.
+     *
+     * @throws TransportException si le transport ne propose pas d'adresse de contact
+     */
+    default String contactAddress() {
+        throw new TransportException("Ce transport ne propose pas d'adresse de contact");
+    }
+
+    /** Accepte une demande de contact reçue par l'adresse de cette box. */
+    default void acceptContactRequest(long requestId) {
+        throw new TransportException("Ce transport ne propose pas d'adresse de contact");
+    }
+
     /** Abonne un écouteur à tous les événements du transport. */
     void addListener(Consumer<TransportEvent> listener);
 

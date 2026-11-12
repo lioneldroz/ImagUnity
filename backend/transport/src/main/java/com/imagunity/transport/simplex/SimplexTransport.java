@@ -80,6 +80,28 @@ public final class SimplexTransport implements TransportPort {
         return fileId.asLong();
     }
 
+    /** Adresse de contact du profil ({@code /_show_address}), créée si elle n'existe pas encore. */
+    @Override
+    public synchronized String contactAddress() {
+        JsonNode resp;
+        try {
+            resp = expect(client.command(SimplexCommands.showAddress(userId)), "userContactLink");
+        } catch (SimplexCommandException e) {
+            if (!"userContactLinkNotFound".equals(e.chatError().path("storeError").path("type").asString())) {
+                throw e;
+            }
+            resp = expect(client.command(SimplexCommands.createAddress(userId)), "userContactLinkCreated");
+            LOG.log(Level.INFO, "Adresse de contact créée");
+            return resp.path("connLinkContact").path("connFullLink").asString();
+        }
+        return resp.path("contactLink").path("connLinkContact").path("connFullLink").asString();
+    }
+
+    @Override
+    public void acceptContactRequest(long requestId) {
+        expect(client.command(SimplexCommands.acceptContact(requestId)), "acceptingContactRequest");
+    }
+
     /** {@code /fcancel} : simplex-chat supprime les morceaux du fichier sur les relais XFTP. */
     @Override
     public void discardSentFile(long fileId) {

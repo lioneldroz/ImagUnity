@@ -226,5 +226,9 @@ class DirectoryWiringTest {
         public List<Peer> findAll() {
             return List.of();
         }
+
+        @Override
+        public void delete(String name) {
+        }
     }
 }

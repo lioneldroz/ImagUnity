@@ -21,6 +21,9 @@ final class SimplexEventMapper {
         return switch (resp.path("type").asString()) {
             case "contactConnected", "contactSndReady" -> peerConnected(resp.path("contact"));
             case "newChatItems" -> newChatItems(resp.path("chatItems"));
+            case "receivedContactRequest" -> List.of(new TransportEvent.ContactRequested(
+                    resp.path("contactRequest").path("contactRequestId").asLong(),
+                    resp.path("contactRequest").path("localDisplayName").asString()));
             case "rcvFileComplete" -> rcvFileComplete(resp.path("chatItem"));
             case "sndFileCompleteXFTP" -> sndFileComplete(resp);
             case "rcvFileError" -> List.of(new TransportEvent.FileFailed(
