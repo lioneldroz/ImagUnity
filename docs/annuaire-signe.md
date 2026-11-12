@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **toutes les étapes faites** (A, B, C1, C2a, C2b) : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box, appairage par l'annuaire, annonces et accusés signés. Reste pour le pilote : la protection matérielle ou par phrase de passe des clés privées.
+> Statut : **toutes les étapes faites** (A, B, C1, C2a, C2b) : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box, appairage par l'annuaire, annonces et accusés signés. Clés privées chiffrées par phrase de passe (§ 9) ; le support matériel attend la prise en charge de ML-DSA par les TPM et HSM.
 
 ## 1. Principes
 
@@ -86,6 +86,7 @@ L'outil est en ligne de commande, et le responsable l'exécute sur un poste qui 
 | `enroler --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>` | Vérifie la preuve de possession, affiche l'empreinte de la box à confirmer hors bande, puis signe l'entrée |
 | `revoquer --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>` | Émet l'entrée révoquée (numéro + 1) |
 | `verifier --cle-publique <fichier> --entree <fichier>` | Vérifie une entrée et affiche son état |
+| `proteger --cles <fichier> [--box]` | Chiffre par phrase de passe une clé existante en clair (§ 9) |
 
 Lancement, en attendant un paquet dédié (étape B) :
 
@@ -98,7 +99,7 @@ Le terminal doit être en UTF-8 (`LANG=C.UTF-8` ou équivalent). Sinon, la JVM d
 
 Exemple : l'organisation reçoit l'empreinte `TVF3-WIAA-CQ6V-MZGC-HKTQ-5WEH`, et la box `FI55-3QYO-MVFX-OFXI-CNEK-NQ77`. Après révocation, `verifier` affiche `REVOKED` et sort avec le code 1. Une entrée pèse environ 7,5 Ko, à cause de la clé et de la signature ML-DSA-65.
 
-Les clés privées sont stockées en PKCS#8 dans un fichier JSON, en droits 600. Pour le pilote, il faudra un chiffrement par phrase de passe ou un support matériel (carte à puce, HSM) pour la clé du responsable, et un TPM pour celle de la box.
+Les clés privées sont stockées en PKCS#8 dans un fichier JSON, en droits 600, **chiffrées par phrase de passe** (§ 9).
 
 ## 5. Service d'annuaire (étape B)
 
@@ -221,8 +222,45 @@ Avec l'annuaire, les messages de signalisation passent à l'enveloppe **version 
 - dans la base du client SimpleX de B, l'annonce et l'accusé échangés sont en version 2, signés respectivement par A et par B ;
 - une annonce non signée, envoyée par le canal de A hors de la box A, est refusée par B (« message non signé »), et aucun transfert n'est créé.
 
-## 9. Reste pour le pilote
+## 9. Protection des clés privées
 
-- **Clés privées** de la box et du responsable : protection par phrase de passe, ou par support matériel (TPM pour la box ; carte à puce ou HSM pour le responsable).
+Les clés privées (responsable et box) sont **chiffrées par phrase de passe**, avec uniquement des primitives standard du JDK :
+
+| Élément | Choix |
+|---|---|
+| Dérivation de la clé de chiffrement | PBKDF2-HMAC-SHA256, 600 000 itérations, sel aléatoire de 16 octets |
+| Chiffrement | AES-256-GCM, nonce aléatoire de 12 octets |
+| Données associées | « `IU1-cle` » et l'empreinte de la clé publique : un chiffré transplanté sous une autre clé publique ne s'ouvre pas |
+| Phrase de passe | 12 caractères au moins |
+
+Le fichier garde la clé publique en clair, avec la protection (`protection` : algorithmes, paramètres, sel, nonce, chiffré). Une phrase de passe incorrecte ou un fichier altéré sont refusés : « Phrase de passe incorrecte, ou fichier de clé altéré ». Les fichiers en clair antérieurs restent lisibles et peuvent être chiffrés sur place, en remplaçant le fichier d'un coup et en gardant les droits 600.
+
+**Outil du responsable** :
+- la phrase de passe vient de `IMAGUNITY_PHRASE_ORGANISATION` (clé du responsable) ou de `IMAGUNITY_PHRASE_BOX` (clé de box créée par l'outil) ; sinon elle est saisie au terminal, deux fois à la création ;
+- `--sans-phrase` crée une clé en clair, sur choix explicite et avec un avertissement ;
+- `proteger --cles <fichier> [--box]` chiffre une clé existante ;
+- utiliser une clé en clair affiche un avertissement.
+
+**Box** :
+- la phrase de passe vient de `IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE`, de préférence un **secret Docker** monté hors du volume de données, ou de `..._PASSPHRASE` ;
+- l'identité est créée chiffrée ;
+- une identité existante en clair est **chiffrée sur place** au démarrage suivant, avec le même identifiant de box ;
+- une identité protégée sans phrase, ou avec une mauvaise phrase, empêche la box de démarrer, avec un message explicite ;
+- sans phrase de passe, rien ne change, mais un avertissement est journalisé.
+
+Dans le Compose, `compose.annuaire.yml` passe les phrases en secrets `phrase-box-a` et `phrase-box-b` (fichiers `annuaire/phrase-box-x.txt`, non versionnés).
+
+**Ce que cela protège, et ce que cela ne protège pas.** La phrase de passe protège la clé sur les copies du disque : sauvegardes, volume extrait, disque remplacé. Elle ne protège pas d'un attaquant qui contrôle la box en fonctionnement, car la clé est alors en mémoire. Elle ne protège pas non plus si la phrase est stockée à côté de la clé, d'où le secret monté à part.
+
+**Support matériel.** Les clés sont hybrides (Ed25519 et ML-DSA-65). Or les TPM et les HSM courants ne savent pas encore conserver de clé ML-DSA via PKCS#11. Le passage au matériel attend leur prise en charge ; l'interface `KeyFiles` est le point de remplacement.
+
+**Vérifié en réel** :
+- les box en service, dont les identités étaient en clair, ont été redémarrées avec leur secret : identité chiffrée sur place, **même identifiant**, partenaires toujours vérifiés, transfert réussi (100/100) ;
+- redémarrée sans secret, la box B refuse de démarrer (« Identité de la box protégée par phrase de passe… ») ;
+- avec une mauvaise phrase de passe, elle refuse aussi (« Phrase de passe incorrecte… »).
+
+## 10. Reste pour le pilote
+
+- **Support matériel** (TPM pour la box ; carte à puce ou HSM pour le responsable), dès qu'il prendra en charge ML-DSA.
 - **Lecture de l'annuaire** réservée aux box enrôlées (requêtes signées), si l'organisation le souhaite.
 - **Annonces de très gros examens** : découpage au-delà de la taille d'un message.

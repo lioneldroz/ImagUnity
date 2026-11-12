@@ -5,19 +5,22 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 
 /**
  * Fichiers de clés : clé privée hybride (PKCS#8, droits 600, jamais écrasée) et clé publique d'organisation.
  *
- * <p>Preuve de concept : la clé privée est protégée par les droits du fichier. Pour le pilote : phrase de passe,
- * support matériel (responsable) ou TPM (box).
+ * <p>La clé privée est chiffrée par phrase de passe ({@link KeyProtection}) ; une clé en clair reste lisible (fichiers
+ * antérieurs) et peut être chiffrée sur place ({@link #protect}). Le support matériel (HSM, TPM) attend que ces
+ * équipements prennent en charge ML-DSA.
  */
 public final class KeyFiles {
 
@@ -25,8 +28,16 @@ public final class KeyFiles {
     }
 
     /** Clé privée enregistrée. */
+    /**
+     * Clé privée enregistrée : en clair ({@code ed25519Private}, {@code mlDsa65Private}) ou chiffrée par phrase de
+     * passe ({@code protection}, champs en clair absents).
+     */
     record PrivateKeyFile(String suite, HybridPublicKey.Encoded publicKey, String ed25519Private,
-                          String mlDsa65Private) {
+                          String mlDsa65Private, KeyProtection.Sealed protection) {
+    }
+
+    /** Parties privées, chiffrées ensemble quand la clé est protégée. */
+    record PrivateParts(String ed25519Private, String mlDsa65Private) {
     }
 
     /**
@@ -51,28 +62,106 @@ public final class KeyFiles {
      * @throws FileAlreadyExistsException si le fichier existe : une clé n'est jamais écrasée
      */
     public static void writePrivate(Path file, HybridKeyPair keys) throws IOException {
-        PrivateKeyFile content = new PrivateKeyFile(Suite.ID, keys.publicKey().encoded(),
-                base64(keys.ed25519().getPrivate()), base64(keys.mlDsa65().getPrivate()));
+        writePrivate(file, keys, null);
+    }
+
+    /**
+     * Enregistre une clé privée dans un nouveau fichier, lisible par son seul propriétaire, chiffrée par cette phrase
+     * de passe ({@code null} : en clair, déconseillé).
+     *
+     * @throws FileAlreadyExistsException si le fichier existe : une clé n'est jamais écrasée
+     * @throws IllegalArgumentException   si la phrase de passe est trop courte
+     */
+    public static void writePrivate(Path file, HybridKeyPair keys, char[] passphrase) throws IOException {
+        String content = content(keys, passphrase);
         Path parent = file.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
+        createOwnerOnly(file);
+        Files.writeString(file, content, StandardCharsets.UTF_8);
+    }
+
+    /** Vrai si ce fichier de clé privée est chiffré par phrase de passe. */
+    public static boolean isProtected(Path file) throws IOException {
+        return readFile(file).protection() != null;
+    }
+
+    /**
+     * Chiffre par phrase de passe une clé privée enregistrée en clair ; le fichier est remplacé d'un coup.
+     *
+     * @throws DirectoryException si la clé est déjà protégée
+     */
+    public static void protect(Path file, char[] passphrase) throws IOException {
+        if (isProtected(file)) {
+            throw new DirectoryException("Clé déjà protégée par une phrase de passe : " + file);
+        }
+        String content = content(readPrivate(file), passphrase);
+        Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
+        Files.deleteIfExists(temporary);
+        createOwnerOnly(temporary);
+        Files.writeString(temporary, content, StandardCharsets.UTF_8);
+        Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private static String content(HybridKeyPair keys, char[] passphrase) {
+        PrivateParts parts = new PrivateParts(base64(keys.ed25519().getPrivate()),
+                base64(keys.mlDsa65().getPrivate()));
+        if (passphrase == null) {
+            return Json.write(new PrivateKeyFile(Suite.ID, keys.publicKey().encoded(), parts.ed25519Private(),
+                    parts.mlDsa65Private(), null));
+        }
+        byte[] secret = Json.write(parts).getBytes(StandardCharsets.UTF_8);
+        try {
+            KeyProtection.Sealed sealed = KeyProtection.seal(secret, passphrase, keys.publicKey().fingerprint());
+            return Json.write(new PrivateKeyFile(Suite.ID, keys.publicKey().encoded(), null, null, sealed));
+        } finally {
+            Arrays.fill(secret, (byte) 0);
+        }
+    }
+
+    private static void createOwnerOnly(Path file) throws IOException {
         if (file.getFileSystem().supportedFileAttributeViews().contains("posix")) {
             Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         } else {
             Files.createFile(file);
         }
-        Files.writeString(file, Json.write(content), StandardCharsets.UTF_8);
     }
 
+    /** Lit une clé privée en clair ; une clé protégée demande {@link #readPrivate(Path, char[])}. */
     public static HybridKeyPair readPrivate(Path file) throws IOException {
+        return readPrivate(file, null);
+    }
+
+    /**
+     * Lit une clé privée, protégée ou non (la phrase de passe est ignorée pour une clé en clair).
+     *
+     * @throws DirectoryException si la phrase de passe manque ou est incorrecte, ou si le fichier est altéré
+     */
+    public static HybridKeyPair readPrivate(Path file, char[] passphrase) throws IOException {
+        PrivateKeyFile content = readFile(file);
+        HybridPublicKey publicKey = HybridPublicKey.decode(content.publicKey());
+        PrivateParts parts;
+        if (content.protection() == null) {
+            parts = new PrivateParts(content.ed25519Private(), content.mlDsa65Private());
+        } else {
+            byte[] secret = KeyProtection.open(content.protection(), passphrase, publicKey.fingerprint());
+            try {
+                parts = Json.read(new String(secret, StandardCharsets.UTF_8), PrivateParts.class, "Clé privée");
+            } finally {
+                Arrays.fill(secret, (byte) 0);
+            }
+        }
+        return new HybridKeyPair(
+                new KeyPair(publicKey.ed25519(), privateKey(Suite.ED25519, parts.ed25519Private())),
+                new KeyPair(publicKey.mlDsa65(), privateKey(Suite.ML_DSA_65, parts.mlDsa65Private())));
+    }
+
+    private static PrivateKeyFile readFile(Path file) throws IOException {
         PrivateKeyFile content = Json.read(Files.readString(file, StandardCharsets.UTF_8), PrivateKeyFile.class,
                 "Fichier de clé privée");
         Suite.require(content.suite());
-        HybridPublicKey publicKey = HybridPublicKey.decode(content.publicKey());
-        return new HybridKeyPair(
-                new KeyPair(publicKey.ed25519(), privateKey(Suite.ED25519, content.ed25519Private())),
-                new KeyPair(publicKey.mlDsa65(), privateKey(Suite.ML_DSA_65, content.mlDsa65Private())));
+        return content;
     }
 
     public static void writeOrganizationPublic(Path file, String organization, HybridPublicKey key) throws IOException {

@@ -45,6 +45,10 @@ imagunity:
     # Empreinte courte du responsable, vérifiée hors bande puis recopiée ici : sinon la box refuse de démarrer.
     organization-code: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:}
     identity-file: ${IMAGUNITY_DATA_DIR:./data}/identite-box.json
+    # Phrase de passe qui chiffre la clé de la box : de préférence dans un fichier (secret Docker), hors du volume
+    # de données. Sans elle, la clé est en clair (avertissement au démarrage).
+    identity-passphrase: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE:}
+    identity-passphrase-file: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
   transport:
     simplex:

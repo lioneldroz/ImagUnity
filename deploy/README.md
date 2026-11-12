@@ -62,6 +62,7 @@ Pour que les box utilisent l'annuaire (enrôlement, liaison des partenaires, ref
 
 ```bash
 export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte>
+for b in a b; do head -c 24 /dev/urandom | base64 > annuaire/phrase-box-$b.txt; done   # chiffrent les clés des box
 docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
 ```
 

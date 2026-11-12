@@ -178,6 +178,30 @@ class DirectoryWiringTest {
         BoxIdentity reloaded = DirectoryConfiguration.loadOrCreateIdentity(keys);
         assertThat(reloaded.boxId()).isEqualTo(created.boxId());
         assertThat(reloaded.keys().publicKey().fingerprint()).isEqualTo(created.keys().publicKey().fingerprint());
+
+        // Identité en clair, puis phrase de passe fournie : chiffrée sur place, même identité.
+        char[] phrase = "phrase de la box de test".toCharArray();
+        BoxIdentity migrated = DirectoryConfiguration.loadOrCreateIdentity(keys, phrase);
+        assertThat(migrated.boxId()).isEqualTo(created.boxId());
+        assertThat(KeyFiles.isProtected(keys)).isTrue();
+        assertThat(DirectoryConfiguration.loadOrCreateIdentity(keys, phrase).boxId()).isEqualTo(created.boxId());
+        assertThatThrownBy(() -> DirectoryConfiguration.loadOrCreateIdentity(keys, null))
+                .hasMessageContaining("IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE");
+
+        Path fresh = dir.resolve("neuve/identite.json");
+        DirectoryConfiguration.loadOrCreateIdentity(fresh, phrase);
+        assertThat(KeyFiles.isProtected(fresh)).isTrue();
+
+        Path phraseFile = Files.writeString(dir.resolve("phrase.txt"), "phrase de la box de test\n");
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "ignorée",
+                phraseFile.toString()).passphrase()).isEqualTo(phrase);
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "directe", "")
+                .passphrase()).isEqualTo("directe".toCharArray());
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "", null)
+                .passphrase()).isNull();
+        Path emptyFile = Files.writeString(dir.resolve("vide.txt"), "\n");
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), null,
+                emptyFile.toString()).passphrase()).isNull();
     }
 
     @Test
