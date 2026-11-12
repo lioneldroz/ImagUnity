@@ -1,0 +1,173 @@
+{
+  "date": "2026-11-12T19:59:16+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.8.0",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.64,
+        "RECEIVED": 6.08,
+        "PACKAGED": 6.69,
+        "ANNOUNCED": 9.69,
+        "ACKNOWLEDGED": 12.66,
+        "restored": 12.67
+      },
+      "debitBoutEnBout_Mo_s": 4.16,
+      "depotRelais_s": 3.0,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "pare-feu",
+      "scanAvant": {
+        "net-a": {
+          "ip": "172.30.0.4",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.3",
+          "ports": []
+        }
+      },
+      "scanApres": {
+        "net-a": {
+          "ip": "172.30.0.4",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.3",
+          "ports": []
+        }
+      },
+      "transfert": {
+        "scenario": "pare-feu",
+        "instances": 100,
+        "tailleMo": 50.1,
+        "etatFinal": "ACKNOWLEDGED",
+        "chronologie_s": {
+          "cstore": 0.6,
+          "PACKAGED": 6.03,
+          "ANNOUNCED": 7.86,
+          "ACKNOWLEDGED": 10.23,
+          "restored": 10.24
+        },
+        "debitBoutEnBout_Mo_s": 5.19,
+        "depotRelais_s": 1.83,
+        "verification": {
+          "instancesA": 100,
+          "instancesB": 100,
+          "identiques": 100
+        }
+      }
+    },
+    {
+      "scenario": "liaison-degradee",
+      "instances": 200,
+      "tailleMo": 100.2,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.6,
+        "RECEIVED": 6.61,
+        "PACKAGED": 7.21,
+        "ANNOUNCED": 61.78,
+        "restored": 67.12,
+        "ACKNOWLEDGED": 67.71
+      },
+      "debitBoutEnBout_Mo_s": 1.51,
+      "depotRelais_s": 54.57,
+      "verification": {
+        "instancesA": 200,
+        "instancesB": 200,
+        "identiques": 200
+      },
+      "degradation": "tbf rate 20mbit burst 64kb latency 400ms (sortie de chaque box et du relais)"
+    },
+    {
+      "scenario": "coupure-reseau",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.81,
+        "RECEIVED": 6.63,
+        "PACKAGED": 7.82,
+        "ANNOUNCED": 83.19,
+        "ACKNOWLEDGED": 95.06,
+        "restored": 95.09
+      },
+      "debitBoutEnBout_Mo_s": 3.22,
+      "depotRelais_s": 75.37,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "coupure_s": 10.83,
+      "retablissement_s": 71.83,
+      "annonceApresRetablissement_s": 11.36
+    },
+    {
+      "scenario": "destinataire-eteint",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.61,
+        "PACKAGED": 6.0,
+        "ANNOUNCED": 7.19,
+        "ACKNOWLEDGED": 108.24,
+        "restored": 108.24
+      },
+      "debitBoutEnBout_Mo_s": 0.47,
+      "depotRelais_s": 1.19,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      },
+      "annonce_s": 7.19,
+      "inspectionRelais": {
+        "fichiers": 1329,
+        "octets": 120982045,
+        "marqueursTrouves": {},
+        "entropieMin_bits": 8.0,
+        "volumes": [
+          "imagunity_relay-data",
+          "imagunity_relay-db-data"
+        ],
+        "morceaux": 13,
+        "entropieMoyenne_bits": 8.0
+      },
+      "rallumage_s": 97.19,
+      "restitutionApresRallumage_s": 11.05
+    },
+    {
+      "scenario": "volumineux-2Go",
+      "instances": 1024,
+      "tailleMo": 2048.8,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 5.43,
+        "RECEIVED": 10.83,
+        "PACKAGED": 17.34,
+        "ANNOUNCED": 40.48,
+        "restored": 77.98,
+        "ACKNOWLEDGED": 79.84
+      },
+      "debitBoutEnBout_Mo_s": 28.24,
+      "depotRelais_s": 23.14,
+      "verification": {
+        "instancesA": 1024,
+        "instancesB": 1024,
+        "identiques": 1024
+      }
+    }
+  ]
+}

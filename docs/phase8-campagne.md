@@ -154,3 +154,5 @@ Orthanc A ──C-STORE──► box A ──► relais IU-T (+ annuaire) ◄─
 
 Constat : le **remplissage par des zéros** du dernier morceau laisse voir au relais la taille exacte du paquet (à quelques octets près). Le relais connaît déjà la taille des morceaux, et le paquet est chiffré ; c'est une métadonnée de taille, à traiter avec la taille de morceau adaptative (étape 6) : remplissage aléatoire, ou chiffrement du remplissage.
 
+**Étape 6 (annonce anticipée, remplissage aléatoire)**, mêmes scénarios, box 0.8.0 ([résultats bruts](../deploy/campagne/resultats/campagne-20261112-201012.json)) : liaison bridée **67,7 s** (103,9 s à l'étape 5, −35 %), examen de 2 Go **79,8 s** (92,0 s, −13 %), autres scénarios inchangés ; entropie minimale des morceaux sur le relais **8,0** bits/octet (5,05 avec des zéros). Toutes les instances identiques.
+
