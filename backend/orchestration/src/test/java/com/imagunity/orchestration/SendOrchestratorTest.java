@@ -78,7 +78,7 @@ class SendOrchestratorTest {
         orchestrator.handleStudy(study);
 
         Transfer packaged = transfers.only();
-        assertThat(packaged.state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(packaged.state()).as("annoncé dès les paquets confiés").isEqualTo(TransferState.ANNOUNCED);
         assertThat(packaged.partCount()).isEqualTo(1);
         assertThat(transport.files).singleElement().satisfies(f -> {
             assertThat(f.peer()).isEqualTo(new PeerId(5));
@@ -90,7 +90,8 @@ class SendOrchestratorTest {
         uploadAll();
 
         Transfer announced = transfers.only();
-        assertThat(announced.state()).isEqualTo(TransferState.ANNOUNCED);
+        assertThat(announced.state()).as("le dépôt ne change pas l'état").isEqualTo(TransferState.ANNOUNCED);
+        assertThat(transfers.parts(announced.id())).allSatisfy(p -> assertThat(p.uploaded()).isTrue());
         assertThat(transport.messages).singleElement().satisfies(m -> {
             assertThat(m.peer()).isEqualTo(new PeerId(5));
             TransferAnnouncement a = messages.decodeAnnouncement(m.text()).orElseThrow();
@@ -104,23 +105,20 @@ class SendOrchestratorTest {
     }
 
     @Test
-    void multiPartTransferIsAnnouncedOnlyWhenAllPartsAreUploaded() throws IOException {
+    void multiPartTransferIsAnnouncedOnceAllPartsAreHandedOver() throws IOException {
         orchestrator = orchestrator(new PackagingConfig(2500, 3)); // une série par paquet
         orchestrator.handleStudy(study("box-b", 2, 2));
         assertThat(transport.files).hasSize(2);
+        assertThat(transfers.only().state()).as("annoncé avant le dépôt").isEqualTo(TransferState.ANNOUNCED);
+        assertThat(messages.decodeAnnouncement(transport.messages.getFirst().text()).orElseThrow().parts())
+                .extracting(TransferAnnouncement.Part::index).containsExactly(1, 2);
 
         FakeTransport.SentFile first = transport.files.getFirst();
         orchestrator.onTransportEvent(new TransportEvent.FileSent(first.peer(), first.fileId()));
         orchestrator.onTransportEvent(new TransportEvent.FileSent(first.peer(), first.fileId())); // doublon
-        assertThat(transfers.only().state()).isEqualTo(TransferState.PACKAGED);
-        assertThat(transport.messages).isEmpty();
-
-        FakeTransport.SentFile second = transport.files.get(1);
-        orchestrator.onTransportEvent(new TransportEvent.FileSent(second.peer(), second.fileId()));
-
-        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
-        assertThat(messages.decodeAnnouncement(transport.messages.getFirst().text()).orElseThrow().parts())
-                .extracting(TransferAnnouncement.Part::index).containsExactly(1, 2);
+        assertThat(transfers.parts(transfers.only().id())).extracting(TransferPart::uploaded)
+                .containsExactly(true, false);
+        assertThat(transport.messages).as("une seule annonce").hasSize(1);
     }
 
     @Test
@@ -186,7 +184,7 @@ class SendOrchestratorTest {
         orchestrator.onTransportEvent(new TransportEvent.FileFailed(999, "x"));
         orchestrator.onTransportEvent(new TransportEvent.MessageReceived(new PeerId(5), "bonjour"));
 
-        assertThat(transfers.only().state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
     }
 
     @Test
@@ -198,7 +196,7 @@ class SendOrchestratorTest {
         orchestrator.onTransportEvent(new TransportEvent.FileSent(f.peer(), f.fileId()));
 
         assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
-        assertThat(transport.messages).isEmpty();
+        assertThat(transport.messages).as("seulement l'annonce d'avant l'échec").hasSize(1);
     }
 
     @Test
@@ -210,7 +208,7 @@ class SendOrchestratorTest {
         orchestrator.handleStudy(study);
 
         assertThat(transfers.only().id()).isEqualTo(pending.id());
-        assertThat(transfers.only().state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
     }
 
     @Test
@@ -234,7 +232,7 @@ class SendOrchestratorTest {
 
         assertThat(transfers.transfers.values()).extracting(Transfer::destination)
                 .containsExactlyInAnyOrder("box-b", "box-c");
-        assertThat(transfers.transfers.values()).allSatisfy(t -> assertThat(t.state()).isEqualTo(TransferState.PACKAGED));
+        assertThat(transfers.transfers.values()).allSatisfy(t -> assertThat(t.state()).isEqualTo(TransferState.ANNOUNCED));
         assertThat(transport.files).hasSize(2);
     }
 
@@ -272,7 +270,8 @@ class SendOrchestratorTest {
 
         assertThat(transport.files).singleElement().satisfies(f -> assertThat(f.file()).isEqualTo(p2));
         assertThat(transfers.find(uploaded.id()).orElseThrow().state()).isEqualTo(TransferState.ANNOUNCED);
-        assertThat(transfers.find(packaged.id()).orElseThrow().state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(transfers.find(packaged.id()).orElseThrow().state()).as("tous les paquets confiés : annoncé")
+                .isEqualTo(TransferState.ANNOUNCED);
     }
 
     @Test
@@ -297,10 +296,15 @@ class SendOrchestratorTest {
 
     @Test
     void announcementFailsWhenPeerWasRemoved() throws IOException {
-        orchestrator.handleStudy(study("box-b", 1, 1));
+        // Transfert déposé mais pas annoncé avant l'arrêt (version antérieure), dont le partenaire a disparu.
+        Transfer uploaded = Transfer.received("2.25.2", "IU_TO_B", "box-b", 10, clock.instant()).packaged("g2", 1,
+                clock.instant()).moveTo(TransferState.UPLOADED, clock.instant());
+        transfers.create(uploaded);
+        transfers.saveParts(uploaded.id(), List.of(new TransferPart(uploaded.id(), 1, 1,
+                Files.writeString(dir.resolve("p.tar.zst"), "1"), 1, "c".repeat(64), 8L, true)));
         peers.peers.clear();
 
-        uploadAll();
+        orchestrator.recover();
 
         assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
         assertThat(transfers.only().errorMessage()).contains("non appairé");
@@ -511,7 +515,7 @@ class SendOrchestratorTest {
 
         Transfer retried = orchestrator.retry(transfer.id()).join();
 
-        assertThat(retried.state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(retried.state()).as("annoncé de nouveau dès les paquets confiés").isEqualTo(TransferState.ANNOUNCED);
         assertThat(retried.errorMessage()).isNull();
         assertThat(transport.files).hasSize(2 * sentBefore);
         uploadAll();

@@ -48,11 +48,14 @@ public final class JdbcInboundRepository implements InboundRepository {
     @Override
     public void saveTransfer(InboundTransfer t) {
         jdbc.sql("MERGE INTO inbound_transfer (transfer_id, peer_name, package_group_id, study_uid, part_count, "
-                        + "announcement, state, error_message, created_at, updated_at, restored_instances, ack_sent) "
-                        + "KEY (peer_name, transfer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        + "announcement, state, error_message, created_at, updated_at, restored_instances, ack_sent, "
+                        + "restored_parts, expected_instances) "
+                        + "KEY (peer_name, transfer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 .params(t.transferId(), t.peerName(), t.packageGroupId(), t.studyInstanceUid(), t.partCount(),
                         t.announcement(), t.state().name(), t.errorMessage(), JdbcTransferRepository.utc(t.createdAt()),
-                        JdbcTransferRepository.utc(t.updatedAt()), t.restoredInstances(), t.ackSent())
+                        JdbcTransferRepository.utc(t.updatedAt()), t.restoredInstances(), t.ackSent(),
+                        t.restoredParts().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")),
+                        t.expectedInstances())
                 .update();
     }
 
@@ -109,6 +112,13 @@ public final class JdbcInboundRepository implements InboundRepository {
                 rs.getString("announcement"), InboundTransfer.State.valueOf(rs.getString("state")),
                 rs.getString("error_message"), JdbcTransferRepository.instant(rs, "created_at"),
                 JdbcTransferRepository.instant(rs, "updated_at"), rs.getInt("restored_instances"),
-                rs.getBoolean("ack_sent"));
+                rs.getBoolean("ack_sent"), parts(rs.getString("restored_parts")), rs.getInt("expected_instances"));
+    }
+
+    private static java.util.List<Integer> parts(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return java.util.List.of();
+        }
+        return java.util.Arrays.stream(csv.split(",")).map(String::strip).map(Integer::valueOf).toList();
     }
 }

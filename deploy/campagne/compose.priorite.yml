@@ -1,0 +1,8 @@
+# Essai de la priorité des séries : la box A envoie d'abord les séries « THORAX ».
+services:
+  box-a:
+    environment:
+      IMAGUNITY_PRIORITY_RULES_0_NAME: thorax
+      IMAGUNITY_PRIORITY_RULES_0_PRIORITY: "1"
+      IMAGUNITY_PRIORITY_RULES_0_AND_MODALITY: CT
+      IMAGUNITY_PRIORITY_RULES_0_AND_SERIESDESCRIPTION: "*THORAX*|*POUMON*"

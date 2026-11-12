@@ -4,6 +4,7 @@ import com.github.luben.zstd.ZstdOutputStream;
 import com.imagunity.domain.exam.DicomUids;
 import com.imagunity.domain.exam.ReceivedInstance;
 import com.imagunity.domain.exam.ReceivedStudy;
+import com.imagunity.domain.exam.SeriesPriority;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,9 +58,18 @@ public final class StudyPackager {
         this(config, Clock.systemUTC());
     }
 
+    /** Séries rangées par priorité : les prioritaires dans les premiers paquets. */
+    public StudyPackager(PackagingConfig config, SeriesPriority priority) {
+        this(config, Clock.systemUTC(), priority);
+    }
+
     StudyPackager(PackagingConfig config, Clock clock) {
+        this(config, clock, SeriesPriority.NONE);
+    }
+
+    StudyPackager(PackagingConfig config, Clock clock, SeriesPriority priority) {
         this.config = config;
-        this.planner = new PartPlanner(config.maxPartSize());
+        this.planner = new PartPlanner(config.maxPartSize(), priority);
         this.clock = clock;
     }
 
@@ -79,7 +89,8 @@ public final class StudyPackager {
         }
         Files.createDirectories(outputDir);
 
-        List<List<ReceivedInstance>> plan = planner.plan(study.instances());
+        PartPlanner.Plan planned = planner.planWithPriorities(study.instances());
+        List<List<ReceivedInstance>> plan = planned.parts();
         String groupId = UUID.randomUUID().toString();
         Instant createdAt = clock.instant();
         long studyBytes = 0;
@@ -99,9 +110,9 @@ public final class StudyPackager {
             }
             throw e;
         }
-        LOG.log(Level.INFO, "Étude empaquetée en {0} paquet(s) : {1} instance(s), {2} octets → {3} octets compressés",
-                parts.size(), studyTotals.instances(), studyTotals.bytes(),
-                parts.stream().mapToLong(PackagePart::size).sum());
+        LOG.log(Level.INFO, "Étude empaquetée en {0} paquet(s) : {1} instance(s), {2} octets → {3} octets compressés ; "
+                + "priorités des paquets : {4}", parts.size(), studyTotals.instances(), studyTotals.bytes(),
+                parts.stream().mapToLong(PackagePart::size).sum(), planned.priorities());
         return parts;
     }
 

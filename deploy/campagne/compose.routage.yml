@@ -10,12 +10,12 @@ services:
       IMAGUNITY_DICOM_ROUTING_AET: IU_AUTO
       # 1. Scanners du CHU → box B.
       IMAGUNITY_DICOM_RULES_0_NAME: scanner-chu
-      IMAGUNITY_DICOM_RULES_0_WHEN_MODALITY: CT
-      IMAGUNITY_DICOM_RULES_0_WHEN_INSTITUTIONNAME: "CHU*"
+      IMAGUNITY_DICOM_RULES_0_AND_MODALITY: CT
+      IMAGUNITY_DICOM_RULES_0_AND_INSTITUTIONNAME: "CHU*"
       IMAGUNITY_DICOM_RULES_0_TO_0: box-b
       # 2. IRM → box B et box C (une étude, deux transferts ; box C n'existe pas dans cet environnement).
       IMAGUNITY_DICOM_RULES_1_NAME: irm-deux-sites
-      IMAGUNITY_DICOM_RULES_1_WHEN_MODALITY: MR
+      IMAGUNITY_DICOM_RULES_1_AND_MODALITY: MR
       IMAGUNITY_DICOM_RULES_1_TO_0: box-b
       IMAGUNITY_DICOM_RULES_1_TO_1: box-c
       # Compte DICOMweb du PACS : mot de passe d'essai de cet environnement de test seulement.

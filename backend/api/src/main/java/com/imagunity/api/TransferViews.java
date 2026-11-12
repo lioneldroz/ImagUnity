@@ -49,14 +49,19 @@ public final class TransferViews {
     public record OutboundDetail(Outbound transfer, List<Part> parts) {
     }
 
-    /** Transfert reçu d'un partenaire. */
+    /**
+     * Transfert reçu d'un partenaire.
+     *
+     * @param restoredParts paquets déjà restitués au PACS (restitution au fil de l'eau)
+     */
     public record Inbound(UUID transferId, String peerName, String studyInstanceUid, int partCount,
                           InboundTransfer.State state, String errorMessage, int restoredInstances, boolean ackSent,
-                          Instant createdAt, Instant updatedAt) {
+                          Instant createdAt, Instant updatedAt, int restoredParts) {
 
         static Inbound of(InboundTransfer t) {
             return new Inbound(t.transferId(), t.peerName(), t.studyInstanceUid(), t.partCount(), t.state(),
-                    t.errorMessage(), t.restoredInstances(), t.ackSent(), t.createdAt(), t.updatedAt());
+                    t.errorMessage(), t.restoredInstances(), t.ackSent(), t.createdAt(), t.updatedAt(),
+                    t.restoredParts().size());
         }
     }
 

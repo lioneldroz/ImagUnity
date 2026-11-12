@@ -33,6 +33,29 @@ class DicomInputConfigurationTest {
     }
 
     @Test
+    void routingRulesAcceptAndOrAndTheFormerWhen() {
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        values.put("imagunity.dicom.routing-aet", "IU_AUTO");
+        values.put("imagunity.dicom.rules[0].name", "scanner-ou-irm");
+        values.put("imagunity.dicom.rules[0].and[InstitutionName]", "CHU*");
+        values.put("imagunity.dicom.rules[0].or[Modality]", "CT|MR");
+        values.put("imagunity.dicom.rules[0].or[BodyPartExamined]", "CHEST");
+        values.put("imagunity.dicom.rules[0].to[0]", "box-b");
+        values.put("imagunity.dicom.rules[1].name", "ancien");
+        values.put("imagunity.dicom.rules[1].when[Modality]", "SR");
+        values.put("imagunity.dicom.rules[1].to[0]", "box-c");
+        var source = new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(values);
+        DicomProperties properties = new org.springframework.boot.context.properties.bind.Binder(source)
+                .bind("imagunity.dicom", DicomProperties.class).get();
+
+        var rules = properties.toConfig().rules();
+        assertThat(rules).extracting(com.imagunity.dicom.RoutingRule::describe).containsExactly(
+                "scanner-ou-irm (InstitutionName=CHU*, ou (Modality=CT|MR | BodyPartExamined=CHEST)) → box-b",
+                "ancien (Modality=SR) → box-c");
+        assertThat(rules.getFirst().condition().or()).containsOnlyKeys("Modality", "BodyPartExamined");
+    }
+
+    @Test
     void routingRulesAreBuiltFromTheConfiguration() {
         DicomProperties properties = new DicomProperties(true, "127.0.0.1", 11112, Set.of("ORTHANC_A"), List.of(),
                 storage, Duration.ofSeconds(1), DataSize.ofMegabytes(1), "IU_AUTO", List.of(

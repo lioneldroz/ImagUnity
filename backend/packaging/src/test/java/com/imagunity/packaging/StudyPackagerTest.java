@@ -98,6 +98,21 @@ class StudyPackagerTest {
     }
 
     @Test
+    void prioritySeriesArePackedFirst() throws IOException {
+        ReceivedStudy study = TestStudies.study(in(), 3, 2, 1_000, false);
+        String last = study.instances().getLast().seriesInstanceUid();
+        StudyPackager packager = new StudyPackager(PackagingConfig.defaults(),
+                series -> series.getFirst().seriesInstanceUid().equals(last) ? 1 : 5);
+
+        List<PackagePart> parts = packager.pack(study, out());
+
+        assertThat(parts).hasSize(2);
+        assertThat(parts.getFirst().manifest().series()).as("série prioritaire seule dans le premier paquet")
+                .singleElement().satisfies(s -> assertThat(s.seriesInstanceUid()).isEqualTo(last));
+        assertThat(parts.get(1).manifest().series()).hasSize(2);
+    }
+
+    @Test
     void largeStudyIsSplitBySeries() throws IOException {
         ReceivedStudy study = TestStudies.study(in(), 4, 5, 10_000, false); // 4 séries de 50 000 octets
         StudyPackager packager = new StudyPackager(new PackagingConfig(120_000, 3), clock);

@@ -234,7 +234,7 @@ La box crée tous les morceaux (requêtes légères), envoie aussitôt la descri
 
 - **Abandon** : un envoi en échec retire ses morceaux du relais ; le destinataire, qui les attendait, reçoit `404` (refus définitif) et le téléchargement échoue aussitôt. Le message `file.cancel` prévu n'est donc pas nécessaire.
 - **Contrepartie** : le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires. Il les associe déjà par les acquittements, sur un relais unique ; accepté.
-- L'orchestrateur ne change pas : `FileSent` et l'annonce du transfert (messages signés de l'orchestrateur) suivent toujours la fin du téléversement ; le destinataire restitue l'étude quand il a reçu les paquets **et** l'annonce.
+- L'annonce du transfert (message signé de l'orchestrateur) part dès que tous les paquets sont confiés au transport (v0.7, [priorité des séries](priorite-dicom.md)) ; le destinataire restitue chaque paquet dès qu'il l'a reçu et que l'annonce est arrivée, les séries prioritaires d'abord. `FileSent` suit toujours la fin du téléversement.
 
 ---
 
@@ -564,7 +564,9 @@ Fait ensuite : **taille de morceau adaptée à la liaison** (v0.6, § 5.2). *Mes
 
 Une part du gain vient aussi du remplissage : avec 4 Mio, le dernier morceau d'un paquet de 20 Mo téléverse jusqu'à 4 Mio de remplissage. 40/40 instances identiques dans tous les cas. Limite : la moyenne glissante pondère chaque mesure à 0,3 ; une box qui change de liaison (de rapide à lente) s'adapte en quelques envois.
 
-Restent, à décider : redondance entre plusieurs relais, priorité aux séries utiles au diagnostic (priorité 6 du plan).
+Fait ensuite : **priorité aux séries utiles au diagnostic** (priorité 6 du plan), avec annonce du transfert dès les paquets confiés et restitution au fil de l'eau : voir [priorite-dicom.md](priorite-dicom.md). Sur liaison à 20 Mbit/s, une série prioritaire arrivée en dernier est complète chez le destinataire en 13,3 s au lieu de 61,0 s, l'étude entière restant à 61 s.
+
+Reste, à décider : redondance entre plusieurs relais.
 
 ---
 

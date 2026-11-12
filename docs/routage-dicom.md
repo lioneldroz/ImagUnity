@@ -20,22 +20,22 @@ imagunity:
     routing-aet: IU_AUTO
     rules:
       - name: scanner-urgences
-        when: {Modality: CT, InstitutionName: "CHU*"}
+        and: {Modality: CT, InstitutionName: "CHU*"}
         to: [box-b]
-      - name: irm
-        when: {Modality: MR}
+      - name: irm-ou-scanner-du-thorax
+        or: {Modality: MR, BodyPartExamined: "CHEST|THORAX"}
         to: [box-b, box-c]
       - name: tout-le-reste-sauf-sr
-        when: {Modality: "!SR"}
+        and: {Modality: "!SR|KO"}
         to: [box-b]
 ```
 
 - Les règles sont lues **dans l'ordre**, et **la première qui correspond s'applique**.
 - Une règle peut désigner **plusieurs partenaires** : l'étude part vers chacun, en un transfert distinct par partenaire, chacun avec son suivi, son accusé et sa relance.
 - **Conditions** : un mot-clé DICOM du dictionnaire standard (`Modality`, `InstitutionName`, `StudyDescription`, `ReferringPhysicianName`, `BodyPartExamined`…), associé à un motif.
-  - Dans un motif, `*` remplace n'importe quelle suite de caractères et `?` un seul caractère.
+  - `and` : toutes les conditions doivent être remplies ; `or` : une seule suffit ; les deux ensemble : toutes celles de `and` et au moins une de `or`. L'ancien `when` reste accepté (même sens que `and`). Syntaxe commune avec la [priorité des séries](priorite-dicom.md).
+  - Dans un motif, `*` remplace n'importe quelle suite de caractères et `?` un seul caractère ; `|` sépare des valeurs possibles (`CHEST|THORAX`).
   - La casse et les espaces autour de la valeur sont ignorés, et un `!` initial inverse la condition.
-  - Toutes les conditions d'une règle doivent être remplies.
   - Un champ à plusieurs valeurs (`ImageType`) convient si l'une d'elles correspond.
   - Un champ absent vaut la chaîne vide : `""` retient les instances sans ce champ, `"!"` celles qui l'ont.
   - Une règle sans condition retient tout.
@@ -54,8 +54,9 @@ imagunity:
 ```yaml
 IMAGUNITY_DICOM_ROUTING_AET: IU_AUTO
 IMAGUNITY_DICOM_RULES_0_NAME: scanner-urgences
-IMAGUNITY_DICOM_RULES_0_WHEN_MODALITY: CT
-IMAGUNITY_DICOM_RULES_0_WHEN_INSTITUTIONNAME: "CHU*"
+IMAGUNITY_DICOM_RULES_0_AND_MODALITY: CT
+IMAGUNITY_DICOM_RULES_0_AND_INSTITUTIONNAME: "CHU*"
+IMAGUNITY_DICOM_RULES_1_OR_MODALITY: MR          # une règle « or »
 IMAGUNITY_DICOM_RULES_0_TO_0: box-b
 ```
 
@@ -71,7 +72,7 @@ Exemple complet : `deploy/campagne/compose.routage.yml`.
 
 ## 4. Limites
 
-- **Pas de règle sur des combinaisons** (OU entre conditions, comparaisons de dates ou de nombres). On écrit plusieurs règles dans l'ordre voulu.
+- **Pas de comparaison de dates ni de nombres**, ni d'imbrication (A et B) ou (C et D) : on écrit plusieurs règles dans l'ordre voulu.
 - **Règles fixées par la configuration**, au démarrage. Elles ne se modifient pas encore depuis la console.
 - Un partenaire désigné mais non appairé fait échouer **son** transfert (« Partenaire non appairé ») ; les autres partenaires de la même règle ne sont pas touchés. Une fois le partenaire appairé, le transfert se relance depuis la console.
 

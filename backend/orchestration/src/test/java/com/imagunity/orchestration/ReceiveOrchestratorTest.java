@@ -150,10 +150,15 @@ class ReceiveOrchestratorTest {
 
         download(second, parts.get(1));
         assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.ANNOUNCED);
+        assertThat(onlyTransfer().partiallyRestored()).as("paquet 2 restitué sans attendre le 1").isTrue();
+        assertThat(onlyTransfer().restoredParts()).containsExactly(2);
+        assertThat(restored).hasSize(1);
         download(first, parts.get(0));
 
         assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
-        assertThat(restored.getFirst()).hasSize(4);
+        assertThat(onlyTransfer().restoredParts()).containsExactly(2, 1);
+        assertThat(onlyTransfer().restoredInstances()).isEqualTo(4);
+        assertThat(restored).hasSize(2).allSatisfy(call -> assertThat(call).hasSize(2));
     }
 
     @Test

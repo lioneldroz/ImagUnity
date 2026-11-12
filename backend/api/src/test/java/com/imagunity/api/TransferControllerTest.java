@@ -170,7 +170,7 @@ class TransferControllerTest {
 
         TransferViews.Outbound retried = controller.retry(t.id());
 
-        assertThat(retried.state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(retried.state()).as("paquets confiés de nouveau, transfert annoncé").isEqualTo(TransferState.ANNOUNCED);
         assertThat(retried.errorMessage()).isNull();
         assertThat(transport.sent).containsExactly(file);
     }

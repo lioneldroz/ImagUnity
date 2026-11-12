@@ -52,13 +52,37 @@ public record DicomProperties(
     }
 
     /**
-     * Règle de routage par champ DICOM.
+     * Règle de routage par champ DICOM ({@link com.imagunity.dicom.DicomCondition}).
      *
      * @param name nom de la règle (journaux)
-     * @param when conditions : mot-clé DICOM → motif ({@code *}, {@code ?}, {@code !} pour la négation)
+     * @param and  champs qui doivent tous correspondre : mot-clé DICOM → motif ({@code *}, {@code ?}, {@code |},
+     *             {@code !})
+     * @param or   champs dont un seul suffit
+     * @param when ancien nom de {@code and}, toujours accepté
      * @param to   partenaires destinataires
      */
-    public record Rule(String name, Map<String, String> when, List<String> to) {
+    public record Rule(String name, Map<String, String> and, Map<String, String> or, Map<String, String> when,
+                       List<String> to) {
+
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public Rule {
+        }
+
+        /** Règle dont tous les champs doivent correspondre. */
+        public Rule(String name, Map<String, String> when, List<String> to) {
+            this(name, null, null, when, to);
+        }
+
+        com.imagunity.dicom.DicomCondition condition() {
+            Map<String, String> all = new LinkedHashMap<>();
+            if (when != null) {
+                all.putAll(when);
+            }
+            if (and != null) {
+                all.putAll(and);
+            }
+            return new com.imagunity.dicom.DicomCondition(all, or);
+        }
     }
 
     /**
@@ -78,7 +102,7 @@ public record DicomProperties(
             }
         }
         List<RoutingRule> routingRules = rules == null ? List.of() : rules.stream()
-                .map(rule -> new RoutingRule(rule.name(), rule.when(), rule.to())).toList();
+                .map(rule -> new RoutingRule(rule.name(), rule.condition(), rule.to())).toList();
         return new DicomInputConfig(bindAddress, port, allowedCallingAets, routeMap, storageDir, studyIdleTimeout,
                 minFreeSpace.toBytes(), routingAet, routingRules);
     }

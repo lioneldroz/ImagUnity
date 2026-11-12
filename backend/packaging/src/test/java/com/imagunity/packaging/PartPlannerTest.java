@@ -87,4 +87,40 @@ class PartPlannerTest {
     void emptyInputGivesNoPart() {
         assertThat(new PartPlanner(100).plan(List.of())).isEmpty();
     }
+
+    /** Priorité selon le préfixe de la série : « p1… » → 1, « p9… » → 9, sinon la priorité par défaut. */
+    private static int priority(List<ReceivedInstance> series) {
+        String uid = series.getFirst().seriesInstanceUid();
+        return uid.startsWith("p") ? uid.charAt(1) - '0' : com.imagunity.domain.exam.SeriesPriority.DEFAULT;
+    }
+
+    @Test
+    void prioritySeriesComeFirstInTheirOwnParts() {
+        List<ReceivedInstance> all = new ArrayList<>();
+        all.addAll(series("1.1", 3, 10));     // défaut (5), arrivée en premier
+        all.addAll(series("p9.1", 2, 10));    // localisateurs, en dernier
+        all.addAll(series("p1.1", 2, 10));    // prioritaire
+        all.addAll(series("1.2", 2, 10));     // défaut
+        all.addAll(series("p1.2", 1, 10));    // prioritaire, arrivée plus tard
+
+        PartPlanner.Plan plan = new PartPlanner(1000, PartPlannerTest::priority).planWithPriorities(all);
+
+        assertThat(plan.parts()).extracting(PartPlannerTest::seriesOf).containsExactly(
+                List.of("p1.1", "p1.2"), List.of("1.1", "1.2"), List.of("p9.1"));
+        assertThat(plan.priorities()).containsExactly(1, 5, 9);
+    }
+
+    @Test
+    void largePrioritySeriesAreStillSplitAndPrioritiesAreBounded() {
+        List<ReceivedInstance> all = new ArrayList<>();
+        all.addAll(series("1.1", 2, 40));
+        all.addAll(series("p1.1", 5, 40));    // 200 octets : coupée en paquets de 100
+        PartPlanner.Plan plan = new PartPlanner(100, PartPlannerTest::priority).planWithPriorities(all);
+        assertThat(plan.priorities()).containsExactly(1, 1, 1, 5);
+        assertThat(plan.parts().getLast()).extracting(ReceivedInstance::seriesInstanceUid).containsOnly("1.1");
+
+        PartPlanner bounded = new PartPlanner(1000, s -> s.getFirst().seriesInstanceUid().equals("1.1") ? -3 : 42);
+        assertThat(bounded.planWithPriorities(all).priorities()).as("ramenées entre 1 et 9").containsExactly(1, 9);
+    }
 }
+
