@@ -45,6 +45,39 @@ services:
       relais:
         ipv4_address: 172.30.0.11
 
+  # --- Annuaire de l'organisation (profil « annuaire ») ----------------------
+  # Publie les entrées de box signées par le responsable. Clé publique de l'organisation attendue dans
+  # ./annuaire/organisation.pub.json (voir docs/annuaire-signe.md).
+
+  directory-db:
+    image: postgres:17
+    profiles: [annuaire]
+    environment:
+      POSTGRES_DB: annuaire
+      POSTGRES_USER: annuaire
+      POSTGRES_PASSWORD: essai-synthetique   # environnement de test uniquement
+    volumes:
+      - directory-db-data:/var/lib/postgresql/data
+    networks: [relais]
+
+  directory:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/directory/Dockerfile
+    profiles: [annuaire]
+    environment:
+      IMAGUNITY_DIRECTORY_DB_URL: jdbc:postgresql://directory-db:5432/annuaire
+      IMAGUNITY_DIRECTORY_DB_PASSWORD: essai-synthetique
+      IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
+      # Compte de dépôt du responsable : environnement de test uniquement.
+      IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD: essai-synthetique
+    volumes:
+      - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro
+    depends_on: [directory-db]
+    networks: [relais]
+    ports:
+      - "8090:8090"
+
   # --- Box A (émettrice) -----------------------------------------------------
 
   # Pile réseau de la box A, partagée par chat-a et box-a comme dans un pod : le client SimpleX et la
@@ -202,6 +235,7 @@ networks:
         - subnet: 172.31.2.0/24
 
 volumes:
+  directory-db-data:
   smp-config:
   smp-logs:
   xftp-config:

@@ -1,0 +1,28 @@
+imagunity:
+  directory:
+    # Clé publique de l'organisation (fichier .pub.json produit par « organisation-creer ») : toute entrée déposée
+    # doit être signée par elle. Les box revérifient tout de leur côté.
+    organization-key: ${IMAGUNITY_DIRECTORY_ORGANIZATION_KEY:./organisation.pub.json}
+    # Compte de dépôt du responsable (HTTP Basic). Sans mot de passe : un mot de passe aléatoire est généré et journalisé.
+    publisher-user: ${IMAGUNITY_DIRECTORY_PUBLISHER_USER:responsable}
+    publisher-password: ${IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD:}
+
+spring:
+  application:
+    name: imagunity-directory
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${IMAGUNITY_DIRECTORY_DB_URL:jdbc:postgresql://localhost:5432/annuaire}
+    username: ${IMAGUNITY_DIRECTORY_DB_USER:annuaire}
+    password: ${IMAGUNITY_DIRECTORY_DB_PASSWORD:}
+
+server:
+  port: ${IMAGUNITY_DIRECTORY_PORT:8090}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
