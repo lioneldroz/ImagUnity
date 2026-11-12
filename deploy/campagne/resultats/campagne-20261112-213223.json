@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-12T21:31:16+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.10.0",
+  "scenarios": [
+    {
+      "scenario": "priorite",
+      "instances": 190,
+      "tailleMo": 95.2,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.22,
+        "RECEIVED": 6.08,
+        "PACKAGED": 6.67,
+        "ANNOUNCED": 9.07,
+        "ACKNOWLEDGED": 61.3,
+        "restored": 61.3
+      },
+      "debitBoutEnBout_Mo_s": 1.58,
+      "depotRelais_s": 2.4,
+      "verification": {
+        "instancesA": 190,
+        "instancesB": 190,
+        "identiques": 190
+      },
+      "serieThorax_s": 13.25,
+      "reglesPriorite": [
+        "thorax : 1"
+      ]
+    }
+  ]
+}

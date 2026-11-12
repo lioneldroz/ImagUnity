@@ -564,7 +564,9 @@ Fait ensuite : **taille de morceau adaptée à la liaison** (v0.6, § 5.2). *Mes
 
 Une part du gain vient aussi du remplissage : avec 4 Mio, le dernier morceau d'un paquet de 20 Mo téléverse jusqu'à 4 Mio de remplissage. 40/40 instances identiques dans tous les cas. Limite : la moyenne glissante pondère chaque mesure à 0,3 ; une box qui change de liaison (de rapide à lente) s'adapte en quelques envois.
 
-Restent, à décider : redondance entre plusieurs relais, priorité aux séries utiles au diagnostic (priorité 6 du plan).
+Fait ensuite : **priorité aux séries utiles au diagnostic** (priorité 6 du plan), avec annonce du transfert dès les paquets confiés et restitution au fil de l'eau : voir [priorite-dicom.md](priorite-dicom.md). Sur liaison à 20 Mbit/s, une série prioritaire arrivée en dernier est complète chez le destinataire en 13,3 s au lieu de 61,0 s, l'étude entière restant à 61 s.
+
+Reste, à décider : redondance entre plusieurs relais.
 
 ---
 

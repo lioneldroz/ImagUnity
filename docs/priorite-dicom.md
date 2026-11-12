@@ -90,4 +90,13 @@ Les [règles de routage](routage-dicom.md) acceptent la même syntaxe : `and`, `
 
 ## 6. Vérifié en réel (pile Docker, novembre 2026)
 
-Voir § 7, complété après l'essai.
+Pile de la campagne (box en version signée 0.10.0, transport IU-T, liaison bridée à **20 Mbit/s** en sortie de chaque box et du relais), scénario `priorite` : étude CT synthétique de **4 séries, 190 instances, 95 Mo**, dont une petite série `THORAX` (10 instances) **arrivée en dernier**. Règle de la box A : `thorax : priorité 1 (Modality=CT, SeriesDescription=*THORAX*|*POUMON*)` ([`compose.priorite.yml`](../deploy/campagne/compose.priorite.yml)).
+
+| | Sans règle | Avec la règle |
+|---|---|---|
+| Paquets | 1 | 2 (priorités 1 puis 5) |
+| Série THORAX complète chez Orthanc B | 61,0 s | **13,3 s** (−78 %) |
+| Étude entière restituée et accusée | 61,6 s | 61,3 s |
+| Vérification | 190/190 identiques | 190/190 identiques |
+
+La box B restitue le paquet prioritaire (10 instances) dès sa réception, puis le reste ; l'accusé part à la fin. Résultats bruts : [sans règle](../deploy/campagne/resultats/campagne-20261112-213100.json), [avec la règle](../deploy/campagne/resultats/campagne-20261112-213223.json).
