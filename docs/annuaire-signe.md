@@ -224,6 +224,8 @@ Avec l'annuaire, les messages de signalisation passent à l'enveloppe **version 
 - dans la base du client SimpleX de B, l'annonce et l'accusé échangés sont en version 2, signés respectivement par A et par B ;
 - une annonce non signée, envoyée par le canal de A hors de la box A, est refusée par B (« message non signé »), et aucun transfert n'est créé.
 
+**Démarrage** : la vue locale de l'annuaire (entrées vérifiées, gardées en base) est chargée **avant** l'orchestration et le rattrapage des messages reçus pendant l'arrêt. Les versions précédentes la chargeaient après : un accusé arrivé pendant l'arrêt d'une box était alors refusé, faute d'entrée pour son émetteur, et le transfert restait « annoncé ». Vérifié en réel : A est arrêtée juste après l'annonce, B restitue l'étude et confirme pendant l'arrêt, puis l'accusé est accepté 8 s après le redémarrage de A. Une box absente de la vue locale est désormais signalée comme telle (« box absente de la vue locale de l'annuaire »), et plus comme une « signature invalide ».
+
 ## 9. Protection des clés privées
 
 Les clés privées (responsable et box) sont **chiffrées par phrase de passe**, avec uniquement des primitives standard du JDK :

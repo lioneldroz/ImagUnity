@@ -79,7 +79,10 @@ public final class MessageSigner {
             return refuse(from, type, "signé par une autre box que celle de ce partenaire");
         }
         Optional<BoxEntry> entry = directory.entry(sender);
-        if (entry.isEmpty() || !HybridKeyPair.verify(entry.get().signingKey(), signedBytes(type, payload), signature)) {
+        if (entry.isEmpty()) {
+            return refuse(from, type, "box absente de la vue locale de l'annuaire");
+        }
+        if (!HybridKeyPair.verify(entry.get().signingKey(), signedBytes(type, payload), signature)) {
             return refuse(from, type, "signature invalide");
         }
         return Optional.of(payload);
