@@ -47,7 +47,9 @@ class OrchestrationWiringTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("imagunity.dicom.enabled", () -> "true");
         registry.add("imagunity.dicom.bind-address", () -> "127.0.0.1");
-        registry.add("imagunity.dicom.port", OrchestrationWiringTest::freePort);
+        // Un seul port pour tout le contexte : le fournisseur peut être réévalué à chaque lecture de la propriété.
+        int port = freePort();
+        registry.add("imagunity.dicom.port", () -> port);
         registry.add("imagunity.dicom.storage-dir", () -> dir.resolve("incoming").toString());
         registry.add("imagunity.dicom.allowed-calling-aets[0]", () -> "ORTHANC_A");
         registry.add("imagunity.dicom.routes[0].called-aet", () -> "IU_TO_B");
