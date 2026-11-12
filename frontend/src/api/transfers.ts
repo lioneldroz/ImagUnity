@@ -43,6 +43,8 @@ export interface InboundTransfer {
   state: InboundState
   errorMessage: string | null
   restoredInstances: number
+  /** Paquets déjà restitués au PACS (restitution au fil de l’eau). */
+  restoredParts: number
   ackSent: boolean
   createdAt: string
   updatedAt: string

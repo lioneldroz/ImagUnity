@@ -17,6 +17,7 @@ import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.transport.DisabledTransport;
 import com.imagunity.transport.TransportPort;
 import com.imagunity.transport.iu.IuTransport;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -71,8 +72,10 @@ class TransportConfigurationTest {
     }
 
     @Test
-    void iuTransportNeedsTheDirectory() {
-        var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
+    void iuTransportNeedsTheDirectory() throws IOException {
+        // Dossier hors de @TempDir : le transport démarré peut encore y écrire en arrière-plan à la fin du test.
+        Path state = java.nio.file.Files.createTempDirectory("iu-etat-");
+        var iu = new IuTransportProperties(URI.create("http://relais:8443"), state, Duration.ofHours(72), 2,
                 Duration.ofDays(8), true, "auto");
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());

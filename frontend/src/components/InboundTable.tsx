@@ -51,7 +51,13 @@ export function InboundTable() {
                 <td>
                   <StateBadge label={INBOUND_LABELS[t.state]} tone={tone(t.state)} />
                 </td>
-                <td>{t.state === 'RESTORED' ? t.restoredInstances : '—'}</td>
+                <td>
+                  {t.state === 'RESTORED'
+                    ? t.restoredInstances
+                    : t.state === 'ANNOUNCED' && t.restoredParts > 0
+                      ? `${t.restoredInstances} (partielle : ${t.restoredParts}/${t.partCount} paquets)`
+                      : '—'}
+                </td>
                 <td>{t.state === 'ANNOUNCED' ? '—' : t.ackSent ? 'envoyé' : 'à envoyer'}</td>
                 <td>{formatDate(t.updatedAt)}</td>
               </tr>

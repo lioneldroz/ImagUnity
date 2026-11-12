@@ -203,7 +203,11 @@ public final class SendOrchestrator {
         hand(packaged);
     }
 
-    /** Chiffre pour le destinataire, puis confie au transport, les paquets qui ne l'ont pas encore été. */
+    /**
+     * Chiffre pour le destinataire, puis confie au transport, les paquets qui ne l'ont pas encore été ; une fois tous
+     * confiés, annonce le transfert sans attendre la fin du dépôt : le destinataire restitue chaque paquet dès qu'il
+     * l'a reçu (les séries prioritaires d'abord).
+     */
     private void hand(Transfer transfer) {
         Optional<Peer> peer = peerOf(transfer);
         if (peer.isEmpty()) {
@@ -228,7 +232,7 @@ public final class SendOrchestrator {
                 return;
             }
         }
-        completeUploadIfDone(transfer);
+        transfers.find(transfer.id()).filter(t -> t.state() == TransferState.PACKAGED).ifPresent(this::announce);
     }
 
     /**

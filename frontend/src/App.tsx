@@ -5,6 +5,7 @@ import { InboundTable } from './components/InboundTable'
 import { OutboundTable } from './components/OutboundTable'
 import { OverviewCards } from './components/OverviewCards'
 import { DirectoryCard } from './components/DirectoryCard'
+import { PriorityCard } from './components/PriorityCard'
 import { PeerList } from './components/PeerList'
 
 const STREAM_LABELS: Record<StreamStatus, string> = {
@@ -58,6 +59,11 @@ function App() {
       <section className="card">
         <h2>Annuaire de l’organisation</h2>
         <DirectoryCard />
+      </section>
+
+      <section className="card">
+        <h2>Priorité des séries</h2>
+        <PriorityCard />
       </section>
     </main>
   )

@@ -314,81 +314,100 @@ public final class ReceiveOrchestrator {
 
     // --- Restitution ---
 
+    /**
+     * Restitue au fil de l'eau : chaque paquet reçu (et annoncé) est vérifié et restitué au PACS sans attendre les
+     * autres ; les séries prioritaires, dans les premiers paquets, arrivent ainsi les premières. Une fois tous les
+     * paquets restitués, le nombre d'instances est contrôlé et l'accusé part.
+     */
     private void tryComplete(String peerName, String groupId) {
-        Optional<InboundTransfer> transfer = inbound.findTransferByGroup(peerName, groupId)
+        Optional<InboundTransfer> found = inbound.findTransferByGroup(peerName, groupId)
                 .filter(t -> t.state() == InboundTransfer.State.ANNOUNCED);
-        if (transfer.isEmpty()) {
+        if (found.isEmpty()) {
             return;
         }
-        TransferAnnouncement a = messages.decodeAnnouncement(transfer.get().announcement()).orElseThrow();
+        InboundTransfer transfer = found.get();
+        TransferAnnouncement a = messages.decodeAnnouncement(transfer.announcement()).orElseThrow();
         List<TransferAnnouncement.Part> parts = a.parts().stream()
                 .sorted(Comparator.comparingInt(TransferAnnouncement.Part::index)).toList();
-        List<InboundFile> files = new ArrayList<>();
         for (TransferAnnouncement.Part part : parts) {
+            if (transfer.restoredParts().contains(part.index())) {
+                continue;
+            }
             Optional<InboundFile> file = inbound.findFiles(peerName, part.fileName()).stream()
                     .filter(f -> f.state() == InboundFile.State.DOWNLOADED).findFirst();
             if (file.isEmpty()) {
-                return; // en attente d'autres paquets
+                continue; // pas encore reçu : restitué à son arrivée
             }
-            files.add(file.get());
+            Optional<InboundTransfer> progressed = restorePart(transfer, a, part, file.get());
+            if (progressed.isEmpty()) {
+                return; // échec : transfert en échec, accusé envoyé
+            }
+            transfer = progressed.get();
         }
-        restore(transfer.get(), a, parts, files);
+        if (transfer.restoredParts().size() < parts.size()) {
+            return; // en attente d'autres paquets
+        }
+        if (transfer.restoredInstances() != transfer.expectedInstances()) {
+            fail(transfer, "Étude incomplète : " + transfer.restoredInstances() + " instance(s) sur "
+                    + transfer.expectedInstances());
+            return;
+        }
+        InboundTransfer restored = transfer.restored(transfer.restoredInstances(), clock.instant());
+        inbound.saveTransfer(restored);
+        LOG.log(Level.INFO, "Transfert {0} de {1} restitué au PACS local ({2} instance(s))", transfer.transferId(),
+                transfer.peerName(), restored.restoredInstances());
+        sendAck(restored);
     }
 
-    private void restore(InboundTransfer transfer, TransferAnnouncement a, List<TransferAnnouncement.Part> parts,
-                         List<InboundFile> files) {
-        Path work = inboxDir.resolve(transfer.peerName()).resolve("restore-" + transfer.transferId());
-        int instanceCount;
+    /** Vérifie, déchiffre, dépaquette et restitue un paquet ; rend le transfert mis à jour, vide en cas d'échec. */
+    private Optional<InboundTransfer> restorePart(InboundTransfer transfer, TransferAnnouncement a,
+                                                  TransferAnnouncement.Part part, InboundFile file) {
+        Path work = inboxDir.resolve(transfer.peerName()).resolve("restore-" + transfer.transferId() + "-"
+                + part.index());
+        InboundTransfer progressed;
         try {
-            List<StudyRestorer.Instance> instances = new ArrayList<>();
-            int expectedInstances = -1;
-            for (int i = 0; i < parts.size(); i++) {
-                TransferAnnouncement.Part part = parts.get(i);
-                Path file = files.get(i).file();
-                if (Files.size(file) != part.size() || !sha256(file).equals(part.sha256())) {
-                    throw new IOException("Empreinte du paquet " + part.index() + "/" + part.count()
-                            + " différente de l'annonce");
-                }
-                Path plain = encryption.open(file, part.fileName(), work.resolve("clair-" + part.index()));
-                UnpackedPackage unpacked = reader.unpack(plain, work.resolve("part-" + part.index()));
-                if (!plain.equals(file)) {
-                    Files.delete(plain); // déchiffré, puis dépaqueté : la copie en clair ne sert plus
-                }
-                PackageManifest m = unpacked.manifest();
-                if (!m.packageGroupId().equals(a.packageGroupId()) || m.partIndex() != part.index()
-                        || m.partCount() != part.count() || !m.studyInstanceUid().equals(a.studyInstanceUid())) {
-                    throw new IOException("Manifeste du paquet " + part.index() + " différent de l'annonce");
-                }
-                expectedInstances = m.studyTotals().instances();
-                for (UnpackedPackage.Instance instance : unpacked.instances()) {
-                    instances.add(new StudyRestorer.Instance(instance.seriesInstanceUid(),
-                            instance.entry().sopInstanceUid(), instance.file()));
-                }
+            if (Files.size(file.file()) != part.size() || !sha256(file.file()).equals(part.sha256())) {
+                throw new IOException("Empreinte du paquet " + part.index() + "/" + part.count()
+                        + " différente de l'annonce");
             }
-            if (instances.size() != expectedInstances) {
-                throw new IOException("Étude incomplète : " + instances.size() + " instance(s) sur " + expectedInstances);
+            Path plain = encryption.open(file.file(), part.fileName(), work.resolve("clair"));
+            UnpackedPackage unpacked = reader.unpack(plain, work.resolve("paquet"));
+            if (!plain.equals(file.file())) {
+                Files.delete(plain); // déchiffré, puis dépaqueté : la copie en clair ne sert plus
+            }
+            PackageManifest m = unpacked.manifest();
+            if (!m.packageGroupId().equals(a.packageGroupId()) || m.partIndex() != part.index()
+                    || m.partCount() != part.count() || !m.studyInstanceUid().equals(a.studyInstanceUid())) {
+                throw new IOException("Manifeste du paquet " + part.index() + " différent de l'annonce");
+            }
+            if (transfer.expectedInstances() >= 0 && transfer.expectedInstances() != m.studyTotals().instances()) {
+                throw new IOException("Paquet " + part.index() + " : nombre d'instances de l'étude différent");
+            }
+            List<StudyRestorer.Instance> instances = new ArrayList<>();
+            for (UnpackedPackage.Instance instance : unpacked.instances()) {
+                instances.add(new StudyRestorer.Instance(instance.seriesInstanceUid(),
+                        instance.entry().sopInstanceUid(), instance.file()));
             }
             restorer.restore(a.studyInstanceUid(), instances);
-            instanceCount = instances.size();
+            progressed = transfer.partRestored(part.index(), instances.size(), m.studyTotals().instances(),
+                    clock.instant());
         } catch (IOException | RuntimeException e) {
             fail(transfer, "Restitution impossible : " + e.getMessage());
-            return;
+            return Optional.empty();
         } finally {
             deleteRecursively(work);
         }
-        InboundTransfer restored = transfer.restored(instanceCount, clock.instant());
-        inbound.saveTransfer(restored);
-        for (InboundFile file : files) {
-            inbound.saveFile(file.with(InboundFile.State.CONSUMED, clock.instant()));
-            try {
-                Files.deleteIfExists(file.file());
-            } catch (IOException e) {
-                LOG.log(Level.WARNING, "Paquet reçu non supprimé : " + file.file(), e);
-            }
+        inbound.saveTransfer(progressed);
+        inbound.saveFile(file.with(InboundFile.State.CONSUMED, clock.instant()));
+        try {
+            Files.deleteIfExists(file.file());
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Paquet reçu non supprimé : " + file.file(), e);
         }
-        LOG.log(Level.INFO, "Transfert {0} de {1} restitué au PACS local ({2} instance(s))", transfer.transferId(),
-                transfer.peerName(), instanceCount);
-        sendAck(restored);
+        LOG.log(Level.INFO, "Transfert {0} de {1} : paquet {2}/{3} restitué au PACS local ({4} instance(s), {5}/{3} "
+                + "paquet(s))", transfer.transferId(), transfer.peerName(), part.index(), part.count(),
+                progressed.restoredInstances() - transfer.restoredInstances(), progressed.restoredParts().size());
+        return Optional.of(progressed);
     }
 
     void recover() {

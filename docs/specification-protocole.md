@@ -234,7 +234,7 @@ La box crée tous les morceaux (requêtes légères), envoie aussitôt la descri
 
 - **Abandon** : un envoi en échec retire ses morceaux du relais ; le destinataire, qui les attendait, reçoit `404` (refus définitif) et le téléchargement échoue aussitôt. Le message `file.cancel` prévu n'est donc pas nécessaire.
 - **Contrepartie** : le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires. Il les associe déjà par les acquittements, sur un relais unique ; accepté.
-- L'orchestrateur ne change pas : `FileSent` et l'annonce du transfert (messages signés de l'orchestrateur) suivent toujours la fin du téléversement ; le destinataire restitue l'étude quand il a reçu les paquets **et** l'annonce.
+- L'annonce du transfert (message signé de l'orchestrateur) part dès que tous les paquets sont confiés au transport (v0.7, [priorité des séries](priorite-dicom.md)) ; le destinataire restitue chaque paquet dès qu'il l'a reçu et que l'annonce est arrivée, les séries prioritaires d'abord. `FileSent` suit toujours la fin du téléversement.
 
 ---
 

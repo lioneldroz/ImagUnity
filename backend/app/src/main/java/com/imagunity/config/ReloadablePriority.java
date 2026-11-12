@@ -3,6 +3,7 @@ package com.imagunity.config;
 import com.imagunity.dicom.DicomCondition;
 import com.imagunity.dicom.PriorityRule;
 import com.imagunity.dicom.PriorityRules;
+import com.imagunity.dicom.PrioritySource;
 import com.imagunity.domain.exam.ReceivedInstance;
 import com.imagunity.domain.exam.SeriesPriority;
 import java.io.IOException;
@@ -33,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
  *                "or": { "ImageType": "*LOCALIZER*", "SeriesDescription": "*SCOUT*|*TOPO*" } } ] }
  * </pre>
  */
-public final class ReloadablePriority implements SeriesPriority {
+public final class ReloadablePriority implements SeriesPriority, PrioritySource {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReloadablePriority.class);
     private static final JsonMapper JSON = JsonMapper.builder()
@@ -53,26 +54,15 @@ public final class ReloadablePriority implements SeriesPriority {
     record DocumentRule(String name, int priority, Map<String, String> and, Map<String, String> or) {
     }
 
-    /**
-     * État présenté à la console.
-     *
-     * @param rules    règles en vigueur
-     * @param source   « fichier &lt;chemin&gt; », « configuration » ou « aucune règle »
-     * @param loadedAt chargement des règles en vigueur
-     * @param error    dernier refus d'un fichier invalide, ou {@code null}
-     */
-    public record State(PriorityRules rules, String source, Instant loadedAt, String error) {
-    }
-
     private final Path file;
     private final Clock clock;
-    private volatile State state;
+    private volatile Snapshot state;
     private FileTime loadedVersion;
 
     private ReloadablePriority(Path file, PriorityRules rules, String source, Clock clock) {
         this.file = file;
         this.clock = clock;
-        this.state = new State(rules, source, clock.instant(), null);
+        this.state = new Snapshot(rules, source, clock.instant(), null);
     }
 
     /**
@@ -127,7 +117,7 @@ public final class ReloadablePriority implements SeriesPriority {
         }
         try {
             PriorityRules rules = parse(Files.readString(file));
-            state = new State(rules, "fichier " + file, clock.instant(), null);
+            state = new Snapshot(rules, "fichier " + file, clock.instant(), null);
             loadedVersion = version;
             logRules();
         } catch (IllegalArgumentException e) {
@@ -136,7 +126,7 @@ public final class ReloadablePriority implements SeriesPriority {
                         e);
             }
             loadedVersion = version;
-            state = new State(state.rules(), state.source(), state.loadedAt(), e.getMessage());
+            state = new Snapshot(state.rules(), state.source(), state.loadedAt(), e.getMessage());
             LOG.warn("Règles de priorité modifiées mais refusées, les précédentes restent en vigueur : {}",
                     e.getMessage());
         }
@@ -148,14 +138,19 @@ public final class ReloadablePriority implements SeriesPriority {
                 rules.rules().size(), rules.describe().isEmpty() ? "" : " : " + String.join(" ; ", rules.describe()));
     }
 
+    @Override
+    public Snapshot snapshot() {
+        return state();
+    }
+
     /** Règles en vigueur, après relecture du fichier s'il a changé. */
-    public State state() {
+    public Snapshot state() {
         if (file != null) {
             try {
                 reload(false);
             } catch (IOException e) {
-                State s = state;
-                state = new State(s.rules(), s.source(), s.loadedAt(), "fichier illisible : " + e.getMessage());
+                Snapshot s = state;
+                state = new Snapshot(s.rules(), s.source(), s.loadedAt(), "fichier illisible : " + e.getMessage());
             }
         }
         return state;

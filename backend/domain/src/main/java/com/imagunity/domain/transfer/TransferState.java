@@ -14,9 +14,12 @@ public enum TransferState {
     RECEIVED,
     /** L'examen est compressé, découpé et son manifeste est calculé. */
     PACKAGED,
-    /** Les morceaux sont déposés sur le relais IU-T. */
+    /** Les morceaux sont déposés sur le relais IU-T (transferts annoncés après le dépôt, avant la v0.10). */
     UPLOADED,
-    /** La description du fichier a été envoyée dans la file de messages du destinataire. */
+    /**
+     * Le transfert est annoncé au destinataire (annonce signée), dès que tous ses paquets sont confiés au transport :
+     * le destinataire les reçoit et les restitue au fil de l'eau pendant le dépôt.
+     */
     ANNOUNCED,
     /** Le destinataire a confirmé que l'examen est arrivé complet et identique. */
     ACKNOWLEDGED,
@@ -36,7 +39,7 @@ public enum TransferState {
     private Set<TransferState> allowedNext() {
         return switch (this) {
             case RECEIVED -> Set.of(PACKAGED, FAILED);
-            case PACKAGED -> Set.of(UPLOADED, FAILED);
+            case PACKAGED -> Set.of(UPLOADED, ANNOUNCED, FAILED);
             case UPLOADED -> Set.of(ANNOUNCED, FAILED);
             case ANNOUNCED -> Set.of(ACKNOWLEDGED, FAILED);
             case ACKNOWLEDGED -> Set.of();

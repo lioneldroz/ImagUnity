@@ -219,7 +219,7 @@ class EncryptedEndToEndTest {
         assertThatThrownBy(() -> sender.doRetry(transfersA.only().id())).hasMessageContaining("absent");
         Files.writeString(plain, "pas un paquet");
         sender.doRetry(transfersA.only().id());
-        assertThat(transfersA.only().state()).isEqualTo(TransferState.PACKAGED);
+        assertThat(transfersA.only().state()).isEqualTo(TransferState.ANNOUNCED);
         assertThat(transportA.files).hasSize(2);
     }
 

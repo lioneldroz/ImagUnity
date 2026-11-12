@@ -152,13 +152,18 @@ def _up(base):
 
 # --- Études synthétiques -------------------------------------------------------
 
-def make_study(directory, series, per_series, side, label):
-    """Étude CT synthétique : pixels aléatoires (incompressibles), identité de patient fictive."""
+def make_study(directory, series, per_series, side, label, descriptions=None):
+    """Étude CT synthétique : pixels aléatoires (incompressibles), identité de patient fictive.
+
+    per_series : nombre d'instances par série, ou liste (une valeur par série) ; descriptions : SeriesDescription
+    de chaque série (facultatif).
+    """
     study_uid = generate_uid()
     files = []
+    counts = per_series if isinstance(per_series, list) else [per_series] * series
     for s in range(1, series + 1):
         series_uid = generate_uid()
-        for i in range(1, per_series + 1):
+        for i in range(1, counts[s - 1] + 1):
             meta = FileMetaDataset()
             meta.MediaStorageSOPClassUID = CTImageStorage
             meta.MediaStorageSOPInstanceUID = generate_uid()
@@ -174,6 +179,8 @@ def make_study(directory, series, per_series, side, label):
             ds.StudyDescription = f"Campagne ImagUnity {label}"
             ds.Modality = "CT"
             ds.SeriesNumber = s
+            if descriptions:
+                ds.SeriesDescription = descriptions[s - 1]
             ds.InstanceNumber = i
             ds.Rows = ds.Columns = side
             ds.SamplesPerPixel = 1
@@ -212,10 +219,12 @@ def delete_study(base, study_uid):
 class Transfer:
     """Envoie une étude d'Orthanc A vers la box B et suit le transfert jusqu'à son terme."""
 
-    def __init__(self, label, series, per_series, side=512):
+    def __init__(self, label, series, per_series, side=512, descriptions=None):
         self.label = label
         self.series, self.per_series, self.side = series, per_series, side
-        self.count = series * per_series
+        self.descriptions = descriptions
+        self.count = sum(per_series) if isinstance(per_series, list) else series * per_series
+        self.series_uids = []
         self.study_uid = None
         self.size = 0
         self.timeline = {}
@@ -226,7 +235,11 @@ class Transfer:
         tmp = Path(tempfile.mkdtemp(prefix="iu-campagne-"))
         try:
             log(f"[{self.label}] génération de {self.count} instances {self.side}×{self.side}")
-            self.study_uid, files = make_study(tmp, self.series, self.per_series, self.side, self.label)
+            self.study_uid, files = make_study(tmp, self.series, self.per_series, self.side, self.label,
+                                               self.descriptions)
+            import pydicom
+            self.series_uids = list(dict.fromkeys(pydicom.dcmread(f, stop_before_pixels=True).SeriesInstanceUID
+                                                  for f in files))
             self.size = sum(f.stat().st_size for f in files)
             log(f"[{self.label}] import dans Orthanc A ({self.size / MO:.1f} Mo)")
             self.orthanc_a_id = upload_to_orthanc_a(files)
@@ -323,8 +336,8 @@ def dataset_digest(base, instance):
     return hashlib.sha256(content[144 + group_length:]).hexdigest()
 
 
-def full_transfer(label, series, per_series, side=512, timeout=1800, during=None):
-    transfer = Transfer(label, series, per_series, side)
+def full_transfer(label, series, per_series, side=512, timeout=1800, during=None, descriptions=None):
+    transfer = Transfer(label, series, per_series, side, descriptions)
     transfer.prepare()
     transfer.send()
     if during:
@@ -497,6 +510,43 @@ def scenario_coupure_lente(cut_seconds=30):
     return result
 
 
+def series_count(base, series_uid):
+    """Instances d'une série présentes dans un Orthanc."""
+    found = http("POST", f"{base}/tools/lookup", series_uid.encode())
+    series = next((f["ID"] for f in found if f["Type"] == "Series"), None)
+    return len(http("GET", f"{base}/series/{series}")["Instances"]) if series else 0
+
+
+def scenario_priorite():
+    """Liaison à 20 Mbit/s, étude de 4 séries dont la dernière arrivée (« THORAX », 10 instances) est prioritaire si
+    la box A a une règle de priorité : délai d'arrivée complète de cette série chez Orthanc B, et de l'étude entière."""
+    rules = http("GET", f"{BOX_A}/api/v1/priority")["rules"]
+    events = {}
+    counts = [60, 60, 60, 10]
+
+    def watch(transfer):
+        thorax = transfer.series_uids[-1]
+        deadline = time.monotonic() + 1800
+        while time.monotonic() < deadline:
+            transfer.poll()
+            if "serieThorax_s" not in events and series_count(ORTHANC_B, thorax) >= counts[-1]:
+                events["serieThorax_s"] = transfer.elapsed()
+                log(f"[priorite] série THORAX complète chez Orthanc B à {events['serieThorax_s']} s")
+            if "restored" in transfer.timeline:
+                return
+            time.sleep(0.5)
+
+    degrade(True)
+    try:
+        result = full_transfer("priorite", 4, counts, during=watch,
+                               descriptions=["ABDOMEN", "PELVIS", "MEMBRES", "THORAX"])
+    finally:
+        degrade(False)
+    result.update(events)
+    result["reglesPriorite"] = [f"{r['name']} : {r['priority']}" for r in rules]
+    return result
+
+
 def scenario_coupure(cut_seconds=60):
     """Coupure réseau de la box A pendant 60 s, au milieu du dépôt des paquets sur le relais.
 
@@ -612,6 +662,7 @@ SCENARIOS = {
     "volumineux": scenario_volumineux,
     "liaison-lente": scenario_liaison_lente,
     "coupure-liaison-lente": scenario_coupure_lente,
+    "priorite": scenario_priorite,
 }
 
 

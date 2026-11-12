@@ -65,7 +65,7 @@ class ReloadablePriorityTest {
         assertThat(priority.state().rules().defaultPriority()).as("défaut du document absent : 5").isEqualTo(5);
 
         write(file, "{ \"rules\": [ { \"name\": \"x\", \"priority\": 1, \"and\": { \"Modalite\": \"MR\" } } ] }", 20);
-        ReloadablePriority.State refused = priority.state();
+        com.imagunity.dicom.PrioritySource.Snapshot refused = priority.state();
         assertThat(refused.rules().describe()).as("précédentes en vigueur").containsExactly("irm : priorité 2 (Modality=MR)");
         assertThat(refused.error()).contains("Modalite");
         assertThat(priority.state().error()).as("même version : pas relue").contains("Modalite");
@@ -75,6 +75,7 @@ class ReloadablePriorityTest {
         Files.delete(file);
         assertThat(priority.state().error()).contains("illisible");
         assertThat(priority.of(List.of())).isEqualTo(5);
+        assertThat(priority.snapshot().rules().describe()).containsExactly("irm : priorité 2 (Modality=MR)");
     }
 
     @Test
