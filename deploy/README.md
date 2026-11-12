@@ -95,14 +95,14 @@ Avec un mot de passe `IMAGUNITY_DICOMWEB_PASSWORD` (compte `pacs` par défaut, d
 
 ### Relais IU-T (en cours)
 
-Le relais IU-T (étape 2 de la [spécification](../docs/specification-protocole.md) : IU-FILE) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
+Le relais IU-T (étapes 2 et 3 de la [spécification](../docs/specification-protocole.md) : morceaux IU-FILE et files de messages IU-MSG) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
 
 ```bash
 export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable>
 docker compose -f docker-compose.yml -f compose.iu.yml --profile annuaire up -d relay
 ```
 
-Les box ne l'utilisent pas encore (étape 4) ; l'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par lui.
+Les box ne l'utilisent pas encore (étape 4) ; l'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par lui (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`). Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
 
 ## Réinitialisation
 

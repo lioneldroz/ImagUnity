@@ -29,7 +29,14 @@ import java.util.stream.Collectors;
  * envoyer  --relais &lt;url&gt; --cles &lt;identité de box&gt; --fichier &lt;f&gt; --etat &lt;f&gt; --description &lt;f&gt;
  *          [--morceau-mio 4] [--duree-heures 72]
  * recevoir --description &lt;f&gt; --sortie &lt;f&gt; [--fait &lt;f&gt;]
+ *
+ * file-creer       --relais &lt;url&gt; --cles &lt;identité&gt; --sortie &lt;file.json&gt;
+ * message-envoyer  --adresse &lt;adresse de file&gt; --cles &lt;identité&gt; --destinataire-chiffrement &lt;clés&gt;
+ *                  --type &lt;type&gt; --corps &lt;texte&gt;
+ * message-relever  --file &lt;file.json&gt; --cles &lt;identité&gt; --annuaire &lt;url&gt; --organisation &lt;.pub.json&gt;
+ *                  [--attente 30]
  * </pre>
+ * Les clés de chiffrement d'une box sont à côté de son identité ({@code <identité>.chiffrement}).
  * L'identifiant de la box est lu dans {@code <identité>.id} ; la phrase de passe de la clé, dans
  * {@code IMAGUNITY_PHRASE_BOX}. Relancé avec le même fichier d'état ({@code --etat}) ou de reprise ({@code --fait}),
  * l'outil reprend là où il s'était arrêté.
@@ -70,6 +77,9 @@ public final class IuFileTool {
             return switch (args[0]) {
                 case "envoyer" -> send(o);
                 case "recevoir" -> receive(o);
+                case "file-creer" -> createQueue(o);
+                case "message-envoyer" -> sendMessage(o);
+                case "message-relever" -> receiveMessages(o);
                 default -> usage();
             };
         } catch (IllegalArgumentException e) {
@@ -83,10 +93,8 @@ public final class IuFileTool {
 
     private int send(Map<String, String> o) throws IOException {
         Path keys = Path.of(require(o, "cles"));
-        String phrase = environment.get("IMAGUNITY_PHRASE_BOX");
-        HybridKeyPair identity = KeyFiles.readPrivate(keys, phrase == null || phrase.isEmpty() ? null
-                : phrase.toCharArray());
-        UUID boxId = UUID.fromString(Files.readString(Path.of(keys + ".id")).strip());
+        HybridKeyPair identity = identity(keys);
+        UUID boxId = boxId(keys);
         Path file = Path.of(require(o, "fichier"));
         Path statePath = Path.of(require(o, "etat"));
         IuFileUploader uploader = new IuFileUploader(new IuFileClient(URI.create(require(o, "relais")), http,
@@ -135,6 +143,71 @@ public final class IuFileTool {
         return 0;
     }
 
+    private int createQueue(Map<String, String> o) throws IOException {
+        Path keys = Path.of(require(o, "cles"));
+        IuMailbox.Queue queue = IuMailbox.create(new IuMsgClient(http, Clock.systemUTC()),
+                URI.create(require(o, "relais")), boxId(keys), identity(keys));
+        Files.writeString(Path.of(require(o, "sortie")), queue.toJson());
+        out.println("File créée ; adresse à publier dans l'annuaire : " + queue.address());
+        return 0;
+    }
+
+    private int sendMessage(Map<String, String> o) throws IOException {
+        Path keys = Path.of(require(o, "cles"));
+        com.imagunity.directory.HybridKemPublicKey recipient = KeyFiles.readEncryptionPrivate(
+                Path.of(require(o, "destinataire-chiffrement")), phrase()).publicKey();
+        IuMessenger messenger = new IuMessenger(new IuMsgClient(http, Clock.systemUTC()), boxId(keys),
+                identity(keys), Clock.systemUTC(), retry);
+        com.imagunity.protocol.SignedMessage sent = messenger.send(QueueAddress.parse(require(o, "adresse")),
+                recipient, require(o, "type"), require(o, "corps"));
+        out.println("Message " + sent.type() + " déposé (" + sent.messageId() + ")");
+        return 0;
+    }
+
+    private int receiveMessages(Map<String, String> o) throws IOException {
+        Path keys = Path.of(require(o, "cles"));
+        IuMailbox.Queue queue = IuMailbox.Queue.fromJson(Files.readString(Path.of(require(o, "file"))));
+        KeyFiles.OrganizationPublicKey organization = KeyFiles.readOrganizationPublic(
+                Path.of(require(o, "organisation")));
+        com.imagunity.directory.LocalDirectory directory = new com.imagunity.directory.LocalDirectory(
+                new com.imagunity.directory.EntryVerifier(organization.organization(), organization.key(),
+                        com.imagunity.directory.SerialMemory.inMemory(), Clock.systemUTC()),
+                new com.imagunity.directory.EntryCache() {
+                    @Override
+                    public void save(UUID boxId, long serial, com.imagunity.directory.SignedDocument document,
+                                     java.time.Instant fetchedAt) {
+                    }
+
+                    @Override
+                    public java.util.List<com.imagunity.directory.SignedDocument> entries() {
+                        return java.util.List.of();
+                    }
+                }, Clock.systemUTC());
+        directory.synchronize(new com.imagunity.directory.DirectoryClient(URI.create(require(o, "annuaire")),
+                Duration.ofSeconds(10))::fetch);
+        IuMailbox mailbox = new IuMailbox(new IuMsgClient(http, Clock.systemUTC()), queue,
+                KeyFiles.readEncryptionPrivate(Path.of(keys + ".chiffrement"), phrase()),
+                id -> directory.entry(id).map(com.imagunity.directory.BoxEntry::signingKey),
+                message -> out.println("Reçu de " + message.boxId() + " : " + message.type() + " « " + message.body()
+                        + " » (émis " + message.createdAt() + ")"), Clock.systemUTC());
+        int delivered = mailbox.pollOnce(Duration.ofSeconds(Long.parseLong(o.getOrDefault("attente", "30"))));
+        out.println(delivered + " message(s) relevé(s)");
+        return 0;
+    }
+
+    private char[] phrase() {
+        String phrase = environment.get("IMAGUNITY_PHRASE_BOX");
+        return phrase == null || phrase.isEmpty() ? null : phrase.toCharArray();
+    }
+
+    private HybridKeyPair identity(Path keys) throws IOException {
+        return KeyFiles.readPrivate(keys, phrase());
+    }
+
+    private static UUID boxId(Path keys) throws IOException {
+        return UUID.fromString(Files.readString(Path.of(keys + ".id")).strip());
+    }
+
     private static void save(Path path, IuFileUploader.UploadState state) {
         try {
             Path temporary = path.resolveSibling(path.getFileName() + ".nouveau");
@@ -159,7 +232,12 @@ public final class IuFileTool {
                 Usage :
                   envoyer  --relais <url> --cles <identité de box> --fichier <f> --etat <f> --description <f>
                            [--morceau-mio 4] [--duree-heures 72]
-                  recevoir --description <f> --sortie <f> [--fait <f>]""");
+                  recevoir --description <f> --sortie <f> [--fait <f>]
+                  file-creer       --relais <url> --cles <identité> --sortie <file.json>
+                  message-envoyer  --adresse <adresse> --cles <identité> --destinataire-chiffrement <clés>
+                                   --type <type> --corps <texte>
+                  message-relever  --file <file.json> --cles <identité> --annuaire <url> --organisation <.pub.json>
+                                   [--attente 30]""");
         return 2;
     }
 }

@@ -22,7 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Câblage du relais : clé du responsable épinglée, vue locale de l'annuaire et sa synchronisation, stockage des
- * morceaux, vérification des requêtes, purge périodique.
+ * morceaux (IU-FILE) et des files de messages (IU-MSG), vérification des requêtes, purge périodique.
  */
 @Configuration(proxyBeanMethods = false)
 class RelayConfiguration {
@@ -128,22 +128,35 @@ class RelayConfiguration {
     }
 
     @Bean
-    Purge purge(ChunkService chunks) {
-        return new Purge(chunks);
+    QueueStore queueStore(DataSource dataSource) {
+        return new QueueStore(dataSource);
     }
 
-    /** Purge des morceaux expirés, chaque minute. */
+    @Bean
+    QueueService queueService(QueueStore store, RelayProperties properties, Clock clock) {
+        return new QueueService(store, properties, clock);
+    }
+
+    @Bean
+    Purge purge(ChunkService chunks, QueueService queues) {
+        return new Purge(chunks, queues);
+    }
+
+    /** Purge des morceaux et des messages expirés, chaque minute. */
     static final class Purge {
 
         private final ChunkService chunks;
+        private final QueueService queues;
 
-        Purge(ChunkService chunks) {
+        Purge(ChunkService chunks, QueueService queues) {
             this.chunks = chunks;
+            this.queues = queues;
         }
 
         @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
         void run() {
             chunks.purge();
+            queues.purge();
         }
     }
 }

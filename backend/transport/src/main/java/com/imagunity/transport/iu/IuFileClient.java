@@ -155,10 +155,7 @@ public final class IuFileClient {
 
     private static HttpRequest.Builder headers(HttpRequest.Builder builder, SignedRequest signed, String keyId,
                                                String signature) {
-        return builder.header(SignedRequest.KEY_ID, keyId)
-                .header(SignedRequest.TIMESTAMP, Long.toString(signed.timestamp()))
-                .header(SignedRequest.REQUEST_ID, signed.requestId())
-                .header(SignedRequest.SIGNATURE, signature);
+        return IuFileClientHeaders.apply(builder, signed, keyId, signature);
     }
 
     private byte[] send(HttpRequest request, int expected) throws IOException {

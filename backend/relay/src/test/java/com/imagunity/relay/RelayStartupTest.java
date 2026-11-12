@@ -21,7 +21,7 @@ class RelayStartupTest {
 
     private static RelayProperties properties(URI url, Path key, String code) {
         return new RelayProperties(Path.of("x"), Duration.ofHours(72), Duration.ofDays(7), Duration.ofHours(24),
-                Duration.ofSeconds(30), DataSize.ofGigabytes(1), DataSize.ofMegabytes(1),
+                Duration.ofSeconds(30), DataSize.ofGigabytes(1), DataSize.ofMegabytes(1), 4,
                 new RelayProperties.Directory(url, key, code, Duration.ofMinutes(5)));
     }
 
