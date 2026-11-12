@@ -23,6 +23,13 @@ import java.util.stream.Stream;
  *
  * <p>Le TPM est désigné par la variable {@code TPM2TOOLS_TCTI} (par défaut {@code /dev/tpmrm0}). Les objets
  * transitoires sont vidés entre deux commandes, pour fonctionner aussi sans gestionnaire de ressources.
+ *
+ * <p>Clé primaire et secret scellé sont exclus de la protection contre les attaques par dictionnaire
+ * ({@code noda}) : sans cela, une box sans surveillance passerait en verrouillage après quelques arrêts non propres
+ * (coupures de courant), que le TPM compte comme des tentatives suspectes, et ne démarrerait plus pendant des heures.
+ * Ces objets n'ont pas de mot de passe à deviner ; le secret est protégé par le TPM lui-même et, si voulu, par la
+ * politique PCR, qui reste obligatoire ({@code userwithauth} absent). Un secret scellé par une version antérieure
+ * (sans {@code noda}) est descellé avec l'ancien modèle, puis scellé de nouveau.
  */
 final class TpmSeal {
 
@@ -31,6 +38,11 @@ final class TpmSeal {
     interface Runner {
         byte[] run(List<String> command, byte[] input) throws IOException;
     }
+
+    /** Modèle de la clé primaire de stockage (attributs par défaut, plus {@code noda}). */
+    static final String PRIMARY_ATTRIBUTES =
+            "restricted|decrypt|fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda";
+    private static final String SEALED_ATTRIBUTES = "fixedtpm|fixedparent|noda";
 
     private final Path publicPart;
     private final Path privatePart;
@@ -62,10 +74,12 @@ final class TpmSeal {
         try {
             Path primary = work.resolve("primaire.ctx");
             flush();
-            run("tpm2_createprimary", "-Q", "-C", "o", "-g", "sha256", "-G", "ecc", "-c", primary.toString());
+            createPrimary(primary, false);
             flush();
             List<String> create = new ArrayList<>(List.of("tpm2_create", "-Q", "-C", primary.toString(), "-i", "-",
-                    "-u", work.resolve("scelle.pub").toString(), "-r", work.resolve("scelle.priv").toString()));
+                    "-u", work.resolve("scelle.pub").toString(), "-r", work.resolve("scelle.priv").toString(),
+                    // Avec une politique PCR, pas de « userwithauth » : la politique est alors obligatoire.
+                    "-a", pcrs != null ? SEALED_ATTRIBUTES : SEALED_ATTRIBUTES + "|userwithauth"));
             if (pcrs != null) {
                 Path values = work.resolve("pcr.bin");
                 Path policy = work.resolve("politique");
@@ -90,17 +104,36 @@ final class TpmSeal {
     }
 
     /**
-     * Descelle le secret.
+     * Descelle le secret ; un secret scellé par une version antérieure est scellé de nouveau, au modèle actuel.
      *
      * @throws IOException si le TPM refuse (autre TPM, état de démarrage différent) ou ne répond pas
      */
     byte[] unseal() throws IOException {
+        IOException current;
+        try {
+            return unseal(false);
+        } catch (IOException e) {
+            current = e;
+        }
+        byte[] secret;
+        try {
+            secret = unseal(true);
+        } catch (IOException legacy) {
+            throw current;
+        }
+        seal(secret);
+        System.getLogger(TpmSeal.class.getName()).log(System.Logger.Level.INFO,
+                "Secret scellé par une version antérieure : scellé de nouveau, exclu du verrouillage anti-force brute");
+        return secret;
+    }
+
+    private byte[] unseal(boolean legacyPrimary) throws IOException {
         Path work = workDir();
         try {
             Path primary = work.resolve("primaire.ctx");
             Path sealed = work.resolve("scelle.ctx");
             flush();
-            run("tpm2_createprimary", "-Q", "-C", "o", "-g", "sha256", "-G", "ecc", "-c", primary.toString());
+            createPrimary(primary, legacyPrimary);
             flush();
             run("tpm2_load", "-Q", "-C", primary.toString(), "-u", publicPart.toString(), "-r",
                     privatePart.toString(), "-c", sealed.toString());
@@ -115,6 +148,16 @@ final class TpmSeal {
         } finally {
             deleteRecursively(work);
         }
+    }
+
+    /** Clé primaire de stockage, recréée à l'identique à chaque usage ; modèle antérieur : sans {@code noda}. */
+    private void createPrimary(Path context, boolean legacy) throws IOException {
+        List<String> command = new ArrayList<>(List.of("tpm2_createprimary", "-Q", "-C", "o", "-g", "sha256", "-G",
+                "ecc", "-c", context.toString()));
+        if (!legacy) {
+            command.addAll(List.of("-a", PRIMARY_ATTRIBUTES));
+        }
+        runner.run(command, null);
     }
 
     private void run(String... command) throws IOException {
@@ -186,7 +229,13 @@ final class TpmSeal {
         if (process.exitValue() != 0) {
             String message = new String(errors, java.nio.charset.StandardCharsets.UTF_8).strip();
             String[] lines = message.split("\n");
-            throw new IOException(command.getFirst() + " a échoué : " + lines[lines.length - 1]);
+            // La ligne qui porte le code du TPM dit la cause ; la dernière n'est souvent que « Unable to run ».
+            String cause = java.util.Arrays.stream(lines).filter(l -> l.contains("tpm:")).findFirst()
+                    .orElse(lines[lines.length - 1]).strip();
+            if (message.contains("lockout")) {
+                cause += " (TPM en verrouillage anti-force brute : voir docs/cles-tpm.md)";
+            }
+            throw new IOException(command.getFirst() + " a échoué : " + cause);
         }
         return output;
     }

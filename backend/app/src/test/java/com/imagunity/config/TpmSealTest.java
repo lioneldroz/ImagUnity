@@ -47,23 +47,25 @@ class TpmSealTest {
                         throw new IOException("rien à vider");
                     }
                 }
-                case "tpm2_createprimary" -> Files.writeString(after(command, "-c"), "primaire " + name);
+                case "tpm2_createprimary" -> Files.writeString(after(command, "-c"), name + "|"
+                        + (command.contains("-a") ? command.get(command.indexOf("-a") + 1) : "ancien"));
                 case "tpm2_pcrread" -> Files.writeString(after(command, "-o"), pcr);
                 case "tpm2_createpolicy" -> Files.writeString(after(command, "-L"),
                         "pcr=" + Files.readString(after(command, "-f")));
                 case "tpm2_create" -> {
                     String policy = command.contains("-L") ? Files.readString(after(command, "-L")) : "";
                     Files.writeString(after(command, "-u"), policy);
-                    Files.write(after(command, "-r"), (name + ":" + new String(input, StandardCharsets.UTF_8))
-                            .getBytes(StandardCharsets.UTF_8));
+                    Files.write(after(command, "-r"), (Files.readString(after(command, "-C")) + "#"
+                            + new String(input, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
                 }
                 case "tpm2_load" -> {
                     String priv = Files.readString(after(command, "-r"));
-                    if (!priv.startsWith(name + ":")) {
+                    String primary = Files.readString(after(command, "-C")) + "#";
+                    if (!priv.startsWith(primary)) {
                         throw new IOException("tpm2_load a échoué : integrity check failed");
                     }
                     Files.writeString(after(command, "-c"), Files.readString(after(command, "-u")) + "|"
-                            + priv.substring(name.length() + 1));
+                            + priv.substring(primary.length()));
                 }
                 case "tpm2_unseal" -> {
                     String[] ctx = Files.readString(after(command, "-c")).split("\\|", 2);
@@ -100,14 +102,42 @@ class TpmSealTest {
                     .containsExactlyInAnyOrder("identite.json.tpm.pub", "identite.json.tpm.priv");
         }
 
+        assertThat(tpm.commands).filteredOn(c -> c.startsWith("tpm2_createprimary"))
+                .allSatisfy(c -> assertThat(c).endsWith("-a " + TpmSeal.PRIMARY_ATTRIBUTES));
+        assertThat(tpm.commands).filteredOn(c -> c.startsWith("tpm2_create "))
+                .allSatisfy(c -> assertThat(c).contains("-a fixedtpm|fixedparent|noda -L ")
+                        .doesNotContain("userwithauth"));
         tpm.pcr = "1";
         assertThatThrownBy(seal::unseal).hasMessageContaining("policy check failed");
         assertThatThrownBy(() -> new TpmSeal(dir.resolve("identite.json"), "sha256:7", new FakeTpm("autre")).unseal())
                 .hasMessageContaining("integrity check failed");
         TpmSeal unbound = new TpmSeal(dir.resolve("libre.json"), null, tpm);
         unbound.seal("libre".getBytes(StandardCharsets.UTF_8));
+        assertThat(tpm.commands).filteredOn(c -> c.startsWith("tpm2_create ") && !c.contains(" -L "))
+                .allSatisfy(c -> assertThat(c).endsWith("-a fixedtpm|fixedparent|noda|userwithauth"));
         tpm.pcr = "2";
         assertThat(new String(unbound.unseal(), StandardCharsets.UTF_8)).isEqualTo("libre");
+    }
+
+    @Test
+    void secretSealedByAnEarlierVersionIsResealedOutsideLockoutProtection() throws IOException {
+        FakeTpm tpm = new FakeTpm("tpm-b");
+        Path base = dir.resolve("ancienne.json");
+        // Secret scellé par la version précédente : clé primaire sans « noda ».
+        Files.writeString(Path.of(base + ".tpm.pub"), "");
+        Files.writeString(Path.of(base + ".tpm.priv"), "tpm-b|ancien#vieux-secret");
+        TpmSeal seal = new TpmSeal(base, "", tpm);
+
+        assertThat(new String(seal.unseal(), StandardCharsets.UTF_8)).isEqualTo("vieux-secret");
+
+        assertThat(Files.readString(Path.of(base + ".tpm.priv")))
+                .isEqualTo("tpm-b|" + TpmSeal.PRIMARY_ATTRIBUTES + "#vieux-secret");
+        tpm.commands.clear();
+        assertThat(new String(seal.unseal(), StandardCharsets.UTF_8)).isEqualTo("vieux-secret");
+        assertThat(tpm.commands).noneMatch(c -> c.startsWith("tpm2_create "));
+        // Ni le modèle actuel, ni l'ancien : l'erreur du modèle actuel est rendue.
+        assertThatThrownBy(() -> new TpmSeal(base, "", new FakeTpm("autre")).unseal())
+                .hasMessageContaining("integrity check failed");
     }
 
     @Test
@@ -160,6 +190,10 @@ class TpmSealTest {
                 .hasMessage("sh a échoué : cause");
         assertThatThrownBy(() -> TpmSeal.exec(List.of("commande-tpm-inexistante"), null))
                 .hasMessageContaining("installer tpm2-tools");
+        assertThatThrownBy(() -> TpmSeal.exec(List.of("sh", "-c", "echo 'ERROR: Esys_Load(0x921) - tpm:warn(2.0): "
+                + "authorizations are not allowed because the TPM is in DA lockout mode' >&2; "
+                + "echo 'ERROR: Unable to run tpm2_load' >&2; exit 1"), null))
+                .hasMessageContaining("tpm:warn(2.0)").hasMessageContaining("verrouillage anti-force brute");
     }
 
     @Test
@@ -205,6 +239,27 @@ class TpmSealTest {
                     new TpmSeal(keys, "sha256:7", runner));
             assertThat(DirectoryConfiguration.loadOrCreateIdentity(keys, null, new TpmSeal(keys, "sha256:7", runner))
                     .boxId()).isEqualTo(created.boxId());
+            // TPM en verrouillage anti-force brute (un seul essai admis, puis un mauvais mot de passe) : la box
+            // rouvre quand même son identité, ses objets étant exclus de cette protection.
+            Path work = Files.createDirectories(dir.resolve("verrouillage"));
+            runner.run(List.of("tpm2_dictionarylockout", "-Q", "-s", "-n", "1", "-t", "3600", "-l", "3600"), null);
+            runner.run(List.of("tpm2_flushcontext", "-t"), null);
+            runner.run(List.of("tpm2_createprimary", "-Q", "-C", "o", "-p", "protege", "-c",
+                    work.resolve("p.ctx").toString()), null);
+            runner.run(List.of("tpm2_flushcontext", "-t"), null);
+            for (int i = 0; i < 2; i++) {
+                try {
+                    runner.run(List.of("tpm2_create", "-Q", "-C", work.resolve("p.ctx").toString(), "-P", "faux",
+                            "-i", "-", "-u", work.resolve("x.pub").toString(), "-r",
+                            work.resolve("x.priv").toString()), "x".getBytes(StandardCharsets.UTF_8));
+                } catch (IOException expected) {
+                    if (i == 1) {
+                        assertThat(expected).hasMessageContaining("verrouillage anti-force brute");
+                    }
+                }
+            }
+            assertThat(DirectoryConfiguration.loadOrCreateIdentity(keys, null, new TpmSeal(keys, "sha256:7", runner))
+                    .boxId()).as("malgré le verrouillage").isEqualTo(created.boxId());
             // État de démarrage modifié (PCR 7 étendu) : le TPM refuse de desceller.
             runner.run(List.of("tpm2_pcrextend", "7:sha256=" + "00".repeat(31) + "01"), null);
             assertThatThrownBy(() -> DirectoryConfiguration.loadOrCreateIdentity(keys, null,
