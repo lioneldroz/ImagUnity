@@ -66,6 +66,8 @@ for b in a b; do head -c 24 /dev/urandom | base64 > annuaire/phrase-box-$b.txt; 
 docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
 ```
 
+Les paquets sont alors chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire ([chiffrement applicatif](../docs/chiffrement-applicatif.md)). Pour mettre à jour un parc existant : d'abord le service d'annuaire, puis les box, puis réémettre chaque entrée à partir d'une nouvelle demande d'enrôlement (`--serie` supérieure).
+
 ## Réinitialisation
 
 ```bash

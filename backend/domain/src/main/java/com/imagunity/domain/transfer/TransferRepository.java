@@ -30,6 +30,7 @@ public interface TransferRepository {
     /** Remplace les paquets d'un transfert. */
     void saveParts(UUID transferId, List<TransferPart> parts);
 
+    /** Met à jour un paquet : fichier, taille et empreinte (après chiffrement), avancement dans le transport. */
     void updatePart(TransferPart part);
 
     /** Paquets d'un transfert, par rang croissant. */

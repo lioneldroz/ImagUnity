@@ -89,6 +89,8 @@ class TransferTest {
         assertThat(handed.uploaded()).isFalse();
         assertThat(uploaded.uploaded()).isTrue();
         assertThat(uploaded.transportFileId()).isEqualTo(42);
+        assertThat(part.sealedAs(Path.of("p.iu1"), 30, "c".repeat(64)))
+                .isEqualTo(new TransferPart(id, 1, 2, Path.of("p.iu1"), 30, "c".repeat(64), null, false));
     }
 
     @Test

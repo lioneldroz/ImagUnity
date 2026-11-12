@@ -118,6 +118,11 @@ public final class DirectoryAdmin {
         return 0;
     }
 
+    /** Fichier des clés de chiffrement d'une box, à côté de sa clé de signature. */
+    static Path encryptionFileOf(Path keysFile) {
+        return Path.of(keysFile + ".chiffrement");
+    }
+
     private int fingerprint(Map<String, String> o) throws IOException {
         KeyFiles.OrganizationPublicKey key = KeyFiles.readOrganizationPublic(Path.of(require(o, "cle-publique")));
         out.println("Organisation « " + key.organization() + " » : " + key.key().shortCode());
@@ -126,19 +131,42 @@ public final class DirectoryAdmin {
 
     private int boxRequest(Map<String, String> o) throws IOException {
         Path keysFile = Path.of(require(o, "cles"));
+        Path encryptionFile = encryptionFileOf(keysFile);
         HybridKeyPair keys;
+        HybridKemKeyPair encryption;
         if (Files.exists(keysFile)) {
-            keys = readKeys(keysFile, BOX_PASSPHRASE, "Phrase de passe de la clé de la box");
+            char[] passphrase = null;
+            if (KeyFiles.isProtected(keysFile)) {
+                passphrase = passphrase(BOX_PASSPHRASE, "Phrase de passe de la clé de la box", false);
+                if (passphrase == null) {
+                    throw new MissingOptionException("Clé protégée : phrase de passe dans " + BOX_PASSPHRASE
+                            + " ou saisie au terminal");
+                }
+            } else {
+                warnClear(keysFile);
+            }
+            keys = KeyFiles.readPrivate(keysFile, passphrase);
+            if (Files.exists(encryptionFile)) {
+                encryption = KeyFiles.readEncryptionPrivate(encryptionFile, passphrase);
+            } else {
+                encryption = HybridKemKeyPair.generate();
+                KeyFiles.writeEncryptionPrivate(encryptionFile, encryption, passphrase);
+                out.println("Clés de chiffrement de la box créées : " + encryptionFile);
+            }
         } else {
             keys = HybridKeyPair.generate();
-            KeyFiles.writePrivate(keysFile, keys, newPassphrase(o, BOX_PASSPHRASE, "Phrase de passe de la clé de la box"));
-            out.println("Identité de la box créée : " + keysFile);
+            encryption = HybridKemKeyPair.generate();
+            char[] passphrase = newPassphrase(o, BOX_PASSPHRASE, "Phrase de passe de la clé de la box");
+            KeyFiles.writePrivate(keysFile, keys, passphrase);
+            KeyFiles.writeEncryptionPrivate(encryptionFile, encryption, passphrase);
+            out.println("Identité de la box créée : " + keysFile + " (chiffrement : " + encryptionFile + ")");
         }
         Map<String, String> transport = new LinkedHashMap<>();
         if (o.containsKey("simplex")) {
             transport.put("simplex", o.get("simplex"));
         }
-        SignedDocument request = EnrollmentRequest.create(keys, UUID.fromString(require(o, "box-id")),
+        SignedDocument request = EnrollmentRequest.create(keys, encryption.publicKey(),
+                UUID.fromString(require(o, "box-id")),
                 require(o, "nom"), transport, clock.instant());
         write(Path.of(require(o, "sortie")), request);
         out.println("Demande d'enrôlement écrite. Empreinte de la box : " + keys.publicKey().shortCode());
@@ -157,6 +185,10 @@ public final class DirectoryAdmin {
                 + serial);
         out.println("Vérifiez hors bande l'empreinte de la box avec son installateur : "
                 + HybridPublicKey.decode(r.signingKeys()).shortCode());
+        if (r.encryptionKeys() == null) {
+            out.println("Attention : demande sans clés de chiffrement ; les box qui exigent le chiffrement refuseront "
+                    + "d'envoyer à cette box. Refaire la demande avec une box à jour.");
+        }
         return 0;
     }
 
@@ -176,6 +208,8 @@ public final class DirectoryAdmin {
         BoxEntry e = verified.entry();
         out.println("Signature valide. Box « " + e.displayName() + " » (" + e.boxId() + "), n° " + e.serial() + " : "
                 + verified.status());
+        out.println(e.encryptionKeys() == null ? "Pas de clés de chiffrement : entrée à réémettre"
+                : "Clés de chiffrement publiées (X25519 + ML-KEM-768)");
         return verified.usable() ? 0 : 1;
     }
 
@@ -232,13 +266,22 @@ public final class DirectoryAdmin {
         }
         KeyFiles.protect(keys, passphrase);
         out.println("Clé protégée par phrase de passe : " + keys);
+        Path encryption = encryptionFileOf(keys);
+        if (box && Files.exists(encryption) && !KeyFiles.isProtected(encryption)) {
+            KeyFiles.protect(encryption, passphrase);
+            out.println("Clés de chiffrement protégées par la même phrase de passe : " + encryption);
+        }
         return 0;
+    }
+
+    private void warnClear(Path file) {
+        err.println("Attention : clé non protégée par phrase de passe (" + file + ") ; la protéger avec « proteger »");
     }
 
     /** Lit une clé privée ; demande sa phrase de passe si elle est protégée, avertit sinon. */
     private HybridKeyPair readKeys(Path file, String variable, String label) throws IOException {
         if (!KeyFiles.isProtected(file)) {
-            err.println("Attention : clé non protégée par phrase de passe (" + file + ") ; la protéger avec « proteger »");
+            warnClear(file);
             return KeyFiles.readPrivate(file);
         }
         char[] passphrase = passphrase(variable, label, false);

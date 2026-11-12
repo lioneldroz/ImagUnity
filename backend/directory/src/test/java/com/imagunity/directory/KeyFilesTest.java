@@ -129,4 +129,63 @@ class KeyFilesTest {
         assertThat(Files.exists(file.resolveSibling(file.getFileName() + ".nouveau"))).isFalse();
         assertThatThrownBy(() -> KeyFiles.protect(file, PHRASE)).hasMessageContaining("déjà protégée");
     }
+
+    @Test
+    void encryptionKeysRoundTripClearOrProtected() throws IOException {
+        HybridKemKeyPair keys = HybridKemKeyPair.generate();
+        Path clear = dir.resolve("box.json.chiffrement");
+        Path sealed = dir.resolve("autre.json.chiffrement");
+
+        KeyFiles.writeEncryptionPrivate(clear, keys, null);
+        KeyFiles.writeEncryptionPrivate(sealed, keys, PHRASE);
+
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(sealed))).isEqualTo("rw-------");
+        assertThat(KeyFiles.isProtected(clear)).isFalse();
+        assertThat(KeyFiles.isProtected(sealed)).isTrue();
+        assertThat(Files.readString(sealed)).doesNotContain("x25519Private\":\"M");
+        assertThat(KeyFiles.readEncryptionPrivate(clear, null).publicKey().fingerprint())
+                .isEqualTo(keys.publicKey().fingerprint());
+        HybridKemKeyPair back = KeyFiles.readEncryptionPrivate(sealed, PHRASE);
+        assertThat(back.publicKey().fingerprint()).isEqualTo(keys.publicKey().fingerprint());
+        assertThatThrownBy(() -> KeyFiles.readEncryptionPrivate(sealed, "mauvaise phrase de passe".toCharArray()))
+                .hasMessageContaining("Phrase de passe incorrecte");
+        assertThatThrownBy(() -> KeyFiles.writeEncryptionPrivate(clear, keys, null))
+                .isInstanceOf(FileAlreadyExistsException.class);
+
+        // Un message chiffré pour la clé d'origine s'ouvre avec la clé relue.
+        Path plain = Files.writeString(dir.resolve("clair"), "examen fictif");
+        Path box = dir.resolve("paquet.iu1");
+        SealedFiles.seal(plain, box, keys.publicKey(), "paquet.iu1");
+        SealedFiles.open(box, dir.resolve("ouvert"), back, "paquet.iu1");
+        assertThat(Files.readString(dir.resolve("ouvert"))).isEqualTo("examen fictif");
+
+        KeyFiles.protect(clear, PHRASE);
+        assertThat(KeyFiles.isProtected(clear)).isTrue();
+        assertThat(KeyFiles.readEncryptionPrivate(clear, PHRASE).publicKey().fingerprint())
+                .isEqualTo(keys.publicKey().fingerprint());
+    }
+
+    @Test
+    void encryptionKeyFilesAreChecked() throws IOException {
+        Path signing = dir.resolve("signature.json");
+        KeyFiles.writePrivate(signing, HybridKeyPair.generate());
+        Path wrongUsage = Files.writeString(dir.resolve("usage.json"), Files.readString(signing).replace(
+                "\"ed25519Private\"", "\"usage\":\"signature\",\"x25519Private\""));
+
+        assertThatThrownBy(() -> KeyFiles.readEncryptionPrivate(signing, null)).hasMessageContaining("illisible");
+        assertThatThrownBy(() -> KeyFiles.readEncryptionPrivate(dir.resolve("absent"), null))
+                .isInstanceOf(IOException.class);
+        Path other = dir.resolve("autre-usage.json");
+        HybridKemKeyPair keys = HybridKemKeyPair.generate();
+        KeyFiles.writeEncryptionPrivate(other, keys, null);
+        Files.writeString(other, Files.readString(other).replace("\"chiffrement\"", "\"signature\""));
+        assertThatThrownBy(() -> KeyFiles.readEncryptionPrivate(other, null)).hasMessageContaining("usage inattendu");
+        Files.writeString(other, "pas du json");
+        assertThatThrownBy(() -> KeyFiles.isProtected(other)).hasMessageContaining("illisible");
+        assertThatThrownBy(() -> HybridKemPublicKey.decode(new HybridKemPublicKey.Encoded("AAAA", null)))
+                .hasMessageContaining("incomplète");
+        assertThatThrownBy(() -> HybridKemPublicKey.decode(new HybridKemPublicKey.Encoded("AAAA", "AAAA")))
+                .hasMessageContaining("illisible");
+        assertThat(wrongUsage).exists();
+    }
 }

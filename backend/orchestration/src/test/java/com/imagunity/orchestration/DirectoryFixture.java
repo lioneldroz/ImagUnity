@@ -28,8 +28,14 @@ final class DirectoryFixture {
     }
 
     SignedDocument enroll(BoxIdentity box, Instant from, Duration validity) {
-        SignedDocument entry = organization.enroll(EnrollmentRequest.create(box.keys(), box.boxId(),
-                "Box " + box.boxId().toString().substring(0, 8), Map.of(), from), from, validity, 1);
+        return enroll(box, from, validity, 1, true);
+    }
+
+    /** Entrée de numéro {@code serial}, avec ou sans les clés de chiffrement de la box. */
+    SignedDocument enroll(BoxIdentity box, Instant from, Duration validity, long serial, boolean withEncryption) {
+        SignedDocument entry = organization.enroll(EnrollmentRequest.create(box.keys(),
+                withEncryption ? box.encryption().publicKey() : null, box.boxId(),
+                "Box " + box.boxId().toString().substring(0, 8), Map.of(), from), from, validity, serial);
         published.add(entry);
         return entry;
     }

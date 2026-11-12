@@ -35,7 +35,8 @@ public final class Organization {
      */
     public SignedDocument enroll(SignedDocument request, Instant now, Duration validity, long serial) {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
-        BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), r.displayName(), r.signingKeys(), r.transport(),
+        BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), r.displayName(), r.signingKeys(), r.encryptionKeys(),
+                r.transport(),
                 serial, now, now.plus(validity), false, null, null);
         return SignedDocument.sign(Json.write(entry), keys);
     }

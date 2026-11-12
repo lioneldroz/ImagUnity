@@ -134,6 +134,8 @@ class DirectoryControllerTest {
                 BoxEntry.Status.ACTIVE, BoxEntry.Status.ACTIVE, BoxEntry.Status.ACTIVE, BoxEntry.Status.REVOKED);
         assertThat(view.boxes()).extracting(DirectoryController.BoxView::reachable)
                 .containsExactly(true, true, false, true);
+        assertThat(view.boxes()).extracting(DirectoryController.BoxView::encrypted)
+                .containsExactly(false, false, false, false);
     }
 
     @Test
@@ -154,6 +156,7 @@ class DirectoryControllerTest {
         EnrollmentRequest request = EnrollmentRequest.verify(SignedDocument.fromJson(response.getBody()));
         assertThat(request.boxId()).isEqualTo(me.boxId());
         assertThat(request.transport()).containsEntry("simplex", "simplex:/contact#box-a");
+        assertThat(request.encryptionKeys()).isEqualTo(me.encryption().publicKey().encoded());
         transport.noAddress = true;
         assertThat(EnrollmentRequest.verify(SignedDocument.fromJson(controller(true).enrollmentRequest(null).getBody()))
                 .transport()).isEmpty();

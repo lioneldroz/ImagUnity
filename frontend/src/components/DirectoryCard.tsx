@@ -113,6 +113,9 @@ export function DirectoryCard() {
                   <td>{b.displayName}</td>
                   <td>
                     <StateBadge label={BOX_STATUS_LABELS[b.status]} tone={b.status === 'ACTIVE' ? 'ok' : 'error'} />
+                    {b.status === 'ACTIVE' && !b.encrypted && (
+                      <div className="error small">sans clés de chiffrement : entrée à réémettre</div>
+                    )}
                   </td>
                   <td>{formatDate(b.validUntil)}</td>
                   <td>
