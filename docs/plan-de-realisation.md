@@ -95,6 +95,7 @@ Par ordre de criticité :
 6. Adaptation au réseau : taille des blocs, priorité aux séries utiles au diagnostic, redondance entre relais.
 7. Validation juridique de la licence AGPL avant commercialisation.
 8. **Transport propre IU-T** (équivalent de XFTP et SMP, en Java), derrière le même `TransportPort` : voir la [spécification](specification-protocole.md). Estimation : 2,5 à 3,5 mois, plus un audit de sécurité externe. Il rendrait le point 7 sans objet pour le transport. *Avancé avant le point 6 : **en service** depuis l'étape 5 (spécification v0.4, § 13.4) : les box transfèrent par IU-T, la campagne de la phase 8 est passée dessus, SimpleX est retiré. Restent l'étape 6 (performances, remplissage des morceaux) et l'audit externe (étape 7).*
+9. **Configuration centralisée des box** (règles de priorité et de routage, puis d'autres réglages) depuis le serveur central de l'organisation, avec interface d'administration : plan dans [configuration-centralisee.md](configuration-centralisee.md), **à réaliser plus tard** ; décision préalable : qui signe la configuration.
 
 ## 5. Décisions
 
