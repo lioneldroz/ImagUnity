@@ -9,6 +9,7 @@ import com.imagunity.domain.exam.StudyRestorer;
 import com.imagunity.domain.inbound.InboundRepository;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.domain.transfer.TransferRepository;
+import com.imagunity.orchestration.MessageSigner;
 import com.imagunity.orchestration.PairingService;
 import com.imagunity.orchestration.PeerAuthorization;
 import com.imagunity.orchestration.ReceiveOrchestrator;
@@ -66,10 +67,11 @@ class OrchestrationConfiguration {
     @Bean
     SendOrchestrator sendOrchestrator(TransferRepository transfers, PeerRepository peers, TransportPort transport,
                                       OrchestrationProperties properties, ExecutorService orchestrationExecutor,
-                                      Clock clock, ObjectProvider<PeerAuthorization> authorization) {
+                                      Clock clock, ObjectProvider<PeerAuthorization> authorization,
+                                      ObjectProvider<MessageSigner> signer) {
         return new SendOrchestrator(transfers, peers, new StudyPackager(properties.packagingConfig()), transport,
                 properties.outboxDir(), orchestrationExecutor, clock,
-                authorization.getIfAvailable(PeerAuthorization::allowAll));
+                authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable());
     }
 
     @Bean
@@ -86,10 +88,11 @@ class OrchestrationConfiguration {
     ReceiveOrchestrator receiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
                                             StudyRestorer restorer, RestoreProperties properties,
                                             ExecutorService orchestrationExecutor, Clock clock,
-                                            ObjectProvider<PeerAuthorization> authorization) {
+                                            ObjectProvider<PeerAuthorization> authorization,
+                                            ObjectProvider<MessageSigner> signer) {
         return new ReceiveOrchestrator(inbound, peers, transport, new PackageReader(properties.maxUnpackedSize().toBytes()),
                 restorer, properties.inboxDir(), properties.maxInboundFileSize().toBytes(), orchestrationExecutor,
-                clock, authorization.getIfAvailable(PeerAuthorization::allowAll));
+                clock, authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable());
     }
 
     @Bean

@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import com.imagunity.domain.peer.Peer;
 import java.util.Optional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -20,6 +21,9 @@ import tools.jackson.databind.node.ObjectNode;
  * {"type": "imagunity.transfer.ack",      "version": 1, "ack": { ... }}            destinataire → émetteur
  * </pre>
  * Un message d'un autre type, d'une autre version ou illisible est ignoré par le destinataire.
+ *
+ * <p>Avec l'annuaire ({@link MessageSigner}), les messages échangés sont signés par la box ({@code version 2}) et
+ * vérifiés à la réception ; la forme gardée en base ({@link #store}) reste la forme non signée.
  */
 public final class TransferMessages {
 
@@ -28,13 +32,56 @@ public final class TransferMessages {
     public static final int VERSION = 1;
 
     private final JsonMapper mapper = JsonMapper.builder().build();
+    private final MessageSigner signer;
 
+    /** Messages non signés (sans annuaire). */
+    public TransferMessages() {
+        this(null);
+    }
+
+    /** @param signer signe et vérifie les messages échangés ({@code null} : non signés) */
+    public TransferMessages(MessageSigner signer) {
+        this.signer = signer;
+    }
+
+    /** Annonce à envoyer (signée avec l'annuaire). */
     public String encode(TransferAnnouncement announcement) {
+        return signer == null ? store(announcement)
+                : signer.seal(ANNOUNCE, mapper.writeValueAsString(announcement));
+    }
+
+    /** Accusé à envoyer (signé avec l'annuaire). */
+    public String encode(TransferAck ack) {
+        return signer == null ? envelope(ACK, "ack", ack) : signer.seal(ACK, mapper.writeValueAsString(ack));
+    }
+
+    /** Forme gardée en base d'une annonce reçue : toujours non signée. */
+    public String store(TransferAnnouncement announcement) {
         return envelope(ANNOUNCE, "announcement", announcement);
     }
 
-    public String encode(TransferAck ack) {
-        return envelope(ACK, "ack", ack);
+    /** Annonce reçue de ce partenaire (signature vérifiée avec l'annuaire). */
+    public Optional<TransferAnnouncement> receiveAnnouncement(Peer from, String text) {
+        return signer == null ? decodeAnnouncement(text)
+                : signer.open(from, ANNOUNCE, text).flatMap(body -> read(body, TransferAnnouncement.class));
+    }
+
+    /** Accusé reçu de ce partenaire (signature vérifiée avec l'annuaire). */
+    public Optional<TransferAck> receiveAck(Peer from, String text) {
+        return signer == null ? decodeAck(text) : signer.open(from, ACK, text).flatMap(body -> read(body, TransferAck.class));
+    }
+
+    /** Vrai si le texte ressemble à une annonce (pour journaliser les annonces d'inconnus). */
+    static boolean looksLikeAnnouncement(String text) {
+        return text.contains("\"" + ANNOUNCE + "\"");
+    }
+
+    private <T> Optional<T> read(String body, Class<T> type) {
+        try {
+            return Optional.ofNullable(mapper.readValue(body, type));
+        } catch (JacksonException e) {
+            return Optional.empty();
+        }
     }
 
     /** Lit une annonce ; vide si le message n'en est pas une, ou pas dans une version prise en charge. */

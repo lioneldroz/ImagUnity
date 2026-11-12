@@ -70,7 +70,7 @@ public final class SendOrchestrator {
     private final Path outboxDir;
     private final Executor executor;
     private final Clock clock;
-    private final TransferMessages messages = new TransferMessages();
+    private final TransferMessages messages;
     private final PeerAuthorization authorization;
 
     public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
@@ -78,11 +78,21 @@ public final class SendOrchestrator {
         this(transfers, peers, packager, transport, outboxDir, executor, clock, PeerAuthorization.allowAll());
     }
 
-    /** @param authorization décide si l'on peut envoyer au partenaire (annuaire) */
     public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
                             TransportPort transport, Path outboxDir, Executor executor, Clock clock,
                             PeerAuthorization authorization) {
+        this(transfers, peers, packager, transport, outboxDir, executor, clock, authorization, null);
+    }
+
+    /**
+     * @param authorization décide si l'on peut envoyer au partenaire (annuaire)
+     * @param signer        signe les annonces et vérifie les accusés ({@code null} : messages non signés)
+     */
+    public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
+                            TransportPort transport, Path outboxDir, Executor executor, Clock clock,
+                            PeerAuthorization authorization, MessageSigner signer) {
         this.authorization = authorization;
+        this.messages = new TransferMessages(signer);
         this.transfers = transfers;
         this.peers = peers;
         this.packager = packager;
@@ -267,24 +277,19 @@ public final class SendOrchestrator {
                     .flatMap(part -> transfers.find(part.transferId()))
                     .filter(t -> !t.state().isTerminal())
                     .ifPresent(t -> fail(t, "Transport : " + failed.reason()));
-            case TransportEvent.MessageReceived message -> messages.decodeAck(message.text())
-                    .ifPresent(ack -> onAck(message.peer(), ack));
+            case TransportEvent.MessageReceived message -> peers.findByTransportPeerId(message.peer().value())
+                    .ifPresent(peer -> messages.receiveAck(peer, message.text()).ifPresent(ack -> onAck(peer, ack)));
             default -> {
                 // Les autres événements (réception, appairage, annonces) concernent d'autres composants.
             }
         }
     }
 
-    private void onAck(PeerId from, TransferAck ack) {
-        Optional<Peer> peer = peers.findByTransportPeerId(from.value());
-        if (peer.isEmpty()) {
-            LOG.log(Level.WARNING, "Accusé d''un contact non appairé : ignoré");
-            return;
-        }
+    private void onAck(Peer peer, TransferAck ack) {
         Optional<Transfer> found = ack.transferId() == null ? Optional.empty() : transfers.find(ack.transferId());
-        if (found.isEmpty() || !found.get().destination().equals(peer.get().name())) {
+        if (found.isEmpty() || !found.get().destination().equals(peer.name())) {
             LOG.log(Level.WARNING, "Accusé de {0} pour un transfert qui ne lui est pas destiné : ignoré",
-                    peer.get().name());
+                    peer.name());
             return;
         }
         Transfer transfer = found.get();
