@@ -30,16 +30,16 @@ Administrateur ──► interface d'administration ──► service d'annuaire
     "default": 5,
     "rules": [
       { "name": "scanner-thorax", "priority": 1,
-        "et": { "Modality": "CT", "SeriesDescription": "*THORAX*|*POUMON*" } },
+        "and": { "Modality": "CT", "SeriesDescription": "*THORAX*|*POUMON*" } },
       { "name": "localisateurs-en-dernier", "priority": 9,
-        "ou": { "ImageType": "*LOCALIZER*", "SeriesDescription": "*SCOUT*|*TOPO*" } }
+        "or": { "ImageType": "*LOCALIZER*", "SeriesDescription": "*SCOUT*|*TOPO*" } }
     ]
   },
   "routing": { "aet": "IU_AUTO", "rules": [ … ] }
 }
 ```
 
-- Même syntaxe de règles que la configuration locale : `et` (tous les champs), `ou` (un champ suffit), valeurs exactes, `*` et `?`, alternatives `|`, négation `!`.
+- Même syntaxe de règles que la configuration locale : `and` (tous les champs), `or` (un champ suffit), valeurs exactes, `*` et `?`, alternatives `|`, négation `!`.
 - **Numéro de version croissant** par cible (`sequence`), comme les mises à jour signées : une box refuse un document plus ancien que celui qu'elle applique (pas de retour en arrière imposé par un serveur compromis).
 - Signé sur ses octets exacts (suite IU1 : Ed25519 + ML-DSA-65), comme les entrées d'annuaire.
 - **Préséance** : configuration centrale si elle existe, sinon configuration locale. Option de verrouillage local (une box de démonstration, par exemple) à décider.
