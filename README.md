@@ -86,6 +86,7 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Phase 6 — Accusé de bout en bout](docs/phase6-accuse.md)
 - [Phase 7 — API et console React](docs/phase7-console.md)
 - [Phase 8 — Campagne de tests](docs/phase8-campagne.md)
+- [Présentation : le voyage d’un examen](docs/presentation/README.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut

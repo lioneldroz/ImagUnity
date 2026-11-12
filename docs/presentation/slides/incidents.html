@@ -1,0 +1,29 @@
+<section id="incidents" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Robustesse</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Quand ça se passe mal, tout reprend seul</h2>
+</div>
+<div style="display:flex;flex-direction:row;gap:28px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFDFB;border-top:8px solid #2563A8;border-radius:20px;padding:32px">
+<x-icon name="Lightning" style="color:#2563A8;width:52px;height:52px"></x-icon>
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:88px;font-weight:700;line-height:1.0;color:#2563A8">60 s</p>
+<h3 style="font-size:32px;font-weight:700">Coupure réseau en plein envoi</h3>
+<p style="font-size:28px;color:#4A5568">Examen de 300 Mo : le dépôt reprend seul, 600 / 600 images identiques</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFDFB;border-top:8px solid #B84A12;border-radius:20px;padding:32px">
+<x-icon name="Clock" style="color:#B84A12;width:52px;height:52px"></x-icon>
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:88px;font-weight:700;line-height:1.0;color:#B84A12">3 min 30</p>
+<h3 style="font-size:32px;font-weight:700">Box B éteinte</h3>
+<p style="font-size:28px;color:#4A5568">L’examen attend sur le relais ; restitué 8 s après le rallumage</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFDFB;border-top:8px solid #3A4556;border-radius:20px;padding:32px">
+<x-icon name="Link" style="color:#3A4556;width:52px;height:52px"></x-icon>
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:88px;font-weight:700;line-height:1.0;color:#3A4556">1 s</p>
+<h3 style="font-size:32px;font-weight:700">Client SimpleX redémarré</h3>
+<p style="font-size:28px;color:#4A5568">La box se reconnecte et rattrape les messages reçus entre-temps</p>
+</div>
+</div>
+<p style="font-size:32px;font-weight:600;color:#1B2433">Aucune de ces reprises n’a demandé d’intervention.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Robustesse · mesures de la campagne de tests</p>
+<aside>Trois incidents provoqués volontairement pendant la campagne de tests, sur la vraie chaîne. Coupure du réseau de la box A pendant 60 secondes au milieu de l’envoi d’un examen de 300 Mo : l’envoi reprend tout seul et l’examen arrive intact. Box B éteinte pendant 3 min 30 : la box A envoie quand même, l’examen attend sur le relais, et il est restitué 8 secondes après le rallumage. Client SimpleX redémarré pendant que la box tourne : reconnexion en 1 seconde et rattrapage de ce qui est arrivé entre-temps. Lors d’une coupure involontaire de 8 minutes, trois transferts en cours (dont un de 2 Go) ont aussi repris seuls.</aside>
+</section>
