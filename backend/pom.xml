@@ -20,6 +20,7 @@
 
     <modules>
         <module>domain</module>
+        <module>directory</module>
         <module>dicom</module>
         <module>packaging</module>
         <module>transport</module>
@@ -49,6 +50,11 @@
             <dependency>
                 <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.imagunity</groupId>
+                <artifactId>imagunity-directory</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
