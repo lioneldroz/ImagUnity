@@ -8,7 +8,7 @@ class BoxInfoControllerTest {
 
     @Test
     void returnsConfiguredName() {
-        var controller = new BoxInfoController(new BoxProperties("box-a"));
+        var controller = new BoxInfoController(new BoxProperties("box-a"), "", 0);
 
         var info = controller.info();
 
@@ -28,5 +28,16 @@ class BoxInfoControllerTest {
         var controller = new BoxInfoController(new BoxProperties("box-a"), null);
 
         assertThat(controller.info().version()).isEqualTo("dev");
+        assertThat(controller.info().releaseSequence()).isNull();
+    }
+
+    @Test
+    void signedVersionCheckedByTheLauncherIsShown() {
+        var controller = new BoxInfoController(new BoxProperties("box-a"), "0.1.0-SNAPSHOT", "0.2.0", 2);
+
+        assertThat(controller.info().version()).isEqualTo("0.2.0");
+        assertThat(controller.info().releaseSequence()).isEqualTo(2);
+        assertThat(new BoxInfoController(new BoxProperties("box-a"), "0.1.0", "", 3).info().version())
+                .isEqualTo("0.1.0");
     }
 }

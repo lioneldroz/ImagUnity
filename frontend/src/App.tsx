@@ -23,7 +23,10 @@ function App() {
         <div>
           <h1>ImagUnity</h1>
           <p className="subtitle">
-            {box.isSuccess ? `${box.data.name} · version ${box.data.version}` : 'Console de la box'}
+            {box.isSuccess
+              ? `${box.data.name} · version ${box.data.version}` +
+                (box.data.releaseSequence ? ` (signée, n° ${box.data.releaseSequence})` : ' (non vérifiée)')
+              : 'Console de la box'}
           </p>
         </div>
         <span className={`stream stream-${stream}`}>{STREAM_LABELS[stream]}</span>

@@ -68,6 +68,19 @@ docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire 
 
 Les paquets sont alors chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire ([chiffrement applicatif](../docs/chiffrement-applicatif.md)). Pour mettre à jour un parc existant : d'abord le service d'annuaire, puis les box, puis réémettre chaque entrée à partir d'une nouvelle demande d'enrôlement (`--serie` supérieure).
 
+### Mises à jour signées
+
+Les box démarrent par un lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière ([mises à jour signées](../docs/mises-a-jour-signees.md)). Pour l'activer, placer la clé publique de l'éditeur dans `mises-a-jour/editeur.pub.json`, signer le jar de la box avant `prepare.sh`, puis ajouter `compose.mises-a-jour.yml` avec l'empreinte vérifiée hors bande :
+
+```bash
+java -jar ../backend/release/target/imagunity-release.jar signer --cles editeur.json \
+    --artefact ../backend/app/target/imagunity-box.jar --version 0.1.0 --sequence 1
+export IMAGUNITY_RELEASE_CODE=<empreinte de l'éditeur>
+docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f compose.mises-a-jour.yml up -d --build
+```
+
+Une nouvelle version se dépose dans `/data/mises-a-jour/depot/` de la box (jar et manifeste), puis la box est redémarrée. Sans `compose.mises-a-jour.yml`, la box démarre sans vérification, avec un avertissement.
+
 ## Réinitialisation
 
 ```bash

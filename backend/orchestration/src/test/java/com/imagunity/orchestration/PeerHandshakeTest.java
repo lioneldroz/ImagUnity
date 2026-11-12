@@ -42,8 +42,10 @@ class PeerHandshakeTest {
         peersA.save(new Peer("box-b", B_SEEN_BY_A.value(), "box-b", DirectoryFixture.NOW));
         peersB.save(new Peer("box-a", A_SEEN_BY_B.value(), "box-a", DirectoryFixture.NOW));
         directoryA = fixture.directory(clock);
-        handshakeA = new PeerHandshake(peersA, transportA, boxA, directoryA, Runnable::run);
-        handshakeB = new PeerHandshake(peersB, transportB, boxB, fixture.directory(clock), Runnable::run);
+        // Horloge du test : les partenaires provisoires sont datés de DirectoryFixture.NOW.
+        handshakeA = new PeerHandshake(peersA, transportA, boxA, directoryA, Runnable::run, clock, Duration.ofHours(1));
+        handshakeB = new PeerHandshake(peersB, transportB, boxB, fixture.directory(clock), Runnable::run, clock,
+                Duration.ofHours(1));
     }
 
     /** Fait circuler les messages entre A et B jusqu'à ce que plus rien ne bouge. */

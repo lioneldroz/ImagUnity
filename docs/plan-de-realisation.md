@@ -89,7 +89,7 @@ Par ordre de criticité :
 
 1. **Annuaire signé** (service central de l'organisation, sur PostgreSQL) : appairage avec vérification de l'empreinte hors bande, révocation. *Fait : voir [annuaire-signe.md](annuaire-signe.md).*
 2. **Chiffrement applicatif** avec la clé publique du destinataire ; étudier les algorithmes résistants au calcul quantique. *Fait (X25519 + ML-KEM-768, AES-256-GCM) : voir [chiffrement-applicatif.md](chiffrement-applicatif.md).*
-3. **Mises à jour signées** : clé hors ligne, double signature.
+3. **Mises à jour signées** : clé hors ligne, double signature. *Fait (lanceur qui vérifie et refuse les retours en arrière) : voir [mises-a-jour-signees.md](mises-a-jour-signees.md).*
 4. Clés d'identité dans un **TPM** ou un élément sécurisé.
 5. Routage par champ DICOM, réception STOW-RS (DICOMweb).
 6. Adaptation au réseau : taille des blocs, priorité aux séries utiles au diagnostic, redondance entre relais.
