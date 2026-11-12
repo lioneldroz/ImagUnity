@@ -37,7 +37,7 @@ class TransportConfigurationTest {
 
     private final TransportConfiguration configuration = new TransportConfiguration();
     private static final IuTransportProperties NO_RELAY = new IuTransportProperties(null, Path.of("x"),
-            Duration.ofHours(72), 2, Duration.ofDays(8));
+            Duration.ofHours(72), 2, Duration.ofDays(8), true);
 
     @TempDir
     Path dir;
@@ -73,7 +73,7 @@ class TransportConfigurationTest {
     @Test
     void iuTransportNeedsTheDirectory() {
         var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
-                Duration.ofDays(8));
+                Duration.ofDays(8), true);
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
 
@@ -134,7 +134,7 @@ class TransportConfigurationTest {
     @Test
     void switchingToIuKeepsVerifiedPartnersUnderTheirNames() {
         var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
-                Duration.ofDays(8));
+                Duration.ofDays(8), true);
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
         UUID boxB = UUID.randomUUID();

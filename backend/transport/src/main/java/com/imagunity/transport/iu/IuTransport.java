@@ -75,14 +75,21 @@ public final class IuTransport implements TransportPort {
      * @param ttl       durée de séjour demandée pour les morceaux
      * @param parallel  transferts de fichiers simultanés
      * @param keepState durée de conservation de l'état d'un transfert terminé, et d'un message jamais déposé
+     * @param early     annonce anticipée (§ 6.6) : la description part dès la création des morceaux, et le
+     *                  destinataire télécharge au fil du téléversement
      */
-    public record Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState) {
+    public record Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early) {
 
         public Settings {
             relay = URI.create(relay.toString().replaceAll("/+$", ""));
             if (parallel < 1) {
                 throw new IllegalArgumentException("Au moins un transfert à la fois");
             }
+        }
+
+        /** Avec l'annonce anticipée. */
+        public Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState) {
+            this(relay, stateDir, ttl, parallel, keepState, true);
         }
     }
 
@@ -102,6 +109,8 @@ public final class IuTransport implements TransportPort {
     private final IuMsgClient messages;
     private final IuFileUploader uploader;
     private final IuFileDownloader downloader;
+    /** Pour un fichier annoncé tôt : un morceau pas encore téléversé est attendu jusqu'à l'expiration du fichier. */
+    private final IuFileDownloader patientDownloader;
     private final IuOutbox outbox;
     private final List<Consumer<TransportEvent>> listeners = new CopyOnWriteArrayList<>();
     private final Semaphore transfers;
@@ -128,6 +137,8 @@ public final class IuTransport implements TransportPort {
         this.uploader = new IuFileUploader(new IuFileClient(settings.relay(), http, clock), boxId, identity, clock,
                 retry);
         this.downloader = new IuFileDownloader(http, clock, retry);
+        this.patientDownloader = new IuFileDownloader(http, clock,
+                new Retry(settings.ttl(), retry.maxDelay(), retry.sleeper()));
         this.outbox = new IuOutbox(store, messages, boxId, identity, this::addressOf, clock, settings.keepState());
         this.transfers = new Semaphore(settings.parallel());
     }
@@ -401,13 +412,20 @@ public final class IuTransport implements TransportPort {
                     outgoing = outgoing.with(uploader.prepare(file, chunkSize, settings.ttl()));
                     store.save(outgoing);
                 }
+                if (settings.early() && !outgoing.described()) {
+                    announceFile(outgoing, true);
+                    outgoing = outgoing.describedNow();
+                    store.save(outgoing);
+                }
                 IuStore.Outgoing base = outgoing;
                 IuFileUploader.UploadState state = uploader.upload(file, outgoing.state(),
                         s -> store.save(base.with(s)),
                         done -> emit(new TransportEvent.FileProgress(base.fileId(),
                                 TransportEvent.Direction.SENDING, done, size)));
                 outgoing = outgoing.with(state);
-                announceFile(outgoing);
+                if (!outgoing.described()) {
+                    announceFile(outgoing, false);
+                }
                 store.save(outgoing.announcedNow());
             } finally {
                 transfers.release();
@@ -428,9 +446,14 @@ public final class IuTransport implements TransportPort {
         }
     }
 
-    /** Envoie la description au destinataire, en fragments. */
-    private void announceFile(IuStore.Outgoing outgoing) {
-        String json = IuFileUploader.description(outgoing.state()).toJson();
+    /**
+     * Envoie la description au destinataire, en fragments.
+     *
+     * @param early avant la fin du téléversement : en cas d'échec de l'envoi, les morceaux sont retirés du relais et
+     *              le destinataire, qui les attendait, reçoit un refus définitif
+     */
+    private void announceFile(IuStore.Outgoing outgoing, boolean early) {
+        String json = IuFileUploader.description(outgoing.state(), early).toJson();
         int parts = (json.length() + fragmentSize - 1) / fragmentSize;
         if (parts > MAX_FRAGMENTS) {
             throw new TransportException("Description du fichier trop longue (" + parts + " fragments)");
@@ -543,7 +566,8 @@ public final class IuTransport implements TransportPort {
             transfers.acquire();
             try {
                 Files.createDirectories(target.toAbsolutePath().getParent());
-                downloader.download(description, target, Set.copyOf(done), index -> {
+                (description.early() ? patientDownloader : downloader).download(description, target,
+                        Set.copyOf(done), index -> {
                     done.add(index);
                     store.save(withDone(start, done));
                 }, bytes -> emit(new TransportEvent.FileProgress(start.fileId(), TransportEvent.Direction.RECEIVING,

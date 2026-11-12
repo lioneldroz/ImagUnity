@@ -50,8 +50,12 @@ class FileDescriptionTest {
                 one, EXPIRES)).hasMessageContaining("Suite");
         assertThatThrownBy(() -> new FileDescription("IU1", "x", "complete", "f.iu1", ChunkLayout.MIB, 1, 10, SHA, one,
                 EXPIRES)).hasMessageContaining("identifiant de transfert");
-        assertThatThrownBy(() -> new FileDescription("IU1", TRANSFER, "early", "f.iu1", ChunkLayout.MIB, 1, 10, SHA,
+        assertThatThrownBy(() -> new FileDescription("IU1", TRANSFER, "partiel", "f.iu1", ChunkLayout.MIB, 1, 10, SHA,
                 one, EXPIRES)).hasMessageContaining("mode");
+        assertThat(new FileDescription("IU1", TRANSFER, "early", "f.iu1", ChunkLayout.MIB, 1, 10, SHA, one, EXPIRES)
+                .early()).isTrue();
+        assertThat(new FileDescription("IU1", TRANSFER, "complete", "f.iu1", ChunkLayout.MIB, 1, 10, SHA, one,
+                EXPIRES).early()).isFalse();
         assertThatThrownBy(() -> new FileDescription("IU1", TRANSFER, "complete", "../f", ChunkLayout.MIB, 1, 10, SHA,
                 one, EXPIRES)).hasMessageContaining("nom");
         assertThatThrownBy(() -> new FileDescription("IU1", TRANSFER, "complete", "a..b", ChunkLayout.MIB, 1, 10, SHA,

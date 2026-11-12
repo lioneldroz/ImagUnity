@@ -59,12 +59,23 @@ public final class IuFileUploader {
      * @param digest     SHA-256 du paquet
      * @param expiresAt  expiration sur le relais
      * @param chunks     morceaux
+     * @param paddingKey clé de remplissage du dernier morceau (base64url), ou {@code null} pour des zéros (envoi
+     *                   préparé avant la v0.5)
      */
     public record UploadState(String transferId, String fileName, String relay, int chunkSize, long size,
-                              String digest, Instant expiresAt, List<ChunkState> chunks) {
+                              String digest, Instant expiresAt, List<ChunkState> chunks, String paddingKey) {
 
         public UploadState {
             chunks = List.copyOf(chunks);
+        }
+
+        public UploadState(String transferId, String fileName, String relay, int chunkSize, long size, String digest,
+                           Instant expiresAt, List<ChunkState> chunks) {
+            this(transferId, fileName, relay, chunkSize, size, digest, expiresAt, chunks, null);
+        }
+
+        byte[] padding() {
+            return paddingKey == null ? null : Codec.fromBase64Url(paddingKey, "clé de remplissage");
         }
 
         public boolean complete() {
@@ -74,7 +85,8 @@ public final class IuFileUploader {
         UploadState with(ChunkState chunk) {
             List<ChunkState> updated = new ArrayList<>(chunks);
             updated.set(chunk.index(), chunk);
-            return new UploadState(transferId, fileName, relay, chunkSize, size, digest, expiresAt, updated);
+            return new UploadState(transferId, fileName, relay, chunkSize, size, digest, expiresAt, updated,
+                    paddingKey);
         }
 
         public String toJson() {
@@ -104,7 +116,9 @@ public final class IuFileUploader {
     /** Découpe le paquet et crée tous ses morceaux sur le relais (requêtes légères, sans données). */
     public UploadState prepare(Path packet, int chunkSize, Duration ttl) throws IOException {
         ChunkLayout layout = ChunkLayout.of(Files.size(packet), chunkSize);
-        List<String> digests = Chunks.digests(packet, layout);
+        byte[] padding = new byte[Chunks.PADDING_KEY];
+        random.nextBytes(padding);
+        List<String> digests = Chunks.digests(packet, layout, padding);
         List<ChunkState> chunks = new ArrayList<>();
         for (int i = 0; i < layout.chunkCount(); i++) {
             KeyPair sender = ed25519();
@@ -119,7 +133,7 @@ public final class IuFileUploader {
         random.nextBytes(id);
         return new UploadState(Codec.base64Url(id), packet.getFileName().toString(), client.relay().toString(),
                 chunkSize, layout.size(), java.util.HexFormat.of().formatHex(sha(packet)), clock.instant().plus(ttl),
-                chunks);
+                chunks, Codec.base64Url(padding));
     }
 
     /**
@@ -141,7 +155,7 @@ public final class IuFileUploader {
             if (chunk.uploaded()) {
                 continue;
             }
-            byte[] content = Chunks.read(packet, layout, chunk.index());
+            byte[] content = Chunks.read(packet, layout, chunk.index(), state.padding());
             if (!Codec.sha256Hex(content).equals(chunk.digest())) {
                 throw new TransportException("Paquet modifié depuis la préparation de l'envoi : " + packet);
             }
@@ -159,12 +173,22 @@ public final class IuFileUploader {
         return current;
     }
 
-    /** Description à transmettre au destinataire (dans un message chiffré et signé). */
+    /** Description à transmettre au destinataire, une fois l'envoi téléversé (dans un message chiffré et signé). */
     public static FileDescription description(UploadState state) {
+        return description(state, false);
+    }
+
+    /**
+     * Description à transmettre au destinataire (dans un message chiffré et signé).
+     *
+     * @param early annoncée dès la création des morceaux, avant la fin de leur téléversement (§ 6.6)
+     */
+    public static FileDescription description(UploadState state, boolean early) {
         List<FileDescription.Chunk> chunks = state.chunks().stream().map(c -> new FileDescription.Chunk(c.index(),
                 c.digest(), List.of(new FileDescription.Replica(state.relay(), c.recipientId(), c.retrievalKey()))))
                 .toList();
-        return new FileDescription("IU1", state.transferId(), FileDescription.COMPLETE, state.fileName(),
+        return new FileDescription("IU1", state.transferId(), early ? FileDescription.EARLY : FileDescription.COMPLETE,
+                state.fileName(),
                 state.chunkSize(), state.chunks().size(), state.size(), state.digest(), chunks, state.expiresAt());
     }
 

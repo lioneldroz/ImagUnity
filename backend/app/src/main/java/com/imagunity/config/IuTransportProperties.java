@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param ttl       durée de séjour demandée pour les morceaux sur le relais
  * @param parallel  transferts de fichiers simultanés
  * @param keepState conservation de l'état d'un transfert terminé, et d'un message jamais déposé
+ * @param early     annonce anticipée : le destinataire télécharge pendant le téléversement (spécification § 6.6)
  */
 @ConfigurationProperties("imagunity.transport.iu")
 public record IuTransportProperties(
@@ -22,5 +23,6 @@ public record IuTransportProperties(
         @DefaultValue("./data/iu") Path stateDir,
         @DefaultValue("72h") Duration ttl,
         @DefaultValue("2") int parallel,
-        @DefaultValue("8d") Duration keepState) {
+        @DefaultValue("8d") Duration keepState,
+        @DefaultValue("true") boolean early) {
 }

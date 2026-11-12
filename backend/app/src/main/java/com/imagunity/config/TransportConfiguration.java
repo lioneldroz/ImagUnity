@@ -44,7 +44,7 @@ class TransportConfiguration {
         }
         LOG.info("Transport IU-T par le relais {}", iu.relay());
         return new IuTransport(new IuTransport.Settings(iu.relay(), iu.stateDir(), iu.ttl(), iu.parallel(),
-                iu.keepState()), identity.boxId(), identity.keys(), identity.encryption(),
+                iu.keepState(), iu.early()), identity.boxId(), identity.keys(), identity.encryption(),
                 IuDirectory.of(directory, clock), HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .build(), clock, Retry.standard());
     }

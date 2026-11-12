@@ -158,7 +158,7 @@ Conséquence : **IU-T exige l'annuaire et le chiffrement applicatif**. Un paquet
 
 - Taille de morceau `S` fixée pour tout le transfert, choisie parmi un **ensemble fermé** : 256 Kio, 1 Mio, 4 Mio (par défaut), 8 Mio.
 - Le choix se fait selon la qualité de la liaison (savoir-faire de la box ; adaptatif plus tard, § 13 étape 6).
-- Le dernier morceau est **complété par des zéros** jusqu'à `S` : le relais ne voit que des morceaux de tailles standard. Le nombre de morceaux révèle la taille approximative du paquet, ce qui est accepté (les volumes font partie des métadonnées visibles).
+- Le dernier morceau est **complété jusqu'à `S`** : le relais ne voit que des morceaux de tailles standard. Depuis la v0.5, le remplissage est **pseudo-aléatoire** : flux AES-256-CTR (nonce nul) d'une clé de remplissage de 32 octets tirée pour chaque envoi et gardée dans son état, donc reproductible à la reprise. Des zéros laissaient voir au relais la taille exacte du paquet chiffré (constat de la campagne sur IU-T, § 13.4). Le destinataire ne vérifie que l'empreinte du morceau, qui couvre le remplissage ; un remplissage par des zéros (vecteurs de test, envois antérieurs) reste accepté. Le nombre de morceaux révèle la taille approximative du paquet, ce qui est accepté (les volumes font partie des métadonnées visibles).
 
 ### 5.3 Empreintes
 
@@ -226,11 +226,15 @@ Le relais applique des limites de débit et de volume par box déposante (protec
 
 L'unité de reprise est le morceau. La box enregistre en base l'état de chaque morceau (créé, téléversé) et reprend après une coupure sans recommencer le transfert. `Range` permet aussi de reprendre un téléchargement en cours de morceau. L'ordre et le parallélisme sont libres côté box (savoir-faire propriétaire).
 
-### 6.6 Annonce anticipée (plus tard)
+### 6.6 Annonce anticipée
 
-**Décision v0.3** : la v1 annonce un fichier **une fois tous ses morceaux téléversés** (mode `complete`, comme XFTP et comme l'orchestrateur actuel). L'annonce anticipée (mode `early`) vient à l'étape 6 (§ 13).
+**Décision v0.3** : la v1 annonçait un fichier **une fois tous ses morceaux téléversés** (mode `complete`, comme XFTP). **Depuis la v0.5 (étape 6), l'annonce anticipée (mode `early`) est le défaut** (`IMAGUNITY_IU_EARLY=false` pour revenir au mode `complete`).
 
-Principe, pour mémoire : la box crée tous les morceaux (requêtes légères), les annonce aussitôt, puis les téléverse ; le destinataire télécharge en parallèle, un morceau pas encore disponible répondant `425 Too Early` (ou attendant avec `wait`). Le temps total tend vers celui du plus lent des deux, au lieu de leur somme ([résultats de la phase 1](phase1-simplex.md#5-résultats)). En contrepartie, le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires ; l'abandon par l'émetteur passe par le message `file.cancel` (§ 8.4).
+La box crée tous les morceaux (requêtes légères), envoie aussitôt la description (mode `early`), puis téléverse ; le destinataire télécharge en parallèle, en attente longue (`wait`) sur chaque morceau pas encore disponible (`425 Too Early` au-delà de l'attente, aussitôt redemandé). Il attend un morceau jusqu'à l'expiration du fichier, au lieu des 15 minutes du mode `complete`. Le temps total tend vers celui du plus lent des deux, au lieu de leur somme ([résultats de la phase 1](phase1-simplex.md#5-résultats)).
+
+- **Abandon** : un envoi en échec retire ses morceaux du relais ; le destinataire, qui les attendait, reçoit `404` (refus définitif) et le téléchargement échoue aussitôt. Le message `file.cancel` prévu n'est donc pas nécessaire.
+- **Contrepartie** : le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires. Il les associe déjà par les acquittements, sur un relais unique ; accepté.
+- L'orchestrateur ne change pas : `FileSent` et l'annonce du transfert (messages signés de l'orchestrateur) suivent toujours la fin du téléversement ; le destinataire restitue l'étude quand il a reçu les paquets **et** l'annonce.
 
 ---
 
@@ -263,7 +267,8 @@ La description donne au destinataire tout ce qu'il faut pour retrouver et vérif
 
 - Elle contient des **clés de retrait** : elle n'est jamais envoyée en clair, mais dans un message chiffré et signé (§ 8.4).
 - **Encodage** : JSON. Pas de canonicalisation : comme pour l'annuaire, les signatures portent sur les **octets exacts** du texte signé ([annuaire-signe.md § 2.1](annuaire-signe.md)), ce qui évite RFC 8785.
-- **Taille** : environ 250 octets par morceau et par réplique. Un paquet de 900 Mo (taille maximale actuelle d'un paquet) en morceaux de 4 Mio donne environ 60 Kio de description, sous la taille maximale d'un message (§ 8.3). Au-delà, la description est elle-même déposée comme un fichier IU-FILE, et le message ne contient qu'une **description de redirection** (même mécanisme que XFTP).
+- **Mode** : `complete` (annoncé une fois téléversé) ou `early` (annoncé dès la création des morceaux, § 6.6).
+- **Taille** : environ 280 octets par morceau et par réplique. Un paquet de 900 Mo (taille maximale actuelle d'un paquet) en morceaux de 4 Mio donne environ 60 Kio de description. Mise en œuvre (étape 4) : une description qui dépasse un message part **en fragments** de 20 000 caractères (messages `iu.file`), plutôt qu'en description de redirection.
 
 ---
 
