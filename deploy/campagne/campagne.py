@@ -422,6 +422,81 @@ def scenario_degrade():
     return result
 
 
+# Liaison lente : 2 Mbit/s en sortie de chaque box et du relais, pour mesurer la taille de morceau adaptative.
+LENTE = os.environ.get("DEGRADATION_LENTE", "tbf rate 2mbit burst 32kb latency 400ms")
+
+
+def slow_link(on):
+    for service in ("net-a", "net-b", "relay"):
+        iface = relais_iface(service)
+        if on:
+            netshoot(service, f"tc qdisc add dev {iface} root {LENTE}")
+        else:
+            netshoot(service, f"tc qdisc del dev {iface} root || true")
+
+
+def fresh_link_estimate():
+    """Box A sans estimation du débit, comme installée sur un site lent : estimation effacée, box redémarrée."""
+    compose("stop", "box-a")
+    run("docker", "run", "--rm", "-v", f"{PROJECT}_box-a-data:/d", "ubuntu:24.04", "rm", "-f", "/d/iu/liaison.json")
+    compose("start", "box-a")
+    wait(lambda: _up(BOX_A), 180, 2, "redémarrage de la box A")
+    time.sleep(5)  # relève de la file reprise
+
+
+def chunk_setting():
+    """Taille de morceau des box (IMAGUNITY_IU_CHUNK_SIZE), pour les résultats."""
+    env = run("docker", "inspect", "-f", "{{json .Config.Env}}", container("box-a"))
+    return next((v.split("=", 1)[1] for v in json.loads(env) if v.startswith("IMAGUNITY_IU_CHUNK_SIZE=")), "auto")
+
+
+def scenario_liaison_lente():
+    """Liaison à 2 Mbit/s : un petit transfert de rodage (mesure du débit), puis une étude de 20 Mo."""
+    fresh_link_estimate()
+    slow_link(True)
+    try:
+        full_transfer("liaison-lente-rodage", 1, 4)
+        result = full_transfer("liaison-lente", 2, 20)
+    finally:
+        slow_link(False)
+    result["degradation"] = f"{LENTE} (sortie de chaque box et du relais)"
+    result["tailleMorceaux"] = chunk_setting()
+    t = result["chronologie_s"]
+    if "restored" in t and "ANNOUNCED" in t:
+        result["restitutionApresTeleversement_s"] = round(t["restored"] - t["ANNOUNCED"], 2)
+    return result
+
+
+def scenario_coupure_lente(cut_seconds=30):
+    """Liaison à 2 Mbit/s et coupure de 30 s de la box A au milieu du téléversement d'une étude de 20 Mo."""
+    iface = relais_iface("net-a")
+    gateway = relais_gateway()
+    rules = (f"INPUT -i {iface} ! -s {gateway} -j DROP", f"OUTPUT -o {iface} ! -d {gateway} -j DROP")
+    events = {}
+
+    def cut(transfer):
+        transfer.wait_for(lambda s: s == "PACKAGED", 600, "empaquetage")
+        time.sleep(25)  # téléversement bien entamé
+        events["coupure_s"] = transfer.elapsed()
+        netshoot("net-a", " && ".join(f"iptables -I {r}" for r in rules))
+        try:
+            time.sleep(cut_seconds)
+        finally:
+            netshoot("net-a", " ; ".join(f"iptables -D {r}" for r in rules))
+        events["retablissement_s"] = transfer.elapsed()
+
+    fresh_link_estimate()
+    slow_link(True)
+    try:
+        full_transfer("coupure-lente-rodage", 1, 4)
+        result = full_transfer("coupure-liaison-lente", 2, 20, during=cut)
+    finally:
+        slow_link(False)
+    result.update(events)
+    result["tailleMorceaux"] = chunk_setting()
+    return result
+
+
 def scenario_coupure(cut_seconds=60):
     """Coupure réseau de la box A pendant 60 s, au milieu du dépôt des paquets sur le relais.
 
@@ -535,6 +610,8 @@ SCENARIOS = {
     "coupure-reseau": scenario_coupure,
     "destinataire-eteint": scenario_destinataire_eteint,
     "volumineux": scenario_volumineux,
+    "liaison-lente": scenario_liaison_lente,
+    "coupure-liaison-lente": scenario_coupure_lente,
 }
 
 

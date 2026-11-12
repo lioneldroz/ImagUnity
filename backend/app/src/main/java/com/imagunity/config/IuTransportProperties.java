@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param parallel  transferts de fichiers simultanés
  * @param keepState conservation de l'état d'un transfert terminé, et d'un message jamais déposé
  * @param early     annonce anticipée : le destinataire télécharge pendant le téléversement (spécification § 6.6)
+ * @param chunkSize taille des morceaux : {@code auto} (adaptée au débit mesuré de la liaison), ou 256KB, 1MB, 4MB,
+ *                  8MB
  */
 @ConfigurationProperties("imagunity.transport.iu")
 public record IuTransportProperties(
@@ -24,5 +26,19 @@ public record IuTransportProperties(
         @DefaultValue("72h") Duration ttl,
         @DefaultValue("2") int parallel,
         @DefaultValue("8d") Duration keepState,
-        @DefaultValue("true") boolean early) {
+        @DefaultValue("true") boolean early,
+        @DefaultValue("auto") String chunkSize) {
+
+    /** Taille de morceau imposée, ou 0 pour l'adapter à la liaison. */
+    public int chunkSizeBytes() {
+        if (chunkSize == null || chunkSize.isBlank() || chunkSize.equalsIgnoreCase("auto")) {
+            return 0;
+        }
+        try {
+            return Math.toIntExact(org.springframework.util.unit.DataSize.parse(chunkSize.strip()).toBytes());
+        } catch (IllegalArgumentException | ArithmeticException e) {
+            throw new IllegalArgumentException("Taille de morceau IU-T invalide : " + chunkSize
+                    + " (auto, 256KB, 1MB, 4MB ou 8MB)", e);
+        }
+    }
 }

@@ -24,6 +24,8 @@ x-annuaire: &annuaire
   IMAGUNITY_DIRECTORY_SYNC_INTERVAL: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:-1m}
   # Transport IU-T : relais de l'organisation (HTTP dans ce labo ; derrière un proxy TLS en production).
   IMAGUNITY_IU_RELAY: http://relay:8443
+  # Taille des morceaux : auto (adaptée au débit mesuré de la liaison), ou 256KB, 1MB, 4MB, 8MB.
+  IMAGUNITY_IU_CHUNK_SIZE: ${IMAGUNITY_IU_CHUNK_SIZE:-auto}
 
 secrets:
   phrase-box-a:
