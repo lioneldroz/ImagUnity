@@ -23,6 +23,7 @@
         <module>directory</module>
         <module>directory-server</module>
         <module>release</module>
+        <module>protocol</module>
         <module>dicom</module>
         <module>packaging</module>
         <module>transport</module>
@@ -57,6 +58,11 @@
             <dependency>
                 <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-directory</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.imagunity</groupId>
+                <artifactId>imagunity-protocol</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
