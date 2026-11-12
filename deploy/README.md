@@ -50,6 +50,14 @@ curl -s -u "$U" -H "$H" -X POST http://localhost:8082/api/v1/peers/connections -
 
 Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, transmis à la box B, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.
 
+## Annuaire de l'organisation (facultatif)
+
+Le profil `annuaire` ajoute le service d'annuaire (port 8090) et sa base PostgreSQL. Il faut d'abord créer la clé du responsable et copier sa clé publique dans `annuaire/organisation.pub.json` (voir [annuaire signé](../docs/annuaire-signe.md)) :
+
+```bash
+docker compose --profile annuaire up -d directory
+```
+
 ## Réinitialisation
 
 ```bash

@@ -31,9 +31,12 @@ class DirectoryAdminTest {
         err.reset();
     }
 
+    private java.util.Map<String, String> environment = java.util.Map.of();
+
     private int run(String... args) {
         return new DirectoryAdmin(new PrintStream(out, true, StandardCharsets.UTF_8),
-                new PrintStream(err, true, StandardCharsets.UTF_8), Clock.fixed(now, ZoneOffset.UTC)).run(args);
+                new PrintStream(err, true, StandardCharsets.UTF_8), Clock.fixed(now, ZoneOffset.UTC), environment)
+                .run(args);
     }
 
     private String p(String name) {
@@ -99,5 +102,53 @@ class DirectoryAdminTest {
         assertThat(run("empreinte", "--cle-publique", p("absent.json"))).isEqualTo(1);
         assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", "pas-un-uuid", "--nom", "B",
                 "--sortie", p("d.json"))).isEqualTo(1);
+    }
+
+    @Test
+    void publishesToTheDirectory() throws Exception {
+        java.util.List<String> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+        int[] status = {201};
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/directory/v1/entries", exchange -> {
+            received.add(exchange.getRequestHeaders().getFirst("Authorization") + " "
+                    + new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] body = status[0] == 409 ? "{\"detail\":\"Retour en arrière\"}".getBytes() : new byte[0];
+            exchange.sendResponseHeaders(status[0], body.length == 0 ? -1 : body.length);
+            if (body.length > 0) {
+                exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+        server.start();
+        String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/";
+        try {
+            run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"));
+            run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie", p("d.json"));
+            run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json"));
+            out.reset();
+
+            assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"), "--compte", "responsable:secret"))
+                    .isZero();
+            assertThat(output()).contains("Entrée publiée");
+            status[0] = 200;
+            environment = java.util.Map.of(DirectoryAdmin.ACCOUNT_VARIABLE, "responsable:secret");
+            assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"))).isZero();
+            assertThat(output()).contains("déjà publiée");
+            status[0] = 409;
+            assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"))).isEqualTo(1);
+            assertThat(err.toString(StandardCharsets.UTF_8)).contains("HTTP 409").contains("Retour en arrière");
+
+            String basic = "Basic " + java.util.Base64.getEncoder().encodeToString("responsable:secret".getBytes());
+            assertThat(received).hasSize(3).allSatisfy(r -> assertThat(r).startsWith(basic).contains("\"payload\""));
+            environment = java.util.Map.of();
+            assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"))).as("compte manquant").isEqualTo(2);
+            assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"), "--compte", "sans-deux-points"))
+                    .isEqualTo(2);
+        } finally {
+            server.stop(0);
+        }
+        assertThat(run("publier", "--annuaire", url, "--entree", p("e.json"), "--compte", "a:b"))
+                .as("annuaire injoignable").isEqualTo(1);
     }
 }

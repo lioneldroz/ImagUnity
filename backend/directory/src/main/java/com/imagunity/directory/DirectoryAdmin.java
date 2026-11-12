@@ -2,11 +2,16 @@ package com.imagunity.directory;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,22 +27,29 @@ import java.util.UUID;
  * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 365] [--serie 1] --sortie &lt;fichier&gt;
  * revoquer           --cles &lt;clé organisation&gt; --entree &lt;fichier&gt; --motif &lt;texte&gt; --sortie &lt;fichier&gt;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
+ * publier            --annuaire &lt;url&gt; --entree &lt;fichier&gt; [--compte &lt;utilisateur:mot de passe&gt;]
  * </pre>
+ * Pour {@code publier}, le compte peut venir de la variable {@code IMAGUNITY_ANNUAIRE_COMPTE} (préférable : un
+ * argument de ligne de commande est visible des autres utilisateurs de la machine).
  */
 public final class DirectoryAdmin {
+
+    static final String ACCOUNT_VARIABLE = "IMAGUNITY_ANNUAIRE_COMPTE";
 
     private final PrintStream out;
     private final PrintStream err;
     private final Clock clock;
+    private final Map<String, String> environment;
 
-    DirectoryAdmin(PrintStream out, PrintStream err, Clock clock) {
+    DirectoryAdmin(PrintStream out, PrintStream err, Clock clock, Map<String, String> environment) {
         this.out = out;
         this.err = err;
         this.clock = clock;
+        this.environment = environment;
     }
 
     public static void main(String[] args) {
-        System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC()).run(args));
+        System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC(), System.getenv()).run(args));
     }
 
     /** Exécute une commande ; renvoie le code de sortie (0 : succès, 1 : refus ou erreur, 2 : usage). */
@@ -59,6 +71,7 @@ public final class DirectoryAdmin {
                 case "enroler" -> enroll(options);
                 case "revoquer" -> revoke(options);
                 case "verifier" -> verify(options);
+                case "publier" -> publish(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -143,6 +156,38 @@ public final class DirectoryAdmin {
         return verified.usable() ? 0 : 1;
     }
 
+    private int publish(Map<String, String> o) throws IOException {
+        String directory = require(o, "annuaire").replaceAll("/+$", "");
+        SignedDocument entry = read(Path.of(require(o, "entree")));
+        String account = o.getOrDefault("compte", environment.get(ACCOUNT_VARIABLE));
+        if (account == null || !account.contains(":")) {
+            throw new MissingOptionException("Compte de dépôt manquant : --compte utilisateur:mot-de-passe ou "
+                    + ACCOUNT_VARIABLE);
+        }
+        HttpRequest request = HttpRequest.newBuilder(URI.create(directory + "/directory/v1/entries"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Basic " + Base64.getEncoder()
+                        .encodeToString(account.getBytes(StandardCharsets.UTF_8)))
+                .POST(HttpRequest.BodyPublishers.ofString(entry.toJson()))
+                .build();
+        HttpResponse<String> response;
+        try (HttpClient http = HttpClient.newHttpClient()) {
+            response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Publication interrompue", e);
+        }
+        switch (response.statusCode()) {
+            case 201 -> out.println("Entrée publiée dans l'annuaire");
+            case 200 -> out.println("Entrée déjà publiée à l'identique");
+            default -> {
+                err.println("Publication refusée (HTTP " + response.statusCode() + ") : " + response.body());
+                return 1;
+            }
+        }
+        return 0;
+    }
+
     private Organization organization(Map<String, String> o) throws IOException {
         Path keys = Path.of(require(o, "cles"));
         KeyFiles.OrganizationPublicKey publicKey = KeyFiles.readOrganizationPublic(Path.of(keys + ".pub.json"));
@@ -170,7 +215,8 @@ public final class DirectoryAdmin {
                   box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--simplex <adresse>] --sortie <fichier>
                   enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
-                  verifier           --cle-publique <fichier> --entree <fichier>""");
+                  verifier           --cle-publique <fichier> --entree <fichier>
+                  publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]""");
         return 2;
     }
 

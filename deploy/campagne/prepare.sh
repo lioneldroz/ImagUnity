@@ -14,6 +14,10 @@ if [ ! -f "$JAR" ]; then
     exit 1
 fi
 cp "$JAR" "$BUILD/imagunity-box.jar"
+DIRECTORY_JAR="$ROOT/backend/directory-server/target/imagunity-directory.jar"
+if [ -f "$DIRECTORY_JAR" ]; then
+    cp "$DIRECTORY_JAR" "$BUILD/imagunity-directory.jar"
+fi
 
 if [ ! -x "$BUILD/simplex-chat" ]; then
     curl -fsSL -o "$BUILD/simplex-chat" \
@@ -26,5 +30,6 @@ if [ ! -f /proc/net/if_inet6 ] && [ ! -f "$BUILD/force-ipv4.so" ]; then
     cc -shared -fPIC -O2 -o "$BUILD/force-ipv4.so" "$HERE/ipv4/force-ipv4.c" -ldl
 fi
 
-cp "$ROOT/deploy/simplex-chat/entrypoint.sh" "$HERE/chat.Dockerfile" "$HERE/box.Dockerfile" "$BUILD/"
+cp "$ROOT/deploy/simplex-chat/entrypoint.sh" "$HERE/chat.Dockerfile" "$HERE/box.Dockerfile" \
+    "$HERE/directory.Dockerfile" "$BUILD/"
 echo "Contexte prêt : $BUILD"

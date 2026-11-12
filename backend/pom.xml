@@ -21,6 +21,7 @@
     <modules>
         <module>domain</module>
         <module>directory</module>
+        <module>directory-server</module>
         <module>dicom</module>
         <module>packaging</module>
         <module>transport</module>

@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **étape A faite** (socle cryptographique et outil du responsable). Étapes B et C à venir.
+> Statut : **étapes A et B faites** (socle cryptographique, outil du responsable, service d'annuaire). Étape C à venir.
 
 ## 1. Principes
 
@@ -100,18 +100,41 @@ Exemple : l'organisation reçoit l'empreinte `TVF3-WIAA-CQ6V-MZGC-HKTQ-5WEH`, et
 
 Les clés privées sont stockées en PKCS#8 dans un fichier JSON, en droits 600. Pour le pilote, il faudra un chiffrement par phrase de passe ou un support matériel (carte à puce, HSM) pour la clé du responsable, et un TPM pour celle de la box.
 
-## 5. Étapes suivantes
+## 5. Service d'annuaire (étape B)
 
-- **B. Service d'annuaire** (Spring Boot, PostgreSQL) :
-  - publication des entrées signées (`GET /directory/v1/entries`, et par box) ;
-  - dépôt par le responsable, authentifié ; le service refuse une entrée mal signée ou un retour en arrière, mais les box revérifient tout ;
-  - historique conservé.
-- **C. Intégration dans la box** :
-  - identité générée au premier démarrage ;
-  - demande d'enrôlement depuis la console ;
-  - clé du responsable épinglée par configuration, avec vérification de son empreinte ;
-  - synchronisation périodique de l'annuaire ;
-  - appairage par l'annuaire : connexion à l'adresse SimpleX publiée, puis message `hello` signé qui lie le contact à une box enrôlée, ce qui remplace l'invitation manuelle ;
-  - annonces et accusés signés par la box et vérifiés par le destinataire ;
-  - refus d'envoyer à une box révoquée ou expirée, ou d'en recevoir ;
-  - affichage dans la console.
+Module `directory-server` : une application Spring Boot autonome, sur **PostgreSQL** (Flyway), servie sur le port 8090.
+
+| Requête | Accès | Réponse |
+|---|---|---|
+| `GET /directory/v1/organization` | libre | organisation, clé publique et empreinte courte du responsable (pour information : chaque box épingle sa copie, vérifiée hors bande) |
+| `GET /directory/v1/entries` | libre | entrée courante (numéro le plus haut) de chaque box |
+| `GET /directory/v1/entries/{boxId}` | libre | entrée courante d'une box ; 404 si inconnue |
+| `GET /directory/v1/entries/{boxId}/history` | libre | toutes ses entrées, par numéro croissant |
+| `POST /directory/v1/entries` | compte du responsable (HTTP Basic) | 201 publiée, 200 déjà publiée à l'identique, 409 retour en arrière ou autre entrée sous le même numéro, 422 entrée invalide (signature, organisation, format) |
+
+- **Le service revérifie** chaque dépôt avec la clé publique de l'organisation (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`). C'est une défense en profondeur : les box revérifient tout, le service n'étant pas de confiance.
+- **Historique** : chaque entrée publiée est gardée, une ligne par box et par numéro.
+- **Lecture libre** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. Les réserver aux box enrôlées est possible plus tard (signature des requêtes, § 6.4 de la spécification).
+- **Compte de dépôt** : `IMAGUNITY_DIRECTORY_PUBLISHER_USER` (par défaut `responsable`) et `IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD`, en clair ou haché `{bcrypt}`. Sans mot de passe, il est généré et journalisé au démarrage.
+- **Publication** depuis l'outil du responsable : `publier --annuaire <url> --entree <fichier>`. Le compte passe par `IMAGUNITY_ANNUAIRE_COMPTE=utilisateur:mot-de-passe`, plutôt que par l'option `--compte` qui est visible dans la liste des processus.
+- **Compose** : services `directory` et `directory-db` sous le profil `annuaire` (`docker compose --profile annuaire up -d`), avec la clé publique de l'organisation dans `deploy/annuaire/organisation.pub.json`.
+
+Vérifié en réel sur PostgreSQL 17 :
+- migration appliquée, deux box publiées, publication en double « déjà publiée » ;
+- révocation publiée, puis retour en arrière refusé (409) et dépôt sans compte refusé (401) ;
+- entrée relue depuis l'annuaire, puis revérifiée `ACTIVE` avec la clé épinglée ;
+- historique complet en base.
+
+Le service fonctionne aussi dans le Compose. Les tests automatisés tournent sur H2 en mode PostgreSQL.
+
+## 6. Étape suivante
+
+**C. Intégration dans la box** :
+- identité générée au premier démarrage ;
+- demande d'enrôlement depuis la console ;
+- clé du responsable épinglée par configuration, avec vérification de son empreinte ;
+- synchronisation périodique de l'annuaire, avec les numéros vus gardés en base ;
+- appairage par l'annuaire : connexion à l'adresse SimpleX publiée, puis message `hello` signé qui lie le contact à une box enrôlée, ce qui remplace l'invitation manuelle ;
+- annonces et accusés signés par la box et vérifiés par le destinataire ;
+- refus d'envoyer à une box révoquée ou expirée, ou d'en recevoir ;
+- affichage dans la console.

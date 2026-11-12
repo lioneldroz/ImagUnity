@@ -6,6 +6,11 @@
 #   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml up -d --build
 
 services:
+  directory:
+    image: imagunity/directory:campagne
+    build:
+      context: ./campagne/build
+      dockerfile: directory.Dockerfile
   chat-a:
     image: imagunity/chat:campagne
     build:
