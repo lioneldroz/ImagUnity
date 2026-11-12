@@ -19,6 +19,7 @@ chaque démarrage  : TPM ──descelle──► secret ──ouvre──► cl�
 - **Le secret n'est connu de personne.** Il est tiré par la box, n'est écrit nulle part en clair, et seul le TPM de cette box peut le restituer.
 - **Copiés ailleurs, les fichiers ne s'ouvrent pas.** Le secret scellé (`identite-box.json.tpm.pub` et `.tpm.priv`, droits 600) est chiffré par la clé de stockage du TPM. Un autre TPM le refuse (« integrity check failed »).
 - **Lien facultatif à l'état de démarrage.** Avec `IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS=sha256:0,7` (micrologiciel et démarrage sécurisé), le TPM ne descelle que si la machine a démarré comme lors du scellement. Un disque démarré sur un autre système, ou un démarrage sécurisé désactivé, laisse la box sans ses clés.
+- **Pas de verrouillage par les coupures de courant.** Un TPM compte chaque arrêt non propre comme une tentative suspecte. Au-delà d'un seuil, il passe en verrouillage anti-force brute (« DA lockout ») et refuse les objets qu'il protège, parfois pendant des heures. La clé primaire et le secret scellé sont donc créés **hors de cette protection** (attribut `noda`). Ils n'ont pas de mot de passe à deviner. Le secret reste protégé par le TPM et, si voulu, par la politique PCR, qui demeure obligatoire.
 - Le passage au matériel pour les clés elles-mêmes reste possible plus tard (TPM ou HSM prenant en charge ML-DSA et ML-KEM). `KeyFiles` reste le point de remplacement.
 
 ## 2. Configuration
@@ -49,13 +50,21 @@ Une box en clair passe directement sous le TPM. Une box dont les clés sont chif
 - **Mise à jour du micrologiciel avec PCR liés** : le PCR 0 change, et la box ne descelle plus. Avant une telle mise à jour, préférer `sha256:7` seul, ou prévoir un réenrôlement.
 - **Clé du responsable et clé de l'éditeur** : elles restent des fichiers chiffrés par phrase de passe, sur des postes hors ligne. Une carte à puce ou un HSM attend la prise en charge de ML-DSA.
 
+**Versions antérieures.** Une box dont le secret a été scellé avant l'attribut `noda` le descelle avec l'ancien modèle de clé primaire, puis le scelle de nouveau au démarrage suivant. Le journal l'indique : « Secret scellé par une version antérieure : scellé de nouveau… ». Si son TPM est déjà en verrouillage, il faut le lever une fois, avec l'autorisation « lockout » de l'hôte (`tpm2_dictionarylockout --clear-lockout`).
+
+Quand le TPM refuse, le message d'erreur reprend désormais la cause donnée par le TPM, et signale un verrouillage anti-force brute s'il y en a un.
+
 ## 5. Vérifié en réel (pile Docker, novembre 2026)
 
 Avec un TPM logiciel (swtpm) par box et des PCR liés (`sha256:7`), sur la chaîne de la campagne de tests :
 - **migration des box en service** : clés sous phrase de passe chiffrées sur place par le secret scellé, **même identité** (`db4a8efc-…`). Le transfert nominal donne **100 instances identiques sur 100** ;
 - **redémarrage sans phrase de passe** (secret Docker retiré) : la box démarre, « Clés de la box protégées par le TPM » ;
 - **état de démarrage modifié** (PCR 7 étendu) : la box refuse de démarrer, « Le TPM refuse de desceller… ». Après redémarrage du TPM (PCR remis à zéro, comme au redémarrage d'une machine), elle repart avec la même identité, son partenaire est vérifié, et un transfert donne 100/100 ;
-- **secret scellé de B présenté au TPM de A** : refusé, « integrity check failed ».
+- **secret scellé de B présenté au TPM de A** : refusé, « integrity check failed » ;
+- **verrouillage anti-force brute** : pendant ces essais, les arrêts brutaux répétés des conteneurs avaient mis les deux TPM en verrouillage, et les box ne démarraient plus. Après correction :
+  - les deux box ont scellé de nouveau leur secret au nouveau modèle, avec la même identité ;
+  - le TPM de B a été mis volontairement en verrouillage (`inLockout: 1`), puis arrêté brutalement trois fois avec la box ;
+  - B démarre malgré tout, et le transfert nominal donne **100/100** identiques.
 
 Les tests automatiques couvrent la même logique avec un TPM simulé. Ils comprennent aussi un essai sur un vrai TPM logiciel quand swtpm est installé (sauté en CI).
 
