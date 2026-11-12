@@ -2,6 +2,8 @@
 export interface BoxInfo {
   name: string
   version: string
+  /** Numéro de la version signée vérifiée au démarrage (null : version non vérifiée). */
+  releaseSequence: number | null
 }
 
 export async function fetchBoxInfo(): Promise<BoxInfo> {

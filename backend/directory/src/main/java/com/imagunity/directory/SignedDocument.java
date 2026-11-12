@@ -20,7 +20,7 @@ public record SignedDocument(String payload, HybridSignature signatures) {
     }
 
     /** Signe ce texte. */
-    static SignedDocument sign(String payload, HybridKeyPair keys) {
+    public static SignedDocument sign(String payload, HybridKeyPair keys) {
         return new SignedDocument(payload, keys.sign(payload.getBytes(StandardCharsets.UTF_8)));
     }
 
