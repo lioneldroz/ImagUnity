@@ -49,6 +49,10 @@ imagunity:
     # de données. Sans elle, la clé est en clair (avertissement au démarrage).
     identity-passphrase: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE:}
     identity-passphrase-file: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE:}
+    # Clés de la box protégées par un secret scellé dans son TPM (TPM2TOOLS_TCTI, défaut /dev/tpmrm0), lié si voulu
+    # à l’état de démarrage mesuré (par exemple sha256:0,7).
+    identity-tpm: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM:false}
+    identity-tpm-pcrs: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
     # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
     encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}

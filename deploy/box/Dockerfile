@@ -11,6 +11,9 @@ COPY . .
 RUN sh ./mvnw -B -ntp -DskipTests package
 
 FROM eclipse-temurin:25-jre
+# Outils TPM : clés de la box protégées par un secret scellé dans le TPM de l'hôte (docs/cles-tpm.md).
+RUN apt-get update -q && apt-get install -y --no-install-recommends tpm2-tools \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /src/release/target/imagunity-release.jar /app/imagunity-release.jar
 COPY --from=build /src/release/demarrer.sh /app/demarrer.sh

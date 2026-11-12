@@ -1,6 +1,7 @@
 package com.imagunity.config;
 
 import com.imagunity.directory.DirectoryClient;
+import com.imagunity.directory.DirectoryException;
 import com.imagunity.directory.EntryVerifier;
 import com.imagunity.directory.HybridKemKeyPair;
 import com.imagunity.directory.HybridKeyPair;
@@ -20,6 +21,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Locale;
@@ -75,7 +78,72 @@ class DirectoryConfiguration {
     /** Identité de la box : créée au premier démarrage, puis relue. */
     @Bean
     BoxIdentity boxIdentity(DirectoryProperties properties) throws IOException {
+        if (properties.identityTpm()) {
+            return loadOrCreateIdentity(properties.identityFile(), properties.passphrase(),
+                    new TpmSeal(properties.identityFile(), properties.identityTpmPcrs()));
+        }
         return loadOrCreateIdentity(properties.identityFile(), properties.passphrase());
+    }
+
+    /**
+     * Identité de la box protégée par un secret scellé dans son TPM : secret tiré et scellé au premier démarrage, puis
+     * descellé à chaque démarrage. Des clés existantes (en clair, ou chiffrées par la phrase de passe {@code previous})
+     * sont chiffrées sur place par ce secret ; la phrase de passe ne sert alors plus.
+     *
+     * @throws IllegalStateException si le TPM refuse de desceller le secret, ou si des clés chiffrées par une autre
+     *                               phrase de passe ne peuvent pas être migrées
+     */
+    static BoxIdentity loadOrCreateIdentity(Path keysFile, char[] previous, TpmSeal tpm) throws IOException {
+        char[] secret;
+        if (tpm.exists()) {
+            try {
+                secret = new String(tpm.unseal(), StandardCharsets.UTF_8).strip().toCharArray();
+            } catch (IOException e) {
+                throw new IllegalStateException("Le TPM refuse de desceller le secret des clés de la box (autre TPM, "
+                        + "ou état de démarrage modifié) : " + e.getMessage(), e);
+            }
+        } else {
+            byte[] random = new byte[32];
+            new SecureRandom().nextBytes(random);
+            secret = Base64.getEncoder().encodeToString(random).toCharArray();
+            tpm.seal(new String(secret).getBytes(StandardCharsets.UTF_8));
+            LOG.info("Secret des clés de la box tiré et scellé dans le TPM");
+        }
+        migrateToTpm(keysFile, previous, secret, false);
+        migrateToTpm(encryptionFileOf(keysFile), previous, secret, true);
+        BoxIdentity identity = loadOrCreateIdentity(keysFile, secret);
+        LOG.info("Clés de la box protégées par le TPM");
+        return identity;
+    }
+
+    /** Chiffre par le secret du TPM des clés en clair, ou chiffrées par la phrase de passe précédente. */
+    private static void migrateToTpm(Path file, char[] previous, char[] secret, boolean encryption)
+            throws IOException {
+        if (!Files.exists(file)) {
+            return;
+        }
+        if (!KeyFiles.isProtected(file)) {
+            KeyFiles.reprotect(file, null, secret);
+            LOG.info("Clés {} désormais protégées par le TPM", file.getFileName());
+            return;
+        }
+        try {
+            if (encryption) {
+                KeyFiles.readEncryptionPrivate(file, secret);
+            } else {
+                KeyFiles.readPrivate(file, secret);
+            }
+            return; // déjà sous le secret du TPM
+        } catch (DirectoryException e) {
+            if (previous == null) {
+                throw new IllegalStateException("Clés " + file.getFileName() + " chiffrées par une phrase de passe : "
+                        + "la fournir une dernière fois (IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE) pour les "
+                        + "placer sous la protection du TPM", e);
+            }
+        }
+        KeyFiles.reprotect(file, previous, secret);
+        LOG.warn("Clés {} désormais protégées par le TPM : la phrase de passe précédente ne sert plus, son secret "
+                + "peut être retiré de la configuration", file.getFileName());
     }
 
     static BoxIdentity loadOrCreateIdentity(Path keysFile) throws IOException {

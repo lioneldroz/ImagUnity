@@ -1,0 +1,46 @@
+# Essais sans TPM matériel : chaque box reçoit un TPM logiciel (swtpm) dans son espace réseau, joignable en
+# 127.0.0.1:2321, et une image avec les outils TPM. À ajouter à la place de compose.tpm.yml.
+#
+#   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f compose.annuaire.yml \
+#       -f campagne/compose.tpm-logiciel.yml --profile annuaire up -d --build
+
+x-tpm: &tpm
+  IMAGUNITY_DIRECTORY_IDENTITY_TPM: "true"
+  IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS:-sha256:7}
+  TPM2TOOLS_TCTI: swtpm:host=127.0.0.1,port=2321
+
+services:
+  tpm-a:
+    image: imagunity/swtpm:essai
+    build:
+      context: ./tpm
+      dockerfile: swtpm.Dockerfile
+    network_mode: service:net-a
+    volumes:
+      - tpm-a-state:/var/lib/swtpm
+  tpm-b:
+    image: imagunity/swtpm:essai
+    build:
+      context: ./tpm
+      dockerfile: swtpm.Dockerfile
+    network_mode: service:net-b
+    volumes:
+      - tpm-b-state:/var/lib/swtpm
+  box-a:
+    image: imagunity/box:tpm
+    build:
+      context: ./tpm
+      dockerfile: box-tpm.Dockerfile
+    environment: *tpm
+    depends_on: [tpm-a]
+  box-b:
+    image: imagunity/box:tpm
+    build:
+      context: ./tpm
+      dockerfile: box-tpm.Dockerfile
+    environment: *tpm
+    depends_on: [tpm-b]
+
+volumes:
+  tpm-a-state:
+  tpm-b-state:

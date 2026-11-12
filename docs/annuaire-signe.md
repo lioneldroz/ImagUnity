@@ -263,7 +263,7 @@ Dans le Compose, `compose.annuaire.yml` passe les phrases en secrets `phrase-box
 
 ## 10. Reste pour le pilote
 
-- **Support matériel** (TPM pour la box ; carte à puce ou HSM pour le responsable), dès qu'il prendra en charge ML-DSA.
+- **Support matériel** : pour la box, fait par scellement dans le TPM ([cles-tpm.md](cles-tpm.md)) ; pour le responsable, carte à puce ou HSM dès qu'ils prendront en charge ML-DSA.
 - **Lecture de l'annuaire** réservée aux box enrôlées (requêtes signées), si l'organisation le souhaite.
 - **Annonces de très gros examens** : découpage au-delà de la taille d'un message.
 - Chiffrement applicatif : fait, voir [chiffrement-applicatif.md](chiffrement-applicatif.md).
