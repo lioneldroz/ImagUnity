@@ -188,4 +188,26 @@ class KeyFilesTest {
                 .hasMessageContaining("illisible");
         assertThat(wrongUsage).exists();
     }
+
+    @Test
+    void passphraseCanBeChanged() throws IOException {
+        Path signing = dir.resolve("box.json");
+        Path encryption = dir.resolve("box.json.chiffrement");
+        HybridKeyPair keys = HybridKeyPair.generate();
+        HybridKemKeyPair kem = HybridKemKeyPair.generate();
+        KeyFiles.writePrivate(signing, keys, PHRASE);
+        KeyFiles.writeEncryptionPrivate(encryption, kem, PHRASE);
+        char[] next = "secret scellé dans le TPM".toCharArray();
+
+        KeyFiles.reprotect(signing, PHRASE, next);
+        KeyFiles.reprotect(encryption, PHRASE, next);
+
+        assertThat(KeyFiles.readPrivate(signing, next).publicKey().fingerprint())
+                .isEqualTo(keys.publicKey().fingerprint());
+        assertThat(KeyFiles.readEncryptionPrivate(encryption, next).publicKey().fingerprint())
+                .isEqualTo(kem.publicKey().fingerprint());
+        assertThatThrownBy(() -> KeyFiles.readPrivate(signing, PHRASE)).hasMessageContaining("incorrecte");
+        assertThatThrownBy(() -> KeyFiles.reprotect(signing, PHRASE, next)).hasMessageContaining("incorrecte");
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(signing))).isEqualTo("rw-------");
+    }
 }

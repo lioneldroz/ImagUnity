@@ -22,6 +22,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param encryptionRequired     exige le chiffrement applicatif des paquets : refuse d'envoyer à une box dont l'entrée
  *                               ne publie pas de clés de chiffrement, et de restituer un paquet reçu en clair
  *                               ({@code false} : seulement le temps de migrer un parc)
+ * @param identityTpm            protège les clés de la box par un secret scellé dans son TPM (au lieu de la phrase de
+ *                               passe, qui ne sert plus qu'une dernière fois pour la migration)
+ * @param identityTpmPcrs        registres PCR auxquels lier le secret, par exemple {@code sha256:0,7} (vide : aucun)
  */
 @ConfigurationProperties("imagunity.directory")
 public record DirectoryProperties(
@@ -33,7 +36,9 @@ public record DirectoryProperties(
         @DefaultValue("5m") Duration syncInterval,
         String identityPassphrase,
         String identityPassphraseFile,
-        @DefaultValue("true") boolean encryptionRequired) {
+        @DefaultValue("true") boolean encryptionRequired,
+        @DefaultValue("false") boolean identityTpm,
+        String identityTpmPcrs) {
 
     /** Constructeur utilisé pour lier la configuration. */
     @ConstructorBinding
@@ -43,7 +48,16 @@ public record DirectoryProperties(
     /** Annuaire sans phrase de passe pour l'identité (tests). */
     public DirectoryProperties(boolean enabled, URI url, Path organizationKey, String organizationCode,
                                Path identityFile, Duration syncInterval) {
-        this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, null, null, true);
+        this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, null, null, true, false,
+                null);
+    }
+
+    /** Annuaire sans TPM (tests). */
+    public DirectoryProperties(boolean enabled, URI url, Path organizationKey, String organizationCode,
+                               Path identityFile, Duration syncInterval, String identityPassphrase,
+                               String identityPassphraseFile, boolean encryptionRequired) {
+        this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, identityPassphrase,
+                identityPassphraseFile, encryptionRequired, false, null);
     }
 
     /** Phrase de passe de l'identité ({@code null} : aucune). */

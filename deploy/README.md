@@ -81,6 +81,10 @@ docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f compose
 
 Une nouvelle version se dépose dans `/data/mises-a-jour/depot/` de la box (jar et manifeste), puis la box est redémarrée. Sans `compose.mises-a-jour.yml`, la box démarre sans vérification, avec un avertissement.
 
+### Clés protégées par le TPM
+
+`compose.tpm.yml` (après `compose.annuaire.yml`) protège les clés des box par un secret scellé dans le TPM de l'hôte (`/dev/tpmrm0`) ; au premier démarrage, la phrase de passe sert une dernière fois, puis son secret peut être retiré. Sans TPM matériel, `campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel pour les essais. Voir [clés TPM](../docs/cles-tpm.md).
+
 ## Réinitialisation
 
 ```bash

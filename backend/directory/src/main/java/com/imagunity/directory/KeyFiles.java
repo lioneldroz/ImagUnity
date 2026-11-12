@@ -117,8 +117,19 @@ public final class KeyFiles {
         if (isProtected(file)) {
             throw new DirectoryException("Clé déjà protégée par une phrase de passe : " + file);
         }
-        String content = isEncryptionFile(file) ? encryptionContent(readEncryptionPrivate(file, null), passphrase)
-                : content(readPrivate(file), passphrase);
+        reprotect(file, null, passphrase);
+    }
+
+    /**
+     * Change la phrase de passe de clés privées (signature ou chiffrement) ; le fichier est remplacé d'un coup.
+     *
+     * @param current phrase de passe actuelle ({@code null} : clés en clair)
+     * @param next    nouvelle phrase de passe ({@code null} : en clair, déconseillé)
+     * @throws DirectoryException si la phrase de passe actuelle est incorrecte
+     */
+    public static void reprotect(Path file, char[] current, char[] next) throws IOException {
+        String content = isEncryptionFile(file) ? encryptionContent(readEncryptionPrivate(file, current), next)
+                : content(readPrivate(file, current), next);
         Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
         Files.deleteIfExists(temporary);
         createOwnerOnly(temporary);
