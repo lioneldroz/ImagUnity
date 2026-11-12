@@ -51,6 +51,9 @@ class DirectoryConfiguration {
     /** Démarre après l'orchestration : la poignée de main s'abonne au transport après l'appairage. */
     static final int PHASE = OrchestrationConfiguration.PHASE + 1;
 
+    /** Vue locale de l'annuaire : chargée avant l'orchestration et le rattrapage des messages. */
+    static final int CACHE_PHASE = OrchestrationConfiguration.PHASE - 1;
+
     private static final Logger LOG = LoggerFactory.getLogger(DirectoryConfiguration.class);
 
     /** Clé du responsable, épinglée : son empreinte doit être celle confirmée hors bande par l'installateur. */
@@ -265,6 +268,39 @@ class DirectoryConfiguration {
         return new DirectoryClient(properties.url(), Duration.ofSeconds(10));
     }
 
+    /**
+     * Charge la vue locale de l'annuaire (entrées vérifiées gardées en base) avant le démarrage de l'orchestration :
+     * les messages rejoués par le rattrapage du transport, ou arrivés dès l'abonnement, sont vérifiés avec elle. Sans
+     * cela, un accusé arrivé pendant l'arrêt de la box serait refusé, faute d'entrée pour son émetteur.
+     */
+    @Bean
+    SmartLifecycle directoryCacheLifecycle(LocalDirectory directory) {
+        return new SmartLifecycle() {
+            private volatile boolean running;
+
+            @Override
+            public void start() {
+                directory.load();
+                running = true;
+            }
+
+            @Override
+            public void stop() {
+                running = false;
+            }
+
+            @Override
+            public boolean isRunning() {
+                return running;
+            }
+
+            @Override
+            public int getPhase() {
+                return CACHE_PHASE;
+            }
+        };
+    }
+
     /** Synchronisation périodique (la première au démarrage), puis nouvelle poignée de main avec les non-liés. */
     @Bean
     SmartLifecycle directoryLifecycle(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
@@ -274,7 +310,6 @@ class DirectoryConfiguration {
 
             @Override
             public void start() {
-                directory.load();
                 handshake.start();
                 scheduler = Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform().name("annuaire").daemon().factory());
