@@ -37,6 +37,15 @@ imagunity:
     password: ${IMAGUNITY_CONSOLE_PASSWORD:}
     # Un transfert annoncé sans accusé au-delà de ce délai est signalé dans la console.
     ack-overdue: 30m
+  directory:
+    # Annuaire signé de l'organisation (voir docs/annuaire-signe.md). Désactivé : tout partenaire appairé est accepté.
+    enabled: ${IMAGUNITY_DIRECTORY_ENABLED:false}
+    url: ${IMAGUNITY_DIRECTORY_URL:}
+    organization-key: ${IMAGUNITY_DIRECTORY_ORGANIZATION_KEY:}
+    # Empreinte courte du responsable, vérifiée hors bande puis recopiée ici : sinon la box refuse de démarrer.
+    organization-code: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:}
+    identity-file: ${IMAGUNITY_DATA_DIR:./data}/identite-box.json
+    sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
   transport:
     simplex:
       # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.

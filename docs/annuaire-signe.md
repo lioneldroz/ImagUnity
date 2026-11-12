@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **étapes A et B faites** (socle cryptographique, outil du responsable, service d'annuaire). Étape C à venir.
+> Statut : **étapes A, B et C1 faites** : socle cryptographique, outil du responsable, service d'annuaire, et intégration dans la box (identité, synchronisation, liaison des partenaires, refus des box non vérifiées ou révoquées). Étape C2 à venir.
 
 ## 1. Principes
 
@@ -127,14 +127,53 @@ Vérifié en réel sur PostgreSQL 17 :
 
 Le service fonctionne aussi dans le Compose. Les tests automatisés tournent sur H2 en mode PostgreSQL.
 
-## 6. Étape suivante
+## 6. Intégration dans la box (étape C1)
 
-**C. Intégration dans la box** :
-- identité générée au premier démarrage ;
-- demande d'enrôlement depuis la console ;
-- clé du responsable épinglée par configuration, avec vérification de son empreinte ;
-- synchronisation périodique de l'annuaire, avec les numéros vus gardés en base ;
-- appairage par l'annuaire : connexion à l'adresse SimpleX publiée, puis message `hello` signé qui lie le contact à une box enrôlée, ce qui remplace l'invitation manuelle ;
-- annonces et accusés signés par la box et vérifiés par le destinataire ;
-- refus d'envoyer à une box révoquée ou expirée, ou d'en recevoir ;
-- affichage dans la console.
+Activée par `IMAGUNITY_DIRECTORY_ENABLED=true`. Sans elle, la box fonctionne comme avant : tout partenaire appairé est accepté.
+
+| Réglage | Rôle |
+|---|---|
+| `IMAGUNITY_DIRECTORY_URL` | service d'annuaire de l'organisation |
+| `IMAGUNITY_DIRECTORY_ORGANIZATION_KEY` | clé publique du responsable (`.pub.json`) |
+| `IMAGUNITY_DIRECTORY_ORGANIZATION_CODE` | son empreinte courte, **vérifiée hors bande** avec le responsable puis recopiée ici. Si elle ne correspond pas à la clé installée, la box **refuse de démarrer** et affiche l'empreinte de la clé |
+| `IMAGUNITY_DIRECTORY_SYNC_INTERVAL` | intervalle de lecture de l'annuaire (5 min par défaut) |
+
+- **Identité de la box** : générée au premier démarrage (`data/identite-box.json`, droits 600, et son identifiant dans `.id`), puis relue.
+- **Enrôlement** : la console propose « Télécharger la demande d'enrôlement » (`GET /api/v1/directory/enrollment-request`). La demande est signée par la box. Le responsable l'enrôle avec son outil, vérifie avec l'installateur l'empreinte affichée des deux côtés, puis publie l'entrée.
+- **Synchronisation** : au démarrage, puis à intervalle régulier. Chaque entrée est revérifiée avec la clé épinglée ; un retour en arrière est refusé, car les numéros vus sont gardés en base. Les entrées sont gardées en cache, si bien que la box fonctionne même si l'annuaire est injoignable.
+- **Liaison des partenaires**, par une poignée de main signée en défi-réponse :
+
+  ```
+  A → B : hello {boxId: A, challenge: cA}
+  B → A : proof {boxId: B, challenge: cA, signature de B sur « IU1-hello, cA, B, A »}
+  ```
+
+  A vérifie que `cA` est le défi qu'il a envoyé à ce contact, que B est actif dans l'annuaire et que la signature est valide avec la clé de B publiée dans l'annuaire. Le contact SimpleX est alors **lié** à la box B. La preuve couvre le défi frais de A et les deux identifiants : une autre box ne peut pas la rejouer. La poignée de main est relancée après chaque synchronisation pour les partenaires pas encore liés.
+- **Contrôle d'accès** : on n'envoie qu'à un partenaire lié dont la box est active (sinon le transfert passe en échec avec le motif), et l'on ne reçoit que d'un tel partenaire (fichiers et annonces ignorés et journalisés). Les motifs de refus :
+  - « Partenaire « box-b » pas encore vérifié par l'annuaire » ;
+  - « Box du partenaire « box-b » révoquée dans l'annuaire » ;
+  - « Entrée d'annuaire … expirée » ;
+  - « Box … absente de l'annuaire ».
+- **Console** : carte « Annuaire de l'organisation » (identité, empreinte, demande d'enrôlement, dernière synchronisation, box connues et leur état), et état vérifié ou révoqué de chaque partenaire.
+
+![Carte Annuaire de la console (box A, données d'essai)](images/annuaire-console.png)
+
+**Compose** : `compose.annuaire.yml` active l'annuaire dans les deux box.
+
+```bash
+export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte vérifiée hors bande>
+docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
+```
+
+**Vérifié en réel**, avec deux box, les relais SimpleX, l'annuaire et PostgreSQL :
+1. Avant l'enrôlement, le transfert est refusé : « pas encore vérifié par l'annuaire ».
+2. Les box sont enrôlées à partir de leur demande téléchargée sur la console. Les empreintes affichées par l'outil du responsable sont exactement celles des consoles des box.
+3. Environ 10 s après la publication, chaque box a lié son partenaire.
+4. Le transfert réussit : 100 instances identiques sur 100, accusé en 12,6 s.
+5. Après la révocation de B, la box A la voit à la synchronisation suivante, et le transfert est refusé : « révoquée dans l'annuaire ».
+
+## 7. Étape suivante (C2)
+
+- **Appairage automatique par l'annuaire** : chaque box publie son adresse de contact SimpleX dans sa demande d'enrôlement. Les box de l'organisation se connectent d'elles-mêmes, puis se lient par la poignée de main, sans invitation manuelle.
+- **Annonces et accusés signés** par la box et vérifiés par le destinataire : c'est la non-répudiation, conformément au § 8.4 de la spécification.
+- **Clés privées** protégées par phrase de passe ou par support matériel (pilote).

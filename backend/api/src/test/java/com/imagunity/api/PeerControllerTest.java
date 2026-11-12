@@ -91,7 +91,7 @@ class PeerControllerTest {
     private final Peers peers = new Peers();
     private final Transport transport = new Transport();
     private final PairingService pairing = new PairingService(peers, transport, Clock.systemUTC(), Duration.ofHours(1));
-    private final PeerController controller = new PeerController(pairing);
+    private final PeerController controller = new PeerController(pairing, Providers.none(com.imagunity.directory.LocalDirectory.class));
 
     @Test
     void createsInvitation() {
@@ -127,7 +127,7 @@ class PeerControllerTest {
         assertThat(controller.invalidRequest(new IllegalArgumentException("nom invalide")).getStatus())
                 .isEqualTo(HttpStatus.BAD_REQUEST.value());
         var problem = new PeerController(new PairingService(peers, new DisabledTransport(), Clock.systemUTC(),
-                Duration.ofHours(1)));
+                Duration.ofHours(1)), Providers.none(com.imagunity.directory.LocalDirectory.class));
         TransportException failure = null;
         try {
             problem.invite(new PeerController.InvitationRequest("box-b"));

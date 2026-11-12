@@ -60,6 +60,9 @@ export interface Peer {
   name: string
   displayName: string | null
   pairedAt: string
+  /** Box de l’annuaire à laquelle le partenaire est lié (null : pas encore vérifié). */
+  boxId: string | null
+  directoryStatus: 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'NOT_YET_VALID' | null
 }
 
 export const fetchOverview = () => getJson<Overview>('/api/v1/overview')

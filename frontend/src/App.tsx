@@ -4,6 +4,7 @@ import { useConsoleEvents, type StreamStatus } from './api/events'
 import { InboundTable } from './components/InboundTable'
 import { OutboundTable } from './components/OutboundTable'
 import { OverviewCards } from './components/OverviewCards'
+import { DirectoryCard } from './components/DirectoryCard'
 import { PeerList } from './components/PeerList'
 
 const STREAM_LABELS: Record<StreamStatus, string> = {
@@ -49,6 +50,11 @@ function App() {
       <section className="card">
         <h2>Partenaires</h2>
         <PeerList />
+      </section>
+
+      <section className="card">
+        <h2>Annuaire de l’organisation</h2>
+        <DirectoryCard />
       </section>
     </main>
   )

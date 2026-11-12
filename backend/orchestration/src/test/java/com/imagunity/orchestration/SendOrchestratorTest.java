@@ -547,4 +547,17 @@ class SendOrchestratorTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(packagedNoParts.id()))
                 .isInstanceOf(RetryRefusedException.class);
     }
+
+    @Test
+    void refusedPartnerFailsTheTransfer() throws IOException {
+        orchestrator = new SendOrchestrator(transfers, peers, new StudyPackager(PackagingConfig.defaults()), transport,
+                dir.resolve("outbox"), Runnable::run, clock,
+                peer -> java.util.Optional.of("Box du partenaire « box-b » révoquée dans l'annuaire"));
+
+        orchestrator.handleStudy(study("box-b", 1, 1));
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+        assertThat(transfers.only().errorMessage()).contains("révoquée");
+        assertThat(transport.files).isEmpty();
+    }
 }

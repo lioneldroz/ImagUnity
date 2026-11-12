@@ -1,11 +1,15 @@
 package com.imagunity.api;
 
+import com.imagunity.directory.BoxEntry;
+import com.imagunity.directory.LocalDirectory;
 import com.imagunity.domain.peer.Peer;
 import com.imagunity.orchestration.PairingService;
 import com.imagunity.transport.Invitation;
 import com.imagunity.transport.TransportException;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -38,13 +42,20 @@ public class PeerController {
     public record JoinRequest(String name, String link) {
     }
 
-    public record PeerView(String name, String displayName, Instant pairedAt) {
+    /**
+     * @param boxId           box de l'annuaire à laquelle le partenaire est lié ({@code null} : pas encore vérifié)
+     * @param directoryStatus état de cette box dans l'annuaire ({@code null} sans annuaire ou si inconnue)
+     */
+    public record PeerView(String name, String displayName, Instant pairedAt, UUID boxId,
+                           BoxEntry.Status directoryStatus) {
     }
 
     private final PairingService pairing;
+    private final ObjectProvider<LocalDirectory> directory;
 
-    public PeerController(PairingService pairing) {
+    public PeerController(PairingService pairing, ObjectProvider<LocalDirectory> directory) {
         this.pairing = pairing;
+        this.directory = directory;
     }
 
     /** Crée un lien d'invitation, à transmettre hors bande au partenaire. */
@@ -66,11 +77,13 @@ public class PeerController {
 
     @GetMapping
     public List<PeerView> peers() {
-        return pairing.peers().stream().map(PeerController::view).toList();
+        LocalDirectory local = directory.getIfAvailable();
+        return pairing.peers().stream().map(peer -> view(peer, local)).toList();
     }
 
-    private static PeerView view(Peer peer) {
-        return new PeerView(peer.name(), peer.displayName(), peer.pairedAt());
+    private static PeerView view(Peer peer, LocalDirectory local) {
+        BoxEntry.Status status = local == null || peer.boxId() == null ? null : local.status(peer.boxId());
+        return new PeerView(peer.name(), peer.displayName(), peer.pairedAt(), peer.boxId(), status);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
