@@ -19,7 +19,7 @@ PACS ──C-STORE──► AET appelé IU_TO_B ──► dossier de réception 
    - le SOP Instance UID du jeu de données doit être celui de la commande C-STORE ;
    - l'espace disque libre doit rester au-dessus du seuil configuré ;
    - en cas de refus, le PACS reçoit un statut d'erreur DICOM et le fichier temporaire est supprimé.
-3. **Rangement** : `<dossier>/<AET appelé>/<Study UID>/<Series UID>/<SOP UID>.dcm`, par déplacement atomique.
+3. **Rangement** : `<dossier>/<AET appelé>/<partenaire>/<Study UID>/<Series UID>/<SOP UID>.dcm`, par déplacement atomique (le niveau `<partenaire>` vient du [routage par champ DICOM](routage-dicom.md)).
 4. **Regroupement** : une étude est complète quand plus aucune instance n'arrive pendant le délai d'inactivité (30 s par défaut). Une instance reçue deux fois n'est comptée qu'une fois. La même étude envoyée vers deux destinations donne deux études distinctes.
 5. **Reprise** : au démarrage, la box retrouve les instances encore présentes dans le dossier de réception et les regroupe à nouveau ; les réceptions interrompues (`.tmp`) sont supprimées.
 

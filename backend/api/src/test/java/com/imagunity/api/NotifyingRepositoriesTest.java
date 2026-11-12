@@ -73,7 +73,7 @@ class NotifyingRepositoriesTest {
         repository.saveParts(transfer.id(), List.of(part));
 
         assertThat(repository.find(transfer.id())).contains(transfer);
-        assertThat(repository.findActive("2.25.1", "IU_TO_B")).contains(transfer);
+        assertThat(repository.findActive("2.25.1", "IU_TO_B", "box-b")).contains(transfer);
         assertThat(repository.findByStates(Set.of(TransferState.RECEIVED))).containsExactly(transfer);
         assertThat(repository.findRecent(5)).containsExactly(transfer);
         assertThat(repository.countByState()).containsEntry(TransferState.RECEIVED, 1L);

@@ -36,25 +36,51 @@ class IncomingStoreTest {
 
     @Test
     void finalPathCannotEscapeTheRoot() {
-        assertThatThrownBy(() -> store.finalPath("..", "..", "..", "x"))
+        assertThatThrownBy(() -> store.finalPath("..", "..", "..", "..", "x"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void recoversInstancesWithTheirMetadata() throws IOException {
-        Path file = store.finalPath("IU_TO_B", "2.25.1", "2.25.1.1", "2.25.1.1.1");
+        Path file = store.finalPath("IU_TO_B", "box-b", "2.25.1", "2.25.1.1", "2.25.1.1.1");
         writePart10(file, "2.25.1.1.1");
 
         var recovered = store.recover();
 
         assertThat(recovered).singleElement().satisfies(r -> {
             assertThat(r.calledAet()).isEqualTo("IU_TO_B");
+            assertThat(r.destination()).isEqualTo("box-b");
             assertThat(r.studyInstanceUid()).isEqualTo("2.25.1");
             assertThat(r.instance().seriesInstanceUid()).isEqualTo("2.25.1.1");
             assertThat(r.instance().sopInstanceUid()).isEqualTo("2.25.1.1.1");
             assertThat(r.instance().sopClassUid()).isEqualTo(UID.CTImageStorage);
             assertThat(r.instance().transferSyntaxUid()).isEqualTo(UID.ExplicitVRLittleEndian);
         });
+    }
+
+    @Test
+    void recoversInstancesStoredByEarlierVersionsWithoutPartner() throws IOException {
+        Path legacy = root.resolve("IU_TO_B").resolve("2.25.1").resolve("2.25.1.1").resolve("2.25.1.1.1.dcm");
+        writePart10(legacy, "2.25.1.1.1");
+
+        assertThat(store.recover()).singleElement().satisfies(r -> {
+            assertThat(r.destination()).isNull();
+            assertThat(r.studyInstanceUid()).isEqualTo("2.25.1");
+            assertThat(r.instance().seriesInstanceUid()).isEqualTo("2.25.1.1");
+        });
+    }
+
+    @Test
+    void copiesAnInstanceForAnotherPartner() throws IOException {
+        Path source = store.finalPath("IU_AUTO", "box-b", "2.25.1", "2.25.1.1", "2.25.1.1.1");
+        writePart10(source, "2.25.1.1.1");
+        Path copy = store.finalPath("IU_AUTO", "box-c", "2.25.1", "2.25.1.1", "2.25.1.1.1");
+
+        store.copy(source, copy);
+        Files.delete(source);
+
+        assertThat(copy).exists();
+        assertThat(store.recover()).singleElement().satisfies(r -> assertThat(r.destination()).isEqualTo("box-c"));
     }
 
     @Test
@@ -74,11 +100,11 @@ class IncomingStoreTest {
 
     @Test
     void recoveryIgnoresUnreadableInstances() throws IOException {
-        Path garbage = store.finalPath("IU_TO_B", "2.25.1", "2.25.1.1", "2.25.1.1.1");
+        Path garbage = store.finalPath("IU_TO_B", "box-b", "2.25.1", "2.25.1.1", "2.25.1.1.1");
         Files.createDirectories(garbage.getParent());
         Files.write(garbage, new byte[] {1, 2, 3});
 
-        Path noMeta = store.finalPath("IU_TO_B", "2.25.1", "2.25.1.1", "2.25.1.1.2");
+        Path noMeta = store.finalPath("IU_TO_B", "box-b", "2.25.1", "2.25.1.1", "2.25.1.1.2");
         try (DicomOutputStream out = new DicomOutputStream(Files.newOutputStream(noMeta), UID.ExplicitVRLittleEndian)) {
             out.writeDataset(null, TestDatasets.ct("2.25.1", "2.25.1.1", "2.25.1.1.2"));
         }

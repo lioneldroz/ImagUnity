@@ -45,9 +45,10 @@ final class MemoryRepositories {
         }
 
         @Override
-        public Optional<Transfer> findActive(String study, String calledAet) {
+        public Optional<Transfer> findActive(String study, String calledAet, String destination) {
             return transfers.values().stream().filter(t -> t.studyInstanceUid().equals(study)
-                    && t.calledAet().equals(calledAet) && !t.state().isTerminal()).findFirst();
+                    && t.calledAet().equals(calledAet) && t.destination().equals(destination)
+                    && !t.state().isTerminal()).findFirst();
         }
 
         @Override

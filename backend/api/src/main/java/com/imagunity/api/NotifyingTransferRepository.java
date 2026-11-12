@@ -55,8 +55,8 @@ public final class NotifyingTransferRepository implements TransferRepository {
     }
 
     @Override
-    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet) {
-        return delegate.findActive(studyInstanceUid, calledAet);
+    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
+        return delegate.findActive(studyInstanceUid, calledAet, destination);
     }
 
     @Override

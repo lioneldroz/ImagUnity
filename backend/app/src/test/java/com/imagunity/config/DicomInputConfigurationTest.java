@@ -33,6 +33,22 @@ class DicomInputConfigurationTest {
     }
 
     @Test
+    void routingRulesAreBuiltFromTheConfiguration() {
+        DicomProperties properties = new DicomProperties(true, "127.0.0.1", 11112, Set.of("ORTHANC_A"), List.of(),
+                storage, Duration.ofSeconds(1), DataSize.ofMegabytes(1), "IU_AUTO", List.of(
+                        new DicomProperties.Rule("irm", java.util.Map.of("modality", "MR"), List.of("box-b", "box-c"))));
+
+        var config = properties.toConfig();
+
+        assertThat(config.routingAet()).isEqualTo("IU_AUTO");
+        assertThat(config.rules()).singleElement().satisfies(rule -> {
+            assertThat(rule.describe()).isEqualTo("irm (modality=MR) → box-b, box-c");
+        });
+        assertThat(new DicomProperties(true, null, 11112, Set.of(), List.of(), storage, Duration.ofSeconds(1),
+                DataSize.ofMegabytes(1), null, null).toConfig().rules()).isEmpty();
+    }
+
+    @Test
     void rejectsDuplicateDestination() {
         var routes = List.of(new DicomProperties.Route("IU_TO_B", "box-b"), new DicomProperties.Route("IU_TO_B", "box-c"));
 

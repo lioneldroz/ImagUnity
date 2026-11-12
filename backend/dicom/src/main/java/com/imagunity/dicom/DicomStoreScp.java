@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -81,8 +83,9 @@ public final class DicomStoreScp implements AutoCloseable {
         store.initialize();
         int recovered = 0;
         for (IncomingStore.Recovered r : store.recover()) {
-            String destination = config.destinationFor(r.calledAet()).orElse(null);
-            if (destination == null) {
+            String destination = r.destination() != null ? r.destination()
+                    : config.destinationFor(r.calledAet()).orElse(null);
+            if (destination == null || !config.isKnownCalledAet(r.calledAet())) {
                 LOG.log(Level.WARNING, "Instances en attente pour la destination {0}, qui n''est plus configurée : ignorées",
                         r.calledAet());
                 continue;
@@ -129,6 +132,10 @@ public final class DicomStoreScp implements AutoCloseable {
         scheduler.scheduleWithFixedDelay(assembler::flushIdle, period, period, TimeUnit.MILLISECONDS);
         LOG.log(Level.INFO, "Entrée DICOM ouverte sur le port {0} ; destinations : {1}", config.port(),
                 config.routes().keySet());
+        if (config.routingAet() != null) {
+            LOG.log(Level.INFO, "Routage par champ DICOM sur {0} : {1}", config.routingAet(),
+                    String.join(" ; ", config.rules().stream().map(RoutingRule::describe).toList()));
+        }
     }
 
     /** Ferme le port DICOM. Les études en cours restent sur le disque et seront reprises au démarrage. */
@@ -166,7 +173,7 @@ public final class DicomStoreScp implements AutoCloseable {
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
                         AAssociateRJ.REASON_CALLING_AET_NOT_RECOGNIZED);
             }
-            if (config.destinationFor(rq.getCalledAET()).isEmpty()) {
+            if (!config.isKnownCalledAet(rq.getCalledAET())) {
                 LOG.log(Level.WARNING, "Association refusée : destination {0} inconnue (émetteur {1})",
                         rq.getCalledAET(), rq.getCallingAET());
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
@@ -187,8 +194,9 @@ public final class DicomStoreScp implements AutoCloseable {
         protected void store(Association as, PresentationContext pc, Attributes rq, PDVInputStream data,
                              Attributes rsp) throws IOException {
             String calledAet = as.getCalledAET().trim();
-            String destination = config.destinationFor(calledAet)
-                    .orElseThrow(() -> new DicomServiceException(Status.ProcessingFailure, "Destination inconnue"));
+            if (!config.isKnownCalledAet(calledAet)) {
+                throw new DicomServiceException(Status.ProcessingFailure, "Destination inconnue");
+            }
             String cuid = rq.getString(Tag.AffectedSOPClassUID);
             String iuid = rq.getString(Tag.AffectedSOPInstanceUID);
             String tsuid = pc.getTransferSyntax();
@@ -221,11 +229,19 @@ public final class DicomStoreScp implements AutoCloseable {
                     throw new DicomServiceException(Status.CannotUnderstand,
                             "SOP Instance UID du jeu de données différent de celui de la commande");
                 }
-                Path target = store.finalPath(calledAet, studyUid, seriesUid, iuid);
-                store.commit(temp, target);
-                assembler.add(calledAet, destination, as.getCallingAET(), studyUid,
-                        new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
-                LOG.log(Level.DEBUG, "Instance reçue de {0} pour {1}", as.getCallingAET(), calledAet);
+                List<String> destinations = destinations(calledAet, dataset);
+                Path first = store.finalPath(calledAet, destinations.getFirst(), studyUid, seriesUid, iuid);
+                store.commit(temp, first);
+                for (String destination : destinations) {
+                    Path target = store.finalPath(calledAet, destination, studyUid, seriesUid, iuid);
+                    if (!target.equals(first)) {
+                        store.copy(first, target);
+                    }
+                    assembler.add(calledAet, destination, as.getCallingAET(), studyUid,
+                            new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
+                }
+                LOG.log(Level.DEBUG, "Instance reçue de {0} pour {1} → {2}", as.getCallingAET(), calledAet,
+                        destinations);
             } catch (DicomServiceException e) {
                 Files.deleteIfExists(temp);
                 LOG.log(Level.WARNING, "Instance refusée (émetteur {0}) : {1}", as.getCallingAET(), e.getMessage());
@@ -236,6 +252,22 @@ public final class DicomStoreScp implements AutoCloseable {
                 throw new DicomServiceException(Status.ProcessingFailure, e);
             }
         }
+    }
+
+    /**
+     * Partenaires d'une instance : celui de la route fixe, ou ceux de la première règle qui correspond.
+     *
+     * @throws DicomServiceException si aucune règle ne correspond : l'instance est refusée, le PACS la garde en échec
+     */
+    private List<String> destinations(String calledAet, Attributes dataset) throws DicomServiceException {
+        Optional<String> fixed = config.destinationFor(calledAet);
+        if (fixed.isPresent()) {
+            return List.of(fixed.get());
+        }
+        RoutingRule rule = config.ruleFor(dataset).orElseThrow(() -> new DicomServiceException(
+                Status.ProcessingFailure, "Aucune règle de routage ne correspond à cette instance"));
+        LOG.log(Level.DEBUG, "Règle de routage {0} appliquée", rule.name());
+        return rule.destinations();
     }
 
     /** Délai d'inactivité configuré (pour les journaux et la console). */

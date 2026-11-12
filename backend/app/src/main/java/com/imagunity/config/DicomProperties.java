@@ -1,6 +1,7 @@
 package com.imagunity.config;
 
 import com.imagunity.dicom.DicomInputConfig;
+import com.imagunity.dicom.RoutingRule;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -22,6 +23,8 @@ import org.springframework.util.unit.DataSize;
  * @param storageDir         dossier de réception
  * @param studyIdleTimeout   délai d'inactivité au-delà duquel une étude est complète
  * @param minFreeSpace       espace disque minimal à conserver
+ * @param routingAet         destination DICOM dont le partenaire est choisi par les règles (vide : aucune)
+ * @param rules              règles de routage par champ DICOM, dans l'ordre : la première qui correspond s'applique
  */
 @ConfigurationProperties("imagunity.dicom")
 public record DicomProperties(
@@ -32,7 +35,31 @@ public record DicomProperties(
         @DefaultValue List<Route> routes,
         @DefaultValue("./data/incoming") Path storageDir,
         @DefaultValue("30s") Duration studyIdleTimeout,
-        @DefaultValue("1GB") DataSize minFreeSpace) {
+        @DefaultValue("1GB") DataSize minFreeSpace,
+        String routingAet,
+        @DefaultValue List<Rule> rules) {
+
+    /** Constructeur utilisé pour lier la configuration. */
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
+    public DicomProperties {
+    }
+
+    /** Entrée DICOM sans routage par règles. */
+    public DicomProperties(boolean enabled, String bindAddress, int port, Set<String> allowedCallingAets,
+                           List<Route> routes, Path storageDir, Duration studyIdleTimeout, DataSize minFreeSpace) {
+        this(enabled, bindAddress, port, allowedCallingAets, routes, storageDir, studyIdleTimeout, minFreeSpace, null,
+                List.of());
+    }
+
+    /**
+     * Règle de routage par champ DICOM.
+     *
+     * @param name nom de la règle (journaux)
+     * @param when conditions : mot-clé DICOM → motif ({@code *}, {@code ?}, {@code !} pour la négation)
+     * @param to   partenaires destinataires
+     */
+    public record Rule(String name, Map<String, String> when, List<String> to) {
+    }
 
     /**
      * Une destination DICOM : envoyer à {@code calledAet}, c'est désigner {@code destination}.
@@ -50,7 +77,9 @@ public record DicomProperties(
                 throw new IllegalArgumentException("Destination DICOM déclarée deux fois : " + route.calledAet());
             }
         }
+        List<RoutingRule> routingRules = rules == null ? List.of() : rules.stream()
+                .map(rule -> new RoutingRule(rule.name(), rule.when(), rule.to())).toList();
         return new DicomInputConfig(bindAddress, port, allowedCallingAets, routeMap, storageDir, studyIdleTimeout,
-                minFreeSpace.toBytes());
+                minFreeSpace.toBytes(), routingAet, routingRules);
     }
 }

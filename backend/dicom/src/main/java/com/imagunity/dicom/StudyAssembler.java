@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Regroupe les instances reçues par étude et par destination, et signale une étude
+ * Regroupe les instances reçues par étude, par destination DICOM et par partenaire, et signale une étude
  * comme complète quand plus rien n'arrive pendant le délai d'inactivité.
  *
  * <p>Une même instance reçue deux fois (même SOP Instance UID) n'est comptée qu'une fois,
@@ -26,7 +26,7 @@ final class StudyAssembler {
 
     private static final System.Logger LOG = System.getLogger(StudyAssembler.class.getName());
 
-    private record Key(String calledAet, String studyInstanceUid) {
+    private record Key(String calledAet, String destination, String studyInstanceUid) {
     }
 
     private static final class Pending {
@@ -62,7 +62,8 @@ final class StudyAssembler {
     synchronized void add(String calledAet, String destination, String callingAet,
                           String studyInstanceUid, ReceivedInstance instance) {
         Instant now = clock.instant();
-        Pending study = pending.computeIfAbsent(new Key(calledAet, studyInstanceUid), k -> new Pending(destination, now));
+        Pending study = pending.computeIfAbsent(new Key(calledAet, destination, studyInstanceUid),
+                k -> new Pending(destination, now));
         study.instances.put(instance.sopInstanceUid(), instance);
         if (callingAet != null) {
             study.callingAets.add(callingAet);
