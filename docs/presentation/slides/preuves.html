@@ -1,4 +1,4 @@
-<section id="preuves" data-transition="fade" style="background:#14213D;color:#F3F4EE;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:52px">
+<section id="preuves" data-transition="fade" style="background:#14213D;color:#F3F4EE;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
 <div style="display:flex;flex-direction:column;gap:12px">
 <p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#8FB8E8">Résultats</p>
 <h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1;color:#F3F4EE">Ce que la campagne de tests a montré</h2>
@@ -21,16 +21,23 @@
 <p style="font-size:28px;color:#D5DEEA">port ouvert vers Internet</p>
 </div>
 </div>
-<div style="display:flex;flex-direction:column;gap:20px">
-<p style="font-size:30px;font-weight:600;color:#F3F4EE">Et ensuite, pour le pilote :</p>
-<div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:16px">
-<p style="font-size:28px;background:#2B3B60;color:#F3F4EE;padding:12px 24px;border-radius:999px">Annuaire signé des box</p>
-<p style="font-size:28px;background:#2B3B60;color:#F3F4EE;padding:12px 24px;border-radius:999px">Chiffrement applicatif</p>
-<p style="font-size:28px;background:#2B3B60;color:#F3F4EE;padding:12px 24px;border-radius:999px">Mises à jour signées</p>
-<p style="font-size:28px;background:#2B3B60;color:#F3F4EE;padding:12px 24px;border-radius:999px">Essai sur un vrai réseau entre deux sites</p>
-<p style="font-size:28px;background:#2B3B60;color:#F3F4EE;padding:12px 24px;border-radius:999px">Transport propre IU-T</p>
+<div style="display:flex;flex-direction:column;gap:14px">
+<p style="font-size:28px;font-weight:600;color:#8FD3A9">Fait depuis, et vérifié sur la même chaîne :</p>
+<div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:14px">
+<p style="font-size:26px;background:#1E4D3A;color:#E3F4EA;padding:10px 22px;border-radius:999px">Annuaire signé des box</p>
+<p style="font-size:26px;background:#1E4D3A;color:#E3F4EA;padding:10px 22px;border-radius:999px">Chiffrement post-quantique pour la box destinataire</p>
+<p style="font-size:26px;background:#1E4D3A;color:#E3F4EA;padding:10px 22px;border-radius:999px">Mises à jour signées</p>
+<p style="font-size:26px;background:#1E4D3A;color:#E3F4EA;padding:10px 22px;border-radius:999px">Clés protégées par le TPM</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<p style="font-size:28px;font-weight:600;color:#F3F4EE">Reste pour le pilote :</p>
+<div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:14px">
+<p style="font-size:26px;background:#2B3B60;color:#F3F4EE;padding:10px 22px;border-radius:999px">Essai sur un vrai réseau entre deux sites</p>
+<p style="font-size:26px;background:#2B3B60;color:#F3F4EE;padding:10px 22px;border-radius:999px">Routage par champ DICOM, réception DICOMweb</p>
+<p style="font-size:26px;background:#2B3B60;color:#F3F4EE;padding:10px 22px;border-radius:999px">Transport propre IU-T</p>
 </div>
 </div>
 <p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#9FB0C8">ImagUnity · Campagne de tests de novembre 2026, données synthétiques, banc sur un seul serveur</p>
-<aside>Bilan de la campagne de tests, menée sur la chaîne réelle (relais SimpleX, box et PACS en conteneurs) avec des examens fictifs : 10 secondes de bout en bout pour 50 Mo, 157 secondes pour 2 Go, et toutes les images arrivées identiques à l’octet près. Le scan de ports depuis « Internet » ne trouve aucun port ouvert sur les box. Précaution : tout tournait sur un seul serveur, donc ces durées sont des plafonds ; la latence et les pertes d’un vrai réseau restent à mesurer. Pour le pilote : un annuaire signé des box (vérification et révocation), un chiffrement applicatif supplémentaire, des mises à jour signées, un essai entre deux vrais sites, et à terme un transport propre (IU-T) à la place de SimpleX.</aside>
+<aside>Bilan de la campagne de tests, menée sur la chaîne réelle (relais SimpleX, box et PACS en conteneurs) avec des examens fictifs : 10 secondes de bout en bout pour 50 Mo, 157 secondes pour 2 Go, et toutes les images arrivées identiques à l’octet près. Le scan de ports depuis « Internet » ne trouve aucun port ouvert sur les box. Précaution : tout tournait sur un seul serveur, donc ces durées sont des plafonds ; la latence et les pertes d’un vrai réseau restent à mesurer. Depuis, quatre protections du pilote ont été ajoutées et vérifiées sur la même chaîne, toujours avec 100 % des images identiques. L’annuaire signé dit qui est qui entre les box, et permet de révoquer une box volée. Chaque paquet est chiffré pour la seule box destinataire, avec un algorithme résistant au calcul quantique ; un transfert de 50 Mo prend alors environ 13 secondes. Les box n’exécutent que du logiciel signé par l’éditeur, sans retour possible à une version plus ancienne. Enfin, les clés d’une box ne s’ouvrent qu’avec la puce de sécurité (TPM) de cette box. Reste pour le pilote : un essai entre deux vrais sites, l’envoi automatique selon le contenu de l’examen avec la réception DICOMweb, et à terme un transport propre (IU-T) à la place de SimpleX.</aside>
 </section>
