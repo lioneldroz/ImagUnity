@@ -1,4 +1,4 @@
-import { getJson } from './http'
+import { getJson, postBody } from './http'
 
 export type BoxStatus = 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'NOT_YET_VALID'
 
@@ -8,6 +8,10 @@ export interface DirectoryBox {
   serial: number
   status: BoxStatus
   validUntil: string
+  /** La box publie une adresse de contact. */
+  reachable: boolean
+  /** Nom local du partenaire lié à cette box (null : pas appairée). */
+  pairedAs: string | null
 }
 
 /** GET /api/v1/directory. */
@@ -20,6 +24,9 @@ export interface DirectoryView {
 }
 
 export const fetchDirectory = () => getJson<DirectoryView>('/api/v1/directory')
+
+export const pairWithBox = (boxId: string, name: string) =>
+  postBody(`/api/v1/directory/boxes/${boxId}/pair`, { name })
 
 export const ENROLLMENT_REQUEST_URL = '/api/v1/directory/enrollment-request'
 

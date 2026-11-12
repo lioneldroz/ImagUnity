@@ -94,8 +94,9 @@ class OrchestrationConfiguration {
 
     @Bean
     PairingService pairingService(PeerRepository peers, TransportPort transport, OrchestrationProperties properties,
-                                  Clock clock) {
-        return new PairingService(peers, transport, clock, properties.pairingTimeout());
+                                  Clock clock, ExecutorService orchestrationExecutor, DirectoryProperties directory) {
+        return new PairingService(peers, transport, clock, properties.pairingTimeout(), orchestrationExecutor,
+                directory.enabled());
     }
 
     /**

@@ -48,6 +48,21 @@ final class SimplexCommands {
         return "/fcancel " + fileId;
     }
 
+    /** APIShowMyAddress : adresse de contact du profil. */
+    static String showAddress(long userId) {
+        return "/_show_address " + userId;
+    }
+
+    /** APICreateMyAddress : crée l'adresse de contact du profil. */
+    static String createAddress(long userId) {
+        return "/_address " + userId;
+    }
+
+    /** APIAcceptContact : accepte une demande de contact reçue par l'adresse. */
+    static String acceptContact(long contactRequestId) {
+        return "/_accept " + contactRequestId;
+    }
+
     /** APIListContacts : contacts du profil. */
     static String listContacts(long userId) {
         return "/_contacts " + userId;

@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **étapes A, B et C1 faites** : socle cryptographique, outil du responsable, service d'annuaire, et intégration dans la box (identité, synchronisation, liaison des partenaires, refus des box non vérifiées ou révoquées). Étape C2 à venir.
+> Statut : **étapes A, B, C1 et C2a faites** : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box et appairage par l'annuaire. Reste C2b (annonces et accusés signés).
 
 ## 1. Principes
 
@@ -172,8 +172,35 @@ docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire 
 4. Le transfert réussit : 100 instances identiques sur 100, accusé en 12,6 s.
 5. Après la révocation de B, la box A la voit à la synchronisation suivante, et le transfert est refusé : « révoquée dans l'annuaire ».
 
-## 7. Étape suivante (C2)
+## 7. Appairage par l'annuaire (étape C2a)
 
-- **Appairage automatique par l'annuaire** : chaque box publie son adresse de contact SimpleX dans sa demande d'enrôlement. Les box de l'organisation se connectent d'elles-mêmes, puis se lient par la poignée de main, sans invitation manuelle.
-- **Annonces et accusés signés** par la box et vérifiés par le destinataire : c'est la non-répudiation, conformément au § 8.4 de la spécification.
+Plus d'invitation à transmettre à la main entre deux box de l'organisation :
+
+```
+Box A (console)                         Annuaire                      Box B
+  « Appairer box-b » ──connexion à l'adresse publiée de B───────────────► demande de contact
+                                                                          acceptée → partenaire provisoire « attente-3 »
+  ◄────────────── poignée de main signée (défi-réponse, § 6) ──────────────►
+  partenaire « box-b » lié à la box B                                    « attente-3 » lié à A, renommé « box-a »
+```
+
+- **Adresse publiée** : la demande d'enrôlement contient l'adresse de contact SimpleX durable de la box, créée au premier besoin. Le responsable la signe avec le reste de l'entrée, si bien qu'elle ne peut pas être substituée par l'annuaire.
+- **Côté demandeur (A)** : la console liste les box de l'organisation. Pour une box active et joignable, l'opérateur choisit un nom local (proposé à partir du nom d'annuaire) et clique « Appairer » (`POST /api/v1/directory/boxes/{boxId}/pair`). Sont refusés : cette box elle-même, une box inactive, une box sans adresse, une box déjà appairée.
+- **Côté appelé (B)** :
+  - la demande de contact est acceptée, et la connexion enregistrée comme partenaire **provisoire** `attente-<n>`, autorisé à rien ;
+  - une fois la poignée de main vérifiée, il prend le nom de la box dans l'annuaire (`box-a` ; `CHU Exemple — box a` donnerait `chu-exemple-box-a`), avec un suffixe si le nom est pris ;
+  - un contact en double vers une box déjà liée est oublié ;
+  - un provisoire jamais vérifié est oublié au bout d'une heure.
+- **Nommage** : enrôler les box sous un nom court (par exemple `box-a`) donne les mêmes noms des deux côtés, ceux qu'utilisent les routes DICOM (`destination`).
+- **Sans annuaire**, rien ne change : les demandes de contact sont ignorées, l'appairage se fait par invitation.
+
+**Vérifié en réel** sur une pile neuve (aucun appairage préalable) :
+1. Les box sont enrôlées avec leur adresse.
+2. Un clic dans la console de A suffit : les deux côtés sont **liés et vérifiés en 3 s**, et B a nommé son partenaire `box-a` d'après l'annuaire.
+3. Le transfert réussit : 100 instances identiques sur 100, accusé en 12,5 s.
+4. Une seconde connexion à l'adresse de B n'aboutit pas : le client SimpleX la reconnaît comme un contact existant.
+
+## 8. Étape suivante (C2b)
+
+- **Annonces et accusés signés** par la box et vérifiés par le destinataire avec la clé publiée dans l'annuaire : c'est la non-répudiation, conformément au § 8.4 de la spécification.
 - **Clés privées** protégées par phrase de passe ou par support matériel (pilote).

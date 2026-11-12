@@ -200,4 +200,74 @@ class PeerHandshakeTest {
 
         assertThat(transportA.messages).isEmpty();
     }
+
+    // --- Partenaires provisoires (connexion par l'adresse publiée) ---
+
+    private void provisionalOnB() {
+        peersB.delete("box-a");
+        peersB.save(new Peer("attente-9", A_SEEN_BY_B.value(), "box-a", DirectoryFixture.NOW));
+    }
+
+    @Test
+    void provisionalPeerIsNamedAfterItsDirectoryEntry() {
+        provisionalOnB();
+        handshakeA.start();
+        handshakeB.start();
+
+        relay();
+
+        String expected = PeerHandshake.slug("Box " + boxA.boxId().toString().substring(0, 8));
+        assertThat(peersB.findByName("attente-9")).isEmpty();
+        assertThat(peersB.findByName(expected)).hasValueSatisfying(p -> {
+            assertThat(p.boxId()).isEqualTo(boxA.boxId());
+            assertThat(p.transportPeerId()).isEqualTo(A_SEEN_BY_B.value());
+        });
+    }
+
+    @Test
+    void takenNamesGetASuffix() {
+        provisionalOnB();
+        String taken = PeerHandshake.slug("Box " + boxA.boxId().toString().substring(0, 8));
+        peersB.save(new Peer(taken, 77, "autre", DirectoryFixture.NOW));
+        handshakeA.start();
+        handshakeB.start();
+
+        relay();
+
+        assertThat(peersB.findByName(taken + "-2")).hasValueSatisfying(p -> assertThat(p.boxId())
+                .isEqualTo(boxA.boxId()));
+    }
+
+    @Test
+    void duplicateContactOfAnAlreadyBoundBoxIsForgotten() {
+        provisionalOnB();
+        peersB.save(new Peer("box-a", 99, "box-a", DirectoryFixture.NOW).boundTo(boxA.boxId()));
+        handshakeA.start();
+        handshakeB.start();
+
+        relay();
+
+        assertThat(peersB.findByName("attente-9")).isEmpty();
+        assertThat(peersB.findAll()).extracting(Peer::name).containsExactly("box-a");
+    }
+
+    @Test
+    void neverVerifiedProvisionalPeersAreForgotten() {
+        provisionalOnB();
+        PeerHandshake later = new PeerHandshake(peersB, transportB, boxB, fixture.directory(clock), Runnable::run,
+                Clock.fixed(DirectoryFixture.NOW.plus(Duration.ofHours(2)), ZoneOffset.UTC), Duration.ofHours(1));
+
+        later.greetUnbound();
+
+        assertThat(peersB.findAll()).isEmpty();
+        assertThat(transportB.messages).isEmpty();
+    }
+
+    @Test
+    void slugs() {
+        assertThat(PeerHandshake.slug("CHU Exemple — box a")).isEqualTo("chu-exemple-box-a");
+        assertThat(PeerHandshake.slug("Hôpital Saint-Éloi")).isEqualTo("hopital-saint-eloi");
+        assertThat(PeerHandshake.slug("— —")).isEqualTo("box");
+        assertThat(PeerHandshake.slug("a".repeat(59) + " bcd")).isEqualTo("a".repeat(59));
+    }
 }

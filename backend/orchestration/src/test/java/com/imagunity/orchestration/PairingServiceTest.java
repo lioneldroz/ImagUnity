@@ -141,4 +141,36 @@ class PairingServiceTest {
 
         assertThat(pairing.peers()).isEmpty();
     }
+
+    @Test
+    void withTheDirectoryIncomingContactsAreAcceptedAsProvisionalPeers() {
+        InMemoryRepositories.Peers repository = new InMemoryRepositories.Peers();
+        FakeTransport fake = new FakeTransport();
+        PairingService service = new PairingService(repository, fake, java.time.Clock.systemUTC(),
+                java.time.Duration.ofHours(1), Runnable::run, true);
+        service.start();
+
+        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(4, "box-a"));
+        fake.emit(new com.imagunity.transport.TransportEvent.PeerConnected(new com.imagunity.transport.PeerId(12),
+                "box-a"));
+
+        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).containsExactly(4L);
+        org.assertj.core.api.Assertions.assertThat(repository.findByName("attente-12"))
+                .hasValueSatisfying(p -> org.assertj.core.api.Assertions.assertThat(p.boxId()).isNull());
+        fake.failAcceptRequest = true;
+        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(5, "box-z"));
+        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).containsExactly(4L);
+    }
+
+    @Test
+    void withoutTheDirectoryContactRequestsAreIgnored() {
+        FakeTransport fake = new FakeTransport();
+        PairingService service = new PairingService(new InMemoryRepositories.Peers(), fake,
+                java.time.Clock.systemUTC(), java.time.Duration.ofHours(1));
+        service.start();
+
+        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(4, "box-a"));
+
+        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).isEmpty();
+    }
 }

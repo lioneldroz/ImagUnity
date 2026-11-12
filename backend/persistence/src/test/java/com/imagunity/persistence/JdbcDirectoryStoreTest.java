@@ -51,5 +51,7 @@ class JdbcDirectoryStoreTest {
 
         assertThat(peers.findByName("box-b")).hasValueSatisfying(p -> assertThat(p.boxId()).isEqualTo(box));
         assertThat(peers.findByName("box-c")).hasValueSatisfying(p -> assertThat(p.boxId()).isNull());
+        peers.delete("box-c");
+        assertThat(peers.findByName("box-c")).isEmpty();
     }
 }

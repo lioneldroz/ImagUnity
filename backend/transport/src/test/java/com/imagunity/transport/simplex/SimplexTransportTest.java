@@ -31,8 +31,27 @@ class SimplexTransportTest {
         transport = new SimplexTransport(client);
     }
 
+    /** Adresse de contact déjà créée ? (simplex-chat) */
+    private static volatile boolean addressCreated;
+    private static volatile boolean addressBroken;
+
     /** Réponses minimales de simplex-chat, d'après bots/api/COMMANDS.md. */
     private static String respond(String cmd) {
+        if (cmd.equals("/_show_address 3")) {
+            if (addressBroken) {
+                return "{\"type\":\"chatCmdError\",\"chatError\":{\"type\":\"error\",\"errorType\":{\"type\":\"x\"}}}";
+            }
+            return addressCreated
+                    ? "{\"type\":\"userContactLink\",\"contactLink\":{\"connLinkContact\":{\"connFullLink\":\"simplex:/contact#b\"}}}"
+                    : "{\"type\":\"chatCmdError\",\"chatError\":{\"type\":\"errorStore\",\"storeError\":{\"type\":\"userContactLinkNotFound\"}}}";
+        }
+        if (cmd.equals("/_address 3")) {
+            addressCreated = true;
+            return "{\"type\":\"userContactLinkCreated\",\"connLinkContact\":{\"connFullLink\":\"simplex:/contact#b\"}}";
+        }
+        if (cmd.equals("/_accept 7")) {
+            return "{\"type\":\"acceptingContactRequest\",\"contact\":{\"contactId\":8}}";
+        }
         if (cmd.equals("/user")) {
             return "{\"type\":\"activeUser\",\"user\":{\"userId\":3}}";
         }
@@ -159,5 +178,28 @@ class SimplexTransportTest {
 
         assertThat(connection.commands).contains("/fcancel 42");
         assertThatThrownBy(() -> transport.discardSentFile(43)).isInstanceOf(TransportException.class);
+    }
+
+    @Test
+    void contactAddressIsCreatedOnceThenReused() {
+        addressCreated = false;
+        addressBroken = false;
+
+        assertThat(transport.contactAddress()).isEqualTo("simplex:/contact#b");
+        assertThat(transport.contactAddress()).isEqualTo("simplex:/contact#b");
+
+        assertThat(connection.commands).containsSubsequence("/_show_address 3", "/_address 3", "/_show_address 3");
+        assertThat(connection.commands.stream().filter("/_address 3"::equals)).hasSize(1);
+        addressBroken = true;
+        assertThatThrownBy(transport::contactAddress).isInstanceOf(SimplexCommandException.class);
+        addressBroken = false;
+    }
+
+    @Test
+    void acceptsContactRequests() {
+        transport.acceptContactRequest(7);
+
+        assertThat(connection.commands).contains("/_accept 7");
+        assertThatThrownBy(() -> transport.acceptContactRequest(9)).isInstanceOf(TransportException.class);
     }
 }

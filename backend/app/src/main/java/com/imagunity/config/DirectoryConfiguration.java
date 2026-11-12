@@ -107,8 +107,10 @@ class DirectoryConfiguration {
 
     @Bean
     PeerHandshake peerHandshake(PeerRepository peers, TransportPort transport, BoxIdentity identity,
-                                LocalDirectory directory, ExecutorService orchestrationExecutor) {
-        return new PeerHandshake(peers, transport, identity, directory, orchestrationExecutor);
+                                LocalDirectory directory, ExecutorService orchestrationExecutor, Clock clock,
+                                OrchestrationProperties orchestration) {
+        return new PeerHandshake(peers, transport, identity, directory, orchestrationExecutor, clock,
+                orchestration.pairingTimeout());
     }
 
     @Bean

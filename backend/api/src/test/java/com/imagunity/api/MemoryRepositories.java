@@ -171,5 +171,10 @@ final class MemoryRepositories {
         public List<Peer> findAll() {
             return peers;
         }
+
+        @Override
+        public void delete(String name) {
+            peers.removeIf(p -> p.name().equals(name));
+        }
     }
 }
