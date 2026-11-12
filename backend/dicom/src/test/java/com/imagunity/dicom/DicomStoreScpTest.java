@@ -83,7 +83,7 @@ class DicomStoreScpTest {
 
         // Les fichiers sont des DICOM Part 10 complets, identifiants conservés.
         for (ReceivedInstance instance : study.instances()) {
-            assertThat(instance.file()).exists().startsWith(storage.resolve("IU_TO_B").resolve(STUDY));
+            assertThat(instance.file()).exists().startsWith(storage.resolve("IU_TO_B").resolve("box-b").resolve(STUDY));
             try (DicomInputStream in = new DicomInputStream(instance.file().toFile())) {
                 Attributes fmi = in.readFileMetaInformation();
                 Attributes ds = in.readDataset();
@@ -247,7 +247,7 @@ class DicomStoreScpTest {
         TestPorts.start(scp);
 
         assertThat(studies.poll(1, TimeUnit.SECONDS)).isNull();
-        assertThat(storage.resolve("IU_TO_B").resolve(STUDY)).as("fichiers conservés").exists();
+        assertThat(storage.resolve("IU_TO_B").resolve("box-b").resolve(STUDY)).as("fichiers conservés").exists();
     }
 
     private static int freePort() throws IOException {

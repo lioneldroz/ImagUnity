@@ -59,10 +59,11 @@ public final class JdbcTransferRepository implements TransferRepository {
     }
 
     @Override
-    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet) {
+    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
         return jdbc.sql("SELECT " + COLUMNS + " FROM transfer WHERE study_uid = ? AND called_aet = ? "
-                        + "AND state NOT IN (" + placeholders(TERMINAL.size()) + ") ORDER BY created_at DESC")
-                .params(studyInstanceUid, calledAet)
+                        + "AND destination = ? AND state NOT IN (" + placeholders(TERMINAL.size())
+                        + ") ORDER BY created_at DESC")
+                .params(studyInstanceUid, calledAet, destination)
                 .params(TERMINAL.stream().map(Enum::name).toList())
                 .query(JdbcTransferRepository::transfer).list().stream().findFirst();
     }

@@ -16,8 +16,8 @@ public interface TransferRepository {
 
     Optional<Transfer> find(UUID id);
 
-    /** Transfert non terminé de cette étude vers cette destination DICOM, s'il existe. */
-    Optional<Transfer> findActive(String studyInstanceUid, String calledAet);
+    /** Transfert non terminé de cette étude, reçue sur cette destination DICOM, vers ce partenaire, s'il existe. */
+    Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination);
 
     List<Transfer> findByStates(Set<TransferState> states);
 

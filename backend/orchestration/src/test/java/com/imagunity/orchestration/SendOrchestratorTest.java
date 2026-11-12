@@ -226,6 +226,19 @@ class SendOrchestratorTest {
     }
 
     @Test
+    void sameStudyRoutedToTwoPartnersGivesTwoTransfers() throws IOException {
+        peers.save(new Peer("box-c", 6, "box-c", clock.instant()));
+
+        orchestrator.handleStudy(study("box-b", 1, 1));
+        orchestrator.handleStudy(study("box-c", 1, 1));
+
+        assertThat(transfers.transfers.values()).extracting(Transfer::destination)
+                .containsExactlyInAnyOrder("box-b", "box-c");
+        assertThat(transfers.transfers.values()).allSatisfy(t -> assertThat(t.state()).isEqualTo(TransferState.PACKAGED));
+        assertThat(transport.files).hasSize(2);
+    }
+
+    @Test
     void sharedDirectoriesAreKept() throws IOException {
         ReceivedStudy study = study("box-b", 1, 1);
         Path other = Files.writeString(study.instances().getFirst().file().resolveSibling("autre.dcm"), "x");
@@ -309,7 +322,7 @@ class SendOrchestratorTest {
     void failingStepDoesNotStopTheOrchestrator() throws IOException {
         InMemoryRepositories.Transfers broken = new InMemoryRepositories.Transfers() {
             @Override
-            public java.util.Optional<Transfer> findActive(String study, String calledAet) {
+            public java.util.Optional<Transfer> findActive(String study, String calledAet, String destination) {
                 throw new IllegalStateException("base indisponible");
             }
         };

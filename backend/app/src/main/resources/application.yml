@@ -16,6 +16,19 @@ imagunity:
     #   - called-aet: IU_TO_B
     #     destination: box-b
     routes: []
+    # Routage par champ DICOM : sur routing-aet, le partenaire est choisi par la première règle qui correspond
+    # (motifs * et ?, ! pour la négation, casse ignorée) ; sans règle correspondante, l'instance est refusée.
+    # Exemple :
+    # routing-aet: IU_AUTO
+    # rules:
+    #   - name: scanner-urgences
+    #     when: {Modality: CT, InstitutionName: "CHU*"}
+    #     to: [box-b]
+    #   - name: irm
+    #     when: {Modality: MR}
+    #     to: [box-b, box-c]
+    routing-aet: ${IMAGUNITY_DICOM_ROUTING_AET:}
+    rules: []
   orchestration:
     outbox-dir: ${IMAGUNITY_DATA_DIR:./data}/outbox
     pairing-timeout: 1h

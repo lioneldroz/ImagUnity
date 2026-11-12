@@ -75,14 +75,18 @@ class JdbcTransferRepositoryTest {
     void findsActiveTransferOnly() {
         Transfer done = received("2.25.1").failed("ancien échec", now);
         repository.create(done);
-        assertThat(repository.findActive("2.25.1", "IU_TO_B")).isEmpty();
+        assertThat(repository.findActive("2.25.1", "IU_TO_B", "box-b")).isEmpty();
 
         Transfer active = received("2.25.1");
         repository.create(active);
+        // Même étude, même destination DICOM (routage par règles), autre partenaire : transfert distinct.
+        Transfer toC = Transfer.received("2.25.1", "IU_TO_B", "box-c", 1234, now);
+        repository.create(toC);
 
-        assertThat(repository.findActive("2.25.1", "IU_TO_B")).map(Transfer::id).contains(active.id());
-        assertThat(repository.findActive("2.25.1", "IU_TO_C")).isEmpty();
-        assertThat(repository.findActive("2.25.9", "IU_TO_B")).isEmpty();
+        assertThat(repository.findActive("2.25.1", "IU_TO_B", "box-b")).map(Transfer::id).contains(active.id());
+        assertThat(repository.findActive("2.25.1", "IU_TO_B", "box-c")).map(Transfer::id).contains(toC.id());
+        assertThat(repository.findActive("2.25.1", "IU_TO_C", "box-b")).isEmpty();
+        assertThat(repository.findActive("2.25.9", "IU_TO_B", "box-b")).isEmpty();
     }
 
     @Test

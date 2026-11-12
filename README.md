@@ -91,10 +91,11 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Chiffrement applicatif des paquets (pilote)](docs/chiffrement-applicatif.md)
 - [Mises à jour signées (pilote)](docs/mises-a-jour-signees.md)
 - [Clés de la box protégées par le TPM (pilote)](docs/cles-tpm.md)
+- [Routage par champ DICOM (pilote)](docs/routage-dicom.md)
 - [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (brouillon)
 
 ## Statut
 
 Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais SimpleX → box B → PACS B fonctionne, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
 
-Pilote, en cours : annuaire signé des box (enrôlement, révocation, annonces et accusés signés, clés protégées par phrase de passe) chiffrement applicatif des paquets pour la box destinataire (X25519 + ML-KEM-768) et mises à jour signées (lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière) et clés de la box protégées par un secret scellé dans son TPM, tous vérifiés sur la pile Docker.
+Pilote, en cours : annuaire signé des box (enrôlement, révocation, annonces et accusés signés, clés protégées par phrase de passe) chiffrement applicatif des paquets pour la box destinataire (X25519 + ML-KEM-768) et mises à jour signées (lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière) clés de la box protégées par un secret scellé dans son TPM, et routage des examens par champ DICOM, tous vérifiés sur la pile Docker.

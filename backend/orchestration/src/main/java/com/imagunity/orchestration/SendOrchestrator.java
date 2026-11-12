@@ -162,7 +162,8 @@ public final class SendOrchestrator {
     // --- Étapes ---
 
     void handleStudy(ReceivedStudy study) {
-        Optional<Transfer> existing = transfers.findActive(study.studyInstanceUid(), study.calledAet());
+        Optional<Transfer> existing = transfers.findActive(study.studyInstanceUid(), study.calledAet(),
+                study.destination());
         Transfer transfer;
         if (existing.isEmpty()) {
             transfer = Transfer.received(study.studyInstanceUid(), study.calledAet(), study.destination(),

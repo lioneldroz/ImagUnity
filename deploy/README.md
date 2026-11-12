@@ -85,6 +85,10 @@ Une nouvelle version se dépose dans `/data/mises-a-jour/depot/` de la box (jar 
 
 `compose.tpm.yml` (après `compose.annuaire.yml`) protège les clés des box par un secret scellé dans le TPM de l'hôte (`/dev/tpmrm0`) ; au premier démarrage, la phrase de passe sert une dernière fois, puis son secret peut être retiré. Sans TPM matériel, `campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel pour les essais. Voir [clés TPM](../docs/cles-tpm.md).
 
+### Routage par champ DICOM
+
+Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le partenaire d'après le contenu de l'examen (modalité, établissement…), par des règles lues dans l'ordre ; une instance qu'aucune règle ne couvre est refusée au PACS. Exemple d'essai : `campagne/compose.routage.yml`. Voir [routage DICOM](../docs/routage-dicom.md).
+
 ## Réinitialisation
 
 ```bash
