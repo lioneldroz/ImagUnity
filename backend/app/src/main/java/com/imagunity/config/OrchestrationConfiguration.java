@@ -10,6 +10,7 @@ import com.imagunity.domain.inbound.InboundRepository;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.domain.transfer.TransferRepository;
 import com.imagunity.orchestration.PairingService;
+import com.imagunity.orchestration.PeerAuthorization;
 import com.imagunity.orchestration.ReceiveOrchestrator;
 import com.imagunity.orchestration.SendOrchestrator;
 import com.imagunity.packaging.PackageReader;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executors;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -64,9 +66,10 @@ class OrchestrationConfiguration {
     @Bean
     SendOrchestrator sendOrchestrator(TransferRepository transfers, PeerRepository peers, TransportPort transport,
                                       OrchestrationProperties properties, ExecutorService orchestrationExecutor,
-                                      Clock clock) {
+                                      Clock clock, ObjectProvider<PeerAuthorization> authorization) {
         return new SendOrchestrator(transfers, peers, new StudyPackager(properties.packagingConfig()), transport,
-                properties.outboxDir(), orchestrationExecutor, clock);
+                properties.outboxDir(), orchestrationExecutor, clock,
+                authorization.getIfAvailable(PeerAuthorization::allowAll));
     }
 
     @Bean
@@ -82,10 +85,11 @@ class OrchestrationConfiguration {
     @Bean
     ReceiveOrchestrator receiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
                                             StudyRestorer restorer, RestoreProperties properties,
-                                            ExecutorService orchestrationExecutor, Clock clock) {
+                                            ExecutorService orchestrationExecutor, Clock clock,
+                                            ObjectProvider<PeerAuthorization> authorization) {
         return new ReceiveOrchestrator(inbound, peers, transport, new PackageReader(properties.maxUnpackedSize().toBytes()),
                 restorer, properties.inboxDir(), properties.maxInboundFileSize().toBytes(), orchestrationExecutor,
-                clock);
+                clock, authorization.getIfAvailable(PeerAuthorization::allowAll));
     }
 
     @Bean

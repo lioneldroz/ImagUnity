@@ -71,9 +71,18 @@ public final class SendOrchestrator {
     private final Executor executor;
     private final Clock clock;
     private final TransferMessages messages = new TransferMessages();
+    private final PeerAuthorization authorization;
 
     public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
                             TransportPort transport, Path outboxDir, Executor executor, Clock clock) {
+        this(transfers, peers, packager, transport, outboxDir, executor, clock, PeerAuthorization.allowAll());
+    }
+
+    /** @param authorization décide si l'on peut envoyer au partenaire (annuaire) */
+    public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
+                            TransportPort transport, Path outboxDir, Executor executor, Clock clock,
+                            PeerAuthorization authorization) {
+        this.authorization = authorization;
         this.transfers = transfers;
         this.peers = peers;
         this.packager = packager;
@@ -348,6 +357,11 @@ public final class SendOrchestrator {
         Optional<Peer> peer = peers.findByName(transfer.destination());
         if (peer.isEmpty()) {
             fail(transfer, "Partenaire non appairé : " + transfer.destination());
+            return Optional.empty();
+        }
+        Optional<String> refusal = authorization.refusal(peer.get());
+        if (refusal.isPresent()) {
+            fail(transfer, refusal.get());
             return Optional.empty();
         }
         return Optional.of(new PeerId(peer.get().transportPeerId()));

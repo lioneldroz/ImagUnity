@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-12T08:06:56+00:00",
+  "simplexChat": "SimpleX Chat v7.1.2.0\nTo update run: curl -o- https://raw.githubusercontent.com/simplex-chat/simplex-chat/master/install.sh | bash",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "FAILED",
+      "chronologie_s": {
+        "cstore": 0.58,
+        "FAILED": 5.89
+      },
+      "errorMessage": "Box du partenaire « box-b » révoquée dans l'annuaire"
+    }
+  ]
+}

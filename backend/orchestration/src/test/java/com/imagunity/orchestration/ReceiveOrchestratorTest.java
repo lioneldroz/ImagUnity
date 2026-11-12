@@ -566,4 +566,18 @@ class ReceiveOrchestratorTest {
         assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
         assertThat(onlyTransfer().packageGroupId()).isEqualTo(a.packageGroupId());
     }
+
+    @Test
+    void refusedPartnerIsNeitherDownloadedNorAnnounced() throws IOException {
+        orchestrator = new ReceiveOrchestrator(inbound, peers, transport, new PackageReader(1L << 30),
+                (s, i) -> restored.add(i), dir.resolve("inbox"), 1L << 30, Runnable::run, clock,
+                peer -> java.util.Optional.of("Partenaire « box-a » pas encore vérifié par l'annuaire"));
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+
+        offer(parts.getFirst());
+        announce(announcement(parts));
+
+        assertThat(transport.downloads).isEmpty();
+        assertThat(inbound.transfers).isEmpty();
+    }
 }

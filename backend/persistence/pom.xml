@@ -20,6 +20,10 @@
             <artifactId>imagunity-domain</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-directory</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>

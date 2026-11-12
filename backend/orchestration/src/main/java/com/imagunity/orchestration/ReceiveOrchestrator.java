@@ -84,10 +84,20 @@ public final class ReceiveOrchestrator {
     private final Executor executor;
     private final Clock clock;
     private final TransferMessages messages = new TransferMessages();
+    private final PeerAuthorization authorization;
 
     public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
                                PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
                                Executor executor, Clock clock) {
+        this(inbound, peers, transport, reader, restorer, inboxDir, maxFileSize, executor, clock,
+                PeerAuthorization.allowAll());
+    }
+
+    /** @param authorization décide si l'on peut recevoir du partenaire (annuaire) */
+    public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
+                               PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
+                               Executor executor, Clock clock, PeerAuthorization authorization) {
+        this.authorization = authorization;
         this.inbound = inbound;
         this.peers = peers;
         this.transport = transport;
@@ -133,6 +143,9 @@ public final class ReceiveOrchestrator {
         Optional<Peer> peer = peers.findByTransportPeerId(offered.peer().value());
         if (peer.isEmpty()) {
             LOG.log(Level.WARNING, "Fichier proposé par un contact non appairé : ignoré");
+            return;
+        }
+        if (refused(peer.get())) {
             return;
         }
         if (!FILE_NAME.matcher(offered.fileName()).matches()) {
@@ -200,6 +213,9 @@ public final class ReceiveOrchestrator {
         Optional<Peer> peer = peers.findByTransportPeerId(message.peer().value());
         if (peer.isEmpty()) {
             LOG.log(Level.WARNING, "Annonce d'un contact non appairé : ignorée");
+            return;
+        }
+        if (refused(peer.get())) {
             return;
         }
         TransferAnnouncement a = announcement.get();
@@ -387,6 +403,13 @@ public final class ReceiveOrchestrator {
     }
 
     // --- Outils ---
+
+    /** Vrai (et journalisé) si l'annuaire interdit de recevoir de ce partenaire. */
+    private boolean refused(Peer peer) {
+        Optional<String> refusal = authorization.refusal(peer);
+        refusal.ifPresent(reason -> LOG.log(Level.WARNING, "Réception refusée : {0}", reason));
+        return refusal.isPresent();
+    }
 
     private void fail(InboundTransfer transfer, String reason) {
         InboundTransfer failed = transfer.failed(reason, clock.instant());

@@ -28,9 +28,10 @@ public final class JdbcPeerRepository implements PeerRepository {
             // Ré-appairage : un nom ou un contact déjà connu est remplacé.
             jdbc.sql("DELETE FROM peer WHERE name = ? OR transport_peer_id = ?")
                     .params(peer.name(), peer.transportPeerId()).update();
-            jdbc.sql("INSERT INTO peer (name, transport_peer_id, display_name, paired_at) VALUES (?, ?, ?, ?)")
+            jdbc.sql("INSERT INTO peer (name, transport_peer_id, display_name, paired_at, box_id) "
+                            + "VALUES (?, ?, ?, ?, ?)")
                     .params(peer.name(), peer.transportPeerId(), peer.displayName(),
-                            JdbcTransferRepository.utc(peer.pairedAt()))
+                            JdbcTransferRepository.utc(peer.pairedAt()), peer.boxId())
                     .update();
         });
     }
@@ -53,6 +54,6 @@ public final class JdbcPeerRepository implements PeerRepository {
 
     private static Peer peer(ResultSet rs, int row) throws SQLException {
         return new Peer(rs.getString("name"), rs.getLong("transport_peer_id"), rs.getString("display_name"),
-                JdbcTransferRepository.instant(rs, "paired_at"));
+                JdbcTransferRepository.instant(rs, "paired_at"), rs.getObject("box_id", java.util.UUID.class));
     }
 }

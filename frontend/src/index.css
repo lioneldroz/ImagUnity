@@ -268,3 +268,17 @@ button:disabled {
   margin: 0;
   padding-left: 18px;
 }
+
+.directory {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.directory dd {
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: var(--progress);
+}

@@ -1,0 +1,24 @@
+# Annuaire signé activé dans les deux box (à combiner avec le profil « annuaire ») :
+#
+#   export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=XXXX-XXXX-XXXX-XXXX-XXXX-XXXX   # vérifiée hors bande
+#   docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
+#
+# Chaque box crée son identité au premier démarrage ; le responsable l'enrôle à partir de sa demande
+# (console de la box, « Télécharger la demande d'enrôlement »), puis publie l'entrée dans l'annuaire.
+
+x-annuaire: &annuaire
+  IMAGUNITY_DIRECTORY_ENABLED: "true"
+  IMAGUNITY_DIRECTORY_URL: http://directory:8090
+  IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
+  IMAGUNITY_DIRECTORY_ORGANIZATION_CODE: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:?empreinte du responsable à vérifier hors bande}
+  IMAGUNITY_DIRECTORY_SYNC_INTERVAL: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:-1m}
+
+services:
+  box-a:
+    environment: *annuaire
+    volumes:
+      - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro
+  box-b:
+    environment: *annuaire
+    volumes:
+      - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro

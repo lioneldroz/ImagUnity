@@ -34,4 +34,18 @@ class PeerTest {
         assertThatThrownBy(() -> Peer.requireValidName(null)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new Peer("box-b", 5, null, null)).isInstanceOf(NullPointerException.class);
     }
+
+    @org.junit.jupiter.api.Test
+    void peerIsBoundToADirectoryBox() {
+        Peer peer = new Peer("box-b", 5, "box-b", java.time.Instant.parse("2026-11-12T10:00:00Z"));
+        java.util.UUID box = java.util.UUID.randomUUID();
+
+        Peer bound = peer.boundTo(box);
+
+        org.assertj.core.api.Assertions.assertThat(peer.boxId()).isNull();
+        org.assertj.core.api.Assertions.assertThat(bound.boxId()).isEqualTo(box);
+        org.assertj.core.api.Assertions.assertThat(bound.name()).isEqualTo("box-b");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> peer.boundTo(null))
+                .isInstanceOf(NullPointerException.class);
+    }
 }

@@ -58,6 +58,13 @@ Le profil `annuaire` ajoute le service d'annuaire (port 8090) et sa base Postgre
 docker compose --profile annuaire up -d directory
 ```
 
+Pour que les box utilisent l'annuaire (enrôlement, liaison des partenaires, refus des box révoquées), ajouter `compose.annuaire.yml` avec l'empreinte du responsable vérifiée hors bande :
+
+```bash
+export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte>
+docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
+```
+
 ## Réinitialisation
 
 ```bash

@@ -2,6 +2,7 @@ package com.imagunity.domain.peer;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -15,14 +16,26 @@ import java.util.regex.Pattern;
  * @param transportPeerId identifiant du partenaire dans le transport
  * @param displayName     nom de profil annoncé par le partenaire (information seulement)
  * @param pairedAt        date de l'appairage
+ * @param boxId           box enrôlée dans l'annuaire à laquelle ce partenaire est lié, une fois sa poignée de main
+ *                        signée vérifiée ({@code null} avant, ou sans annuaire)
  */
-public record Peer(String name, long transportPeerId, String displayName, Instant pairedAt) {
+public record Peer(String name, long transportPeerId, String displayName, Instant pairedAt, UUID boxId) {
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_\\-]{1,64}");
 
     public Peer {
         requireValidName(name);
         Objects.requireNonNull(pairedAt, "pairedAt");
+    }
+
+    /** Partenaire pas encore lié à une box de l'annuaire. */
+    public Peer(String name, long transportPeerId, String displayName, Instant pairedAt) {
+        this(name, transportPeerId, displayName, pairedAt, null);
+    }
+
+    /** Le même partenaire, lié à cette box de l'annuaire. */
+    public Peer boundTo(UUID box) {
+        return new Peer(name, transportPeerId, displayName, pairedAt, Objects.requireNonNull(box, "box"));
     }
 
     /** @throws IllegalArgumentException si le nom n'est pas un nom de partenaire admis */
