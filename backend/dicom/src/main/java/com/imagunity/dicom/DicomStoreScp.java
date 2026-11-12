@@ -4,6 +4,7 @@ import com.imagunity.domain.exam.DicomUids;
 import com.imagunity.domain.exam.ReceivedInstance;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.System.Logger.Level;
 import java.nio.file.Files;
@@ -203,11 +204,7 @@ public final class DicomStoreScp implements AutoCloseable {
             if (!DicomUids.isValid(cuid) || !DicomUids.isValid(iuid) || !DicomUids.isValid(tsuid)) {
                 throw new DicomServiceException(Status.CannotUnderstand, "UID de commande invalide");
             }
-            if (Files.getFileStore(store.root()).getUsableSpace() < config.minFreeSpace()) {
-                LOG.log(Level.ERROR, "Espace disque insuffisant : instance refusée");
-                throw new DicomServiceException(Status.OutOfResources, "Espace disque insuffisant");
-            }
-
+            requireFreeSpace();
             Path temp = store.newTempFile();
             try {
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(temp));
@@ -215,42 +212,157 @@ public final class DicomStoreScp implements AutoCloseable {
                     out.writeFileMetaInformation(as.createFileMetaInformation(iuid, cuid, tsuid));
                     data.copyTo(out);
                 }
-                Attributes dataset;
-                try (DicomInputStream in = new DicomInputStream(temp.toFile())) {
-                    in.setIncludeBulkData(IncludeBulkData.NO);
-                    dataset = in.readDatasetUntilPixelData();
-                }
-                String studyUid = dataset.getString(Tag.StudyInstanceUID);
-                String seriesUid = dataset.getString(Tag.SeriesInstanceUID);
-                if (!DicomUids.isValid(studyUid) || !DicomUids.isValid(seriesUid)) {
-                    throw new DicomServiceException(Status.CannotUnderstand, "Study ou Series Instance UID invalide");
-                }
-                if (!iuid.equals(dataset.getString(Tag.SOPInstanceUID))) {
-                    throw new DicomServiceException(Status.CannotUnderstand,
-                            "SOP Instance UID du jeu de données différent de celui de la commande");
-                }
-                List<String> destinations = destinations(calledAet, dataset);
-                Path first = store.finalPath(calledAet, destinations.getFirst(), studyUid, seriesUid, iuid);
-                store.commit(temp, first);
-                for (String destination : destinations) {
-                    Path target = store.finalPath(calledAet, destination, studyUid, seriesUid, iuid);
-                    if (!target.equals(first)) {
-                        store.copy(first, target);
-                    }
-                    assembler.add(calledAet, destination, as.getCallingAET(), studyUid,
-                            new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
-                }
-                LOG.log(Level.DEBUG, "Instance reçue de {0} pour {1} → {2}", as.getCallingAET(), calledAet,
-                        destinations);
-            } catch (DicomServiceException e) {
-                Files.deleteIfExists(temp);
-                LOG.log(Level.WARNING, "Instance refusée (émetteur {0}) : {1}", as.getCallingAET(), e.getMessage());
-                throw e;
             } catch (IOException | RuntimeException e) {
                 Files.deleteIfExists(temp);
                 LOG.log(Level.ERROR, "Échec de la réception d'une instance", e);
                 throw new DicomServiceException(Status.ProcessingFailure, e);
             }
+            accept(as.getCallingAET(), calledAet, temp, cuid, iuid, tsuid, null);
+        }
+    }
+
+    /**
+     * Instance reçue par STOW-RS (DICOMweb) : même traitement qu'une instance reçue par C-STORE (contrôles, routage,
+     * rattachement à l'étude), à partir d'un fichier DICOM Part 10.
+     *
+     * @param source    émetteur, pour les journaux et le suivi (par exemple {@code dicomweb:pacs})
+     * @param calledAet destination DICOM désignée par l'URL (route fixe ou destination de routage)
+     * @param studyUid  étude imposée par l'URL, ou {@code null}
+     * @return l'instance acceptée
+     * @throws Refused si l'instance est refusée ; son statut DICOM donne la cause
+     */
+    public Accepted storePart10(String source, String calledAet, InputStream part10, String studyUid)
+            throws Refused {
+        if (calledAet == null || !config.isKnownCalledAet(calledAet)) {
+            throw new Refused(Status.ProcessingFailure, "Destination inconnue : " + calledAet, null, null);
+        }
+        try {
+            requireFreeSpace();
+        } catch (IOException e) {
+            throw new Refused(Status.OutOfResources, e.getMessage(), null, null);
+        }
+        Path temp = store.newTempFile();
+        Attributes fmi;
+        try {
+            Files.copy(part10, temp);
+            try (DicomInputStream in = new DicomInputStream(temp.toFile())) {
+                fmi = in.readFileMetaInformation();
+            }
+        } catch (IOException | RuntimeException e) {
+            deleteQuietly(temp);
+            throw new Refused(Status.CannotUnderstand, "Fichier DICOM illisible : " + e.getMessage(), null, null);
+        }
+        if (fmi == null) {
+            deleteQuietly(temp);
+            throw new Refused(Status.CannotUnderstand, "Pas un fichier DICOM Part 10 (méta-informations)", null,
+                    null);
+        }
+        String cuid = fmi.getString(Tag.MediaStorageSOPClassUID);
+        String iuid = fmi.getString(Tag.MediaStorageSOPInstanceUID);
+        String tsuid = fmi.getString(Tag.TransferSyntaxUID);
+        if (!DicomUids.isValid(cuid) || !DicomUids.isValid(iuid) || !DicomUids.isValid(tsuid)) {
+            deleteQuietly(temp);
+            throw new Refused(Status.CannotUnderstand, "UID des méta-informations invalide", null, null);
+        }
+        try {
+            return accept(source, calledAet.trim(), temp, cuid, iuid, tsuid, studyUid);
+        } catch (DicomServiceException e) {
+            throw new Refused(e.getStatus(), e.getMessage(), cuid, iuid);
+        }
+    }
+
+    /** Instance refusée par STOW-RS, avec ses UID s'ils ont pu être lus. */
+    public static final class Refused extends DicomServiceException {
+
+        private final String sopClassUid;
+        private final String sopInstanceUid;
+
+        Refused(int status, String message, String sopClassUid, String sopInstanceUid) {
+            super(status, message);
+            this.sopClassUid = sopClassUid;
+            this.sopInstanceUid = sopInstanceUid;
+        }
+
+        public String sopClassUid() {
+            return sopClassUid;
+        }
+
+        public String sopInstanceUid() {
+            return sopInstanceUid;
+        }
+    }
+
+    /** Failure Reason STOW-RS : instance d'une autre étude que celle imposée par l'URL. */
+    static final int STUDY_MISMATCH = 0xA900;
+
+    /**
+     * Instance acceptée.
+     *
+     * @param sopClassUid    classe SOP
+     * @param sopInstanceUid instance
+     * @param studyUid       étude
+     * @param destinations   partenaires destinataires
+     */
+    public record Accepted(String sopClassUid, String sopInstanceUid, String studyUid, List<String> destinations) {
+    }
+
+    private void requireFreeSpace() throws IOException {
+        if (Files.getFileStore(store.root()).getUsableSpace() < config.minFreeSpace()) {
+            LOG.log(Level.ERROR, "Espace disque insuffisant : instance refusée");
+            throw new DicomServiceException(Status.OutOfResources, "Espace disque insuffisant");
+        }
+    }
+
+    /** Contrôle une instance écrite dans {@code temp} (Part 10), la range pour chaque partenaire et la rattache. */
+    private Accepted accept(String source, String calledAet, Path temp, String cuid, String iuid, String tsuid,
+                            String expectedStudy) throws DicomServiceException {
+        try {
+            Attributes dataset;
+            try (DicomInputStream in = new DicomInputStream(temp.toFile())) {
+                in.setIncludeBulkData(IncludeBulkData.NO);
+                dataset = in.readDatasetUntilPixelData();
+            }
+            String studyUid = dataset.getString(Tag.StudyInstanceUID);
+            String seriesUid = dataset.getString(Tag.SeriesInstanceUID);
+            if (!DicomUids.isValid(studyUid) || !DicomUids.isValid(seriesUid)) {
+                throw new DicomServiceException(Status.CannotUnderstand, "Study ou Series Instance UID invalide");
+            }
+            if (expectedStudy != null && !expectedStudy.equals(studyUid)) {
+                throw new DicomServiceException(STUDY_MISMATCH, "Instance d'une autre étude que celle de l'URL");
+            }
+            if (!iuid.equals(dataset.getString(Tag.SOPInstanceUID))) {
+                throw new DicomServiceException(Status.CannotUnderstand,
+                        "SOP Instance UID du jeu de données différent de celui de la commande");
+            }
+            List<String> destinations = destinations(calledAet, dataset);
+            Path first = store.finalPath(calledAet, destinations.getFirst(), studyUid, seriesUid, iuid);
+            store.commit(temp, first);
+            for (String destination : destinations) {
+                Path target = store.finalPath(calledAet, destination, studyUid, seriesUid, iuid);
+                if (!target.equals(first)) {
+                    store.copy(first, target);
+                }
+                assembler.add(calledAet, destination, source, studyUid,
+                        new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
+            }
+            LOG.log(Level.DEBUG, "Instance reçue de {0} pour {1} → {2}", source, calledAet, destinations);
+            return new Accepted(cuid, iuid, studyUid, destinations);
+        } catch (DicomServiceException e) {
+            deleteQuietly(temp);
+            LOG.log(Level.WARNING, "Instance refusée (émetteur {0}) : {1}", source, e.getMessage());
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            deleteQuietly(temp);
+            LOG.log(Level.ERROR, "Échec de la réception d'une instance", e);
+            throw new DicomServiceException(Status.ProcessingFailure, e);
+        }
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Fichier temporaire non supprimé : " + file, e);
         }
     }
 

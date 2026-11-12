@@ -91,7 +91,7 @@ Par ordre de criticité :
 2. **Chiffrement applicatif** avec la clé publique du destinataire ; étudier les algorithmes résistants au calcul quantique. *Fait (X25519 + ML-KEM-768, AES-256-GCM) : voir [chiffrement-applicatif.md](chiffrement-applicatif.md).*
 3. **Mises à jour signées** : clé hors ligne, double signature. *Fait (lanceur qui vérifie et refuse les retours en arrière) : voir [mises-a-jour-signees.md](mises-a-jour-signees.md).*
 4. Clés d'identité dans un **TPM** ou un élément sécurisé. *Fait par scellement dans le TPM (les TPM ne prennent pas encore en charge ML-DSA ni ML-KEM) : voir [cles-tpm.md](cles-tpm.md).*
-5. Routage par champ DICOM, réception STOW-RS (DICOMweb). *Routage fait : voir [routage-dicom.md](routage-dicom.md) ; STOW-RS à faire.*
+5. Routage par champ DICOM, réception STOW-RS (DICOMweb). *Fait : voir [routage-dicom.md](routage-dicom.md) et [stow-rs.md](stow-rs.md).*
 6. Adaptation au réseau : taille des blocs, priorité aux séries utiles au diagnostic, redondance entre relais.
 7. Validation juridique de la licence AGPL avant commercialisation.
 8. **Transport propre IU-T** (équivalent de XFTP et SMP, en Java), derrière le même `TransportPort` : voir la [spécification](specification-protocole.md). Estimation : 2,5 à 3,5 mois, plus un audit de sécurité externe. Il rendrait le point 7 sans objet pour le transport.

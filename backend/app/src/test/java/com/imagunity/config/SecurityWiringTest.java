@@ -26,6 +26,7 @@ class SecurityWiringTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> "jdbc:h2:mem:securite-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
+        registry.add("imagunity.dicomweb.password", () -> "pacs-de-test");
     }
 
     @Autowired
@@ -73,6 +74,43 @@ class SecurityWiringTest {
         assertThat(withoutHeader.statusCode()).isEqualTo(403);
         assertThat(withoutHeader.body()).contains(SecurityConfiguration.CONSOLE_HEADER);
         assertThat(withHeader.statusCode()).as("transfert inconnu, mais requête admise").isEqualTo(404);
+    }
+
+    @Test
+    void eachAccountOpensOnlyItsOwnPart() throws Exception {
+        String operator = basic("operateur", "mot-de-passe-de-test");
+        String pacs = basic("pacs", "pacs-de-test");
+        HttpRequest.BodyPublisher empty = HttpRequest.BodyPublishers.noBody();
+
+        assertThat(send(request("/api/v1/box").header("Authorization", pacs)).statusCode())
+                .as("le compte DICOMweb n'ouvre pas la console").isEqualTo(403);
+        assertThat(send(request("/dicomweb/IU_TO_B/studies").header("Authorization", operator)
+                .header(SecurityConfiguration.CONSOLE_HEADER, "1").POST(empty)).statusCode())
+                .as("le compte opérateur ne dépose pas d'instances").isEqualTo(403);
+        assertThat(send(request("/dicomweb/IU_TO_B/studies").POST(empty)).statusCode()).isEqualTo(401);
+        HttpResponse<String> deposit = send(request("/dicomweb/IU_TO_B/studies").header("Authorization", pacs)
+                .header("Content-Type", "multipart/related; type=\"application/dicom\"; boundary=x").POST(empty));
+        assertThat(deposit.statusCode()).as("sans en-tête de la console ; entrée DICOM désactivée ici").isEqualTo(404);
+        assertThat(deposit.body()).contains("Entrée DICOM désactivée");
+        assertThat(send(request("/dicomweb/IU_TO_B/studies/2.25.1").header("Authorization", pacs).POST(empty))
+                .statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void dicomwebAccountIsOptionalAndDistinct() {
+        PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+        SecurityConfiguration configuration = new SecurityConfiguration();
+        ConsoleAccessProperties console = new ConsoleAccessProperties("operateur", "secret-operateur");
+
+        assertThat(((org.springframework.security.provisioning.InMemoryUserDetailsManager) configuration.accounts(
+                console, new DicomWebProperties("pacs", ""), encoder)).userExists("pacs")).isFalse();
+        assertThat(((org.springframework.security.provisioning.InMemoryUserDetailsManager) configuration.accounts(
+                console, new DicomWebProperties("pacs", null), encoder)).userExists("pacs")).isFalse();
+        String hash = encoder.encode("pacs");
+        assertThat(configuration.accounts(console, new DicomWebProperties("pacs", hash), encoder)
+                .loadUserByUsername("pacs").getPassword()).isEqualTo(hash);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> configuration.accounts(console,
+                new DicomWebProperties("operateur", "autre"), encoder)).hasMessageContaining("distinct");
     }
 
     @Test

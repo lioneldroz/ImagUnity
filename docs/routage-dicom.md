@@ -1,7 +1,7 @@
 # Routage par champ DICOM
 
 > Objectif (pilote, priorité 5 du [plan](plan-de-realisation.md), premier volet) : la box choisit elle-même le partenaire destinataire d'après le **contenu de l'examen** (modalité, établissement, description…). Le PACS n'a plus à connaître une destination DICOM par partenaire.
-> Statut : **fait**, et vérifié sur la pile Docker (§ 5). Second volet, la réception STOW-RS (DICOMweb), à faire.
+> Statut : **fait**, et vérifié sur la pile Docker (§ 5). Second volet : la [réception STOW-RS (DICOMweb)](stow-rs.md), qui applique les mêmes règles.
 
 ## 1. Deux façons de désigner le destinataire
 
@@ -85,6 +85,6 @@ Sur la chaîne de la campagne de tests, avec des études synthétiques envoyées
 
 ## 6. Reste à faire
 
-- **Réception STOW-RS (DICOMweb)** : seconde porte d'entrée, qui passera par les mêmes règles.
+- Réception STOW-RS (DICOMweb) : faite, par les mêmes règles ([stow-rs.md](stow-rs.md)).
 - Affichage des règles dans la console, avec un **essai à blanc** sur une instance déposée.
 - Opérateurs supplémentaires si le besoin apparaît : OU, plages de dates, expressions régulières.
