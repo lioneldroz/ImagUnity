@@ -1,6 +1,5 @@
 package com.imagunity.orchestration;
 
-import com.imagunity.transport.Invitation;
 import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import com.imagunity.transport.TransportException;
@@ -30,22 +29,22 @@ final class FakeTransport implements TransportPort {
     long nextFileId = 100;
 
     @Override
-    public Invitation createInvitation() {
-        return new Invitation("https://simplex.chat/invitation#test", null);
+    public String contactAddress() {
+        return "https://relais.example/iu/v1/queues/" + "a".repeat(43);
     }
 
     @Override
-    public void acceptInvitation(String invitationLink) {
+    public void connect(String contactAddress) {
         if (failAccept) {
-            throw new TransportException("lien invalide");
+            throw new TransportException("adresse inconnue");
         }
-        acceptedLinks.add(invitationLink);
+        acceptedLinks.add(contactAddress);
     }
 
     @Override
     public void sendMessage(PeerId peer, String text) {
         if (failSendMessage) {
-            throw new TransportException("relais SMP injoignable");
+            throw new TransportException("relais injoignable");
         }
         messages.add(new SentMessage(peer, text));
     }
@@ -53,26 +52,14 @@ final class FakeTransport implements TransportPort {
     @Override
     public long sendFile(PeerId peer, Path file) {
         if (failSendFile) {
-            throw new TransportException("relais XFTP injoignable");
+            throw new TransportException("relais injoignable");
         }
         long id = nextFileId++;
         files.add(new SentFile(peer, file, id));
         return id;
     }
 
-    /** Demandes de contact acceptées. */
-    final List<Long> acceptedRequests = new ArrayList<>();
-    boolean failAcceptRequest;
-
-    @Override
-    public void acceptContactRequest(long requestId) {
-        if (failAcceptRequest) {
-            throw new TransportException("demande expirée");
-        }
-        acceptedRequests.add(requestId);
-    }
-
-    /** Fichiers retirés des relais. */
+    /** Fichiers retirés du relais. */
     final List<Long> discarded = new ArrayList<>();
     boolean failDiscard;
 
@@ -91,7 +78,7 @@ final class FakeTransport implements TransportPort {
     @Override
     public void receiveFile(long fileId, Path target) {
         if (failReceive) {
-            throw new TransportException("relais XFTP injoignable");
+            throw new TransportException("relais injoignable");
         }
         downloads.put(fileId, target);
     }

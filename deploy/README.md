@@ -1,23 +1,40 @@
 # Environnement de test
 
-Environnement Docker Compose de la preuve de concept : deux établissements, deux box, deux relais, sans aucun chemin réseau direct entre les sites.
+Environnement Docker Compose de la preuve de concept : deux établissements, deux box, le relais IU-T et l'annuaire de l'organisation, sans aucun chemin réseau direct entre les sites.
 
 ```
- site-a                        relais                         site-b
-┌──────────────┐   ┌───────────────────────────────┐   ┌──────────────┐
-│ orthanc-a    │   │ smp-server      xftp-server   │   │ orthanc-b    │
-│      │       │   │      ▲               ▲        │   │      ▲       │
-│      ▼       │   │      │               │        │   │      │       │
-│ box-a+chat-a ├───┼──────┴───────────────┴────────┼───┤ box-b+chat-b │
-└──────────────┘   └───────────────────────────────┘   └──────────────┘
+ site-a                        relais (« Internet »)               site-b
+┌──────────────┐   ┌────────────────────────────────────┐   ┌──────────────┐
+│ orthanc-a    │   │ relay (+ relay-db)                 │   │ orthanc-b    │
+│      │       │   │   ▲      directory (+ directory-db)│   │      ▲       │
+│      ▼       │   │   │        ▲                       │   │      │       │
+│ box-a        ├───┼───┴────────┴───────────────────────┼───┤ box-b        │
+└──────────────┘   └────────────────────────────────────┘   └──────────────┘
 ```
 
-## Démarrage
+Les box ne font que des connexions sortantes vers le relais et l'annuaire ([transport IU-T](../docs/specification-protocole.md)) ; le relais ne prend les dépôts que des box enrôlées et actives de l'annuaire.
+
+## Premier démarrage
+
+1. **Clé du responsable** : la créer, puis copier sa clé publique dans `annuaire/organisation.pub.json` ([annuaire signé](../docs/annuaire-signe.md)). Son empreinte, vérifiée hors bande, est exigée par les box et le relais.
+2. **Phrases de passe des box** (secrets Docker, hors du volume de données, non versionnés) :
 
 ```bash
 cd deploy
+export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable>
+for b in a b; do head -c 24 /dev/urandom | base64 > annuaire/phrase-box-$b.txt; done
 docker compose up -d --build
 ```
+
+3. **Enrôlement** : chaque box crée son identité, ses clés de chiffrement et réserve l'adresse de sa future file au premier démarrage. Télécharger sa demande d'enrôlement (console, onglet Annuaire), la faire signer par le responsable puis publier l'entrée :
+
+```bash
+java -cp … com.imagunity.directory.DirectoryAdmin enroler --cles organisation.json --demande demande-a.json --sortie entree-a.json
+java -cp … com.imagunity.directory.DirectoryAdmin publier --annuaire http://localhost:8090 --entree entree-a.json
+```
+
+   Une fois l'entrée publiée (et lue par le relais), la box crée sa file d'elle-même.
+4. **Appairage** : dans la console de la box A, onglet Annuaire, appairer la box B sous le nom `box-b` (ou `POST /api/v1/directory/boxes/{id}/pair`) ; la box B crée le contact à la réception et la poignée de main signée le lie à la box A de l'annuaire. Faire de même dans l'autre sens si besoin (`box-a`).
 
 Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vite), la campagne fournit une variante construite à partir d'artefacts préparés : voir [phase 8](../docs/phase8-campagne.md).
 
@@ -27,46 +44,23 @@ Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vi
 | Console box B | http://localhost:8082 |
 | Orthanc A (émetteur) | http://localhost:8042 |
 | Orthanc B (destinataire) | http://localhost:8043 |
+| Annuaire | http://localhost:8090 |
+| Relais IU-T | http://localhost:8443 (HTTP dans ce labo ; derrière un proxy TLS en production) |
+
+Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, chiffré pour la box B, déposé sur le relais, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.
 
 ## Points d'attention
 
-- Les relais génèrent leurs clés et leur empreinte au premier démarrage. Les clients `simplex-chat` lisent ces empreintes dans les volumes de configuration des relais (voir [simplex-chat/entrypoint.sh](simplex-chat/entrypoint.sh)).
-- Chaque box est composée de deux conteneurs qui partagent la même pile réseau (celle d'un petit conteneur `net-x`, comme dans un pod : chacun peut redémarrer seul) **et le même volume `/data`** : `chat-x` (client SimpleX non modifié, AGPL-3.0) et `box-x` (logiciel ImagUnity, qui pilote le client par WebSocket sur `localhost:5225`). Le client lit les paquets à envoyer et écrit les paquets reçus aux chemins donnés par la box ; son dossier temporaire (`--temp-folder /data/tmp`) doit être sur le même système de fichiers que `/data/inbox`, sinon le fichier reçu ne peut pas y être renommé.
 - Chaque box écoute (console 8080, entrée DICOM 11112) sur son adresse du réseau de son site seulement (`SERVER_ADDRESS`, `IMAGUNITY_DICOM_BIND_ADDRESS` = 172.31.1.10 et 172.31.2.10) : rien n'est joignable depuis le réseau des relais. Le réseau du site est prioritaire (`gw_priority`) pour que la console publiée sur l'hôte y arrive.
-- Les relais ont une adresse IPv4 fixe sur le réseau `relais` (172.30.0.10 et .11) : leurs images refusent un nom court et, avec un nom de domaine, exigent un certificat HTTPS pour leur site web, désactivé ici (`WEB_MANUAL`).
-- Orthanc A déclare la destination DICOM `IU_TO_B` : envoyer un examen à cette destination désigne la box B comme destinataire. L'entrée DICOM de la box arrive en phase 2.
-- La dégradation de la liaison (débit, latence, pertes), le pare-feu et les coupures sont appliqués par la campagne de tests ([phase 8](../docs/phase8-campagne.md), dossier [campagne](campagne/)) avec `tc netem` et `iptables`.
+- La pile réseau de chaque box est celle d'un petit conteneur `net-x` (comme dans un pod) : la box, et son TPM logiciel dans les essais, peuvent redémarrer sans perdre le réseau.
+- L'état du transport de chaque box (file de réception, contacts, transferts en cours) est dans `/data/iu` ; un transfert interrompu par un redémarrage reprend où il en était. Le relais garde ses métadonnées dans PostgreSQL (`relay-db`) et les morceaux sur disque (`relay-data`).
+- Les paquets sont chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire ([chiffrement applicatif](../docs/chiffrement-applicatif.md)). Pour mettre à jour un parc existant : d'abord le service d'annuaire, puis le relais, puis les box, puis réémettre chaque entrée qui doit changer à partir d'une nouvelle demande d'enrôlement (`--serie` supérieure).
+- La dégradation de la liaison (débit, latence, pertes), le pare-feu et les coupures sont appliqués par la campagne de tests ([phase 8](../docs/phase8-campagne.md), dossier [campagne](campagne/)) avec `tc` et `iptables`.
 - **Données de test uniquement** : jeux publics ou anonymisés, jamais de patient réel.
 
-## Appairer les deux box
+### Bascule d'un parc SimpleX
 
-Après le démarrage, appairer A et B (voir [phase 4](../docs/phase4-orchestrateur.md#2-appairage-sans-annuaire)) :
-
-```bash
-H='X-ImagUnity-Console: 1'; U='operateur:essai-synthetique'   # compte de l'environnement de test
-curl -s -u "$U" -H "$H" -X POST http://localhost:8081/api/v1/peers/invitations -H 'Content-Type: application/json' -d '{"name":"box-b"}'
-curl -s -u "$U" -H "$H" -X POST http://localhost:8082/api/v1/peers/connections -H 'Content-Type: application/json' -d '{"name":"box-a","link":"<lien renvoyé par la box A>"}'
-```
-
-Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, transmis à la box B, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.
-
-## Annuaire de l'organisation (facultatif)
-
-Le profil `annuaire` ajoute le service d'annuaire (port 8090) et sa base PostgreSQL. Il faut d'abord créer la clé du responsable et copier sa clé publique dans `annuaire/organisation.pub.json` (voir [annuaire signé](../docs/annuaire-signe.md)) :
-
-```bash
-docker compose --profile annuaire up -d directory
-```
-
-Pour que les box utilisent l'annuaire (enrôlement, liaison des partenaires, refus des box révoquées), ajouter `compose.annuaire.yml` avec l'empreinte du responsable vérifiée hors bande :
-
-```bash
-export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte>
-for b in a b; do head -c 24 /dev/urandom | base64 > annuaire/phrase-box-$b.txt; done   # chiffrent les clés des box
-docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
-```
-
-Les paquets sont alors chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire ([chiffrement applicatif](../docs/chiffrement-applicatif.md)). Pour mettre à jour un parc existant : d'abord le service d'annuaire, puis les box, puis réémettre chaque entrée à partir d'une nouvelle demande d'enrôlement (`--serie` supérieure).
+Jusqu'à l'étape 5 de la [spécification](../docs/specification-protocole.md), les box passaient par simplex-chat et les relais SMP et XFTP. Au premier démarrage d'une box sur IU-T, ses partenaires liés à une box de l'annuaire sont repris sous leur nom (les routes DICOM restent valables), ses contacts jamais vérifiés sont oubliés et sa file est créée ; télécharger alors sa nouvelle demande d'enrôlement, qui porte l'adresse IU, et faire réémettre son entrée (`enroler --serie <n+1>`, puis `publier`). À faire sans transfert en cours.
 
 ### Mises à jour signées
 
@@ -83,7 +77,7 @@ Une nouvelle version se dépose dans `/data/mises-a-jour/depot/` de la box (jar 
 
 ### Clés protégées par le TPM
 
-`compose.tpm.yml` (après `compose.annuaire.yml`) protège les clés des box par un secret scellé dans le TPM de l'hôte (`/dev/tpmrm0`) ; au premier démarrage, la phrase de passe sert une dernière fois, puis son secret peut être retiré. Sans TPM matériel, `campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel pour les essais. Voir [clés TPM](../docs/cles-tpm.md).
+`compose.tpm.yml` protège les clés des box par un secret scellé dans le TPM de l'hôte (`/dev/tpmrm0`) ; au premier démarrage, la phrase de passe sert une dernière fois, puis son secret peut être retiré. Sans TPM matériel, `campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel pour les essais. Voir [clés TPM](../docs/cles-tpm.md).
 
 ### Routage par champ DICOM
 
@@ -93,27 +87,9 @@ Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le parten
 
 Avec un mot de passe `IMAGUNITY_DICOMWEB_PASSWORD` (compte `pacs` par défaut, distinct de l'opérateur), le PACS peut déposer des instances par HTTP sur `POST /dicomweb/<AET>/studies` (route fixe ou destination de routage). `campagne/compose.routage.yml` configure Orthanc A pour déposer ainsi sur `IU_AUTO`. Voir [STOW-RS](../docs/stow-rs.md).
 
-### Transport IU-T (en cours de bascule)
+### Outil d'essai du transport
 
-Le relais IU-T ([spécification](../docs/specification-protocole.md) : morceaux IU-FILE et files de messages IU-MSG) tourne à côté des relais SimpleX pendant la transition, avec sa base PostgreSQL. Il ne prend les dépôts que des box enrôlées et actives de l'annuaire :
-
-```bash
-export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte du responsable>
-docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.iu.yml --profile annuaire up -d relay
-```
-
-**Box sur IU-T** (étape 4) : `compose.iu-box.yml` les fait passer par ce relais au lieu de simplex-chat (`IMAGUNITY_IU_ENABLED=true`, `IMAGUNITY_IU_RELAY=http://relay:8443`) ; l'annuaire est requis.
-
-```bash
-docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.iu.yml -f compose.iu-box.yml \
-    --profile annuaire up -d
-```
-
-- **Box neuve** : sa demande d'enrôlement (console, onglet Annuaire) porte l'adresse de sa future file ; une fois l'entrée publiée, la box crée sa file d'elle-même. L'appairage se fait ensuite depuis la console, sur la box de l'annuaire, sans lien d'invitation.
-- **Bascule d'une box déjà enrôlée** : au premier démarrage sur IU-T, ses partenaires liés à une box de l'annuaire sont repris sous leur nom (les routes DICOM restent valables) et sa file est créée ; télécharger alors sa nouvelle demande d'enrôlement, qui porte l'adresse IU, et faire réémettre son entrée par le responsable (`enroler --serie <n+1>`, puis `publier`). À faire sans transfert en cours.
-- L'état du transport (file, contacts, transferts en cours) est dans `/data/iu` ; un transfert interrompu par un redémarrage reprend où il en était.
-
-L'outil d'essai `IuFileTool` (module `transport`) envoie et reçoit un fichier par le relais (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`). Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
+`IuFileTool` (module `transport`) envoie et reçoit un fichier par le relais (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`), sans box. Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
 
 ## Réinitialisation
 

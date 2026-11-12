@@ -66,7 +66,7 @@ class DirectoryAdminTest {
         assertThat(output()).contains("Organisation « chu-exemple »");
 
         assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "CHU Exemple",
-                "--simplex", "simplex:/contact#x", "--sortie", p("demande.json"))).isZero();
+                "--iu", "https://relais.example/iu/v1/queues/x", "--sortie", p("demande.json"))).isZero();
         assertThat(output()).contains("Identité de la box créée").contains("box.json.chiffrement");
         assertThat(KeyFiles.isProtected(dir.resolve("box.json.chiffrement"))).isTrue();
         out.reset();

@@ -141,7 +141,7 @@ class IuTransportEdgeTest {
              IuTransport b = transport("b", RelayHarness.B, RelayHarness.B_KEYS, RelayHarness.B_KEM, bEvents)) {
             a.start();
             b.start();
-            a.acceptInvitation(entries.get(RelayHarness.B).address());
+            a.connect(entries.get(RelayHarness.B).address());
             PeerId toB = await(aEvents, TransportEvent.PeerConnected.class).peer();
             await(bEvents, TransportEvent.PeerConnected.class);
 

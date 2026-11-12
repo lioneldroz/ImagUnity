@@ -1,30 +1,19 @@
-# Surcharge de la campagne de tests (phase 8) : les images des box et des clients simplex-chat sont
-# construites à partir d'artefacts déjà présents (jar de la box, binaire simplex-chat), préparés par
-# prepare.sh. Aucun accès réseau n'est nécessaire pendant la construction.
-#
-#   ./campagne/prepare.sh
-#   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml up -d --build
-
+# Campagne de tests : images construites à partir des jars préparés par prepare.sh (sans réseau), et
+# regroupement plus rapide des études (5 s sans nouvelle instance).
 services:
   directory:
     image: imagunity/directory:campagne
     build:
       context: ./campagne/build
       dockerfile: directory.Dockerfile
-  chat-a:
-    image: imagunity/chat:campagne
+  relay:
+    image: imagunity/relay:campagne
     build:
       context: ./campagne/build
-      dockerfile: chat.Dockerfile
-  chat-b:
-    image: imagunity/chat:campagne
-    build:
-      context: ./campagne/build
-      dockerfile: chat.Dockerfile
+      dockerfile: relay.Dockerfile
   box-a:
     image: imagunity/box:campagne
     environment:
-      # Fin d'étude détectée après 5 s sans instance (30 s par défaut) : les mesures portent sur le transport.
       IMAGUNITY_DICOM_STUDYIDLETIMEOUT: 5s
     build:
       context: ./campagne/build
@@ -32,7 +21,6 @@ services:
   box-b:
     image: imagunity/box:campagne
     environment:
-      # Fin d'étude détectée après 5 s sans instance (30 s par défaut) : les mesures portent sur le transport.
       IMAGUNITY_DICOM_STUDYIDLETIMEOUT: 5s
     build:
       context: ./campagne/build

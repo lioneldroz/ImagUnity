@@ -12,7 +12,7 @@
 
     <artifactId>imagunity-transport</artifactId>
     <name>ImagUnity — transport</name>
-    <description>Port de transport et adaptateur simplex-chat (processus séparé, API WebSocket)</description>
+    <description>Port de transport et adaptateur IU-T (relais de l'organisation)</description>
 
     <dependencies>
         <dependency>
@@ -35,7 +35,7 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Messages JSON de l'API WebSocket de simplex-chat -->
+        <!-- État du transport et messages JSON -->
         <dependency>
             <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -43,13 +43,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!-- Serveur WebSocket de test, qui joue le rôle de simplex-chat -->
-        <dependency>
-            <groupId>org.java-websocket</groupId>
-            <artifactId>Java-WebSocket</artifactId>
-            <version>1.6.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

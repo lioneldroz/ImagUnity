@@ -34,7 +34,7 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * Câblage complet dans l'application : entrée DICOM → orchestrateur → base → transport, et API d'appairage.
- * Le transport est désactivé (pas de simplex-chat en test) : le transfert va jusqu'à l'envoi, qui échoue
+ * Le transport est désactivé (pas de relais IU-T en test) : le transfert va jusqu'à l'envoi, qui échoue
  * avec un message explicite.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -92,7 +92,7 @@ class OrchestrationWiringTest {
     }
 
     @Test
-    void pairingApiAnswersOverHttp() throws Exception {
+    void peerApiAnswersOverHttp() throws Exception {
         String base = "http://127.0.0.1:" + environment.getProperty("local.server.port");
         HttpClient http = HttpClient.newHttpClient();
 
@@ -102,15 +102,9 @@ class OrchestrationWiringTest {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"box-c\"}")).build(),
                 HttpResponse.BodyHandlers.ofString());
-        HttpResponse<String> badName = http.send(authorized(URI.create(base + "/api/v1/peers/connections"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"../x\",\"link\":\"l\"}")).build(),
-                HttpResponse.BodyHandlers.ofString());
 
         assertThat(list.statusCode()).isEqualTo(200);
-        assertThat(invite.statusCode()).as("transport désactivé").isEqualTo(502);
-        assertThat(invite.body()).contains("désactivé");
-        assertThat(badName.statusCode()).isEqualTo(400);
+        assertThat(invite.statusCode()).as("plus d'invitation : appairage par l'annuaire").isGreaterThanOrEqualTo(400);
     }
 
     @Test

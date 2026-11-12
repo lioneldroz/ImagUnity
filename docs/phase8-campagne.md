@@ -2,6 +2,7 @@
 
 > Objectif : dérouler les scénarios de la note d'architecture sur la chaîne complète, mesurer, et consigner ce qui marche et ce qui casse.
 > Statut : **fait**. 6 scénarios réussis en réel (relais SimpleX locaux, Orthanc, box en conteneurs), **toutes les instances identiques à l'arrivée**. La campagne a révélé **4 défauts**, tous corrigés et vérifiés.
+> **Rejouée sur IU-T** (novembre 2026, étape 5 de la [spécification](specification-protocole.md)) : mêmes 6 scénarios, tous réussis, résultats au moins équivalents et nettement meilleurs pour la coupure et l'examen de 2 Go ; voir § 7. SimpleX a ensuite été retiré : les § 1 à 6 décrivent la campagne d'origine, sur SimpleX.
 
 ## 1. Banc
 
@@ -92,7 +93,7 @@ Constat : les morceaux chiffrés restent sur le relais XFTP après téléchargem
 
 Les défauts 2 et 3 n'apparaissaient pas lors de l'essai réel de la [phase 5](phase5-reception.md), où box et client tournaient sur le même disque du poste. Le défaut 4 touche tout déploiement : il suffit d'une mise à jour ou d'un redémarrage de la box au mauvais moment.
 
-Propre à ce banc, sans conséquence en déploiement : le noyau de l'hôte n'a **pas d'IPv6** et les relais écoutent par défaut sur `::`. [`compose.sans-ipv6.yml`](../deploy/campagne/compose.sans-ipv6.yml) précharge un petit module qui restreint leur écoute à IPv4.
+Propre à ce banc, sans conséquence en déploiement : le noyau de l'hôte n'a **pas d'IPv6** et les relais SimpleX écoutent par défaut sur `::`. Un petit module préchargé (`compose.sans-ipv6.yml`, retiré avec SimpleX) restreignait leur écoute à IPv4 ; le relais IU-T n'en a pas besoin.
 
 ## 4. Recommandations pour le pilote
 
@@ -115,7 +116,7 @@ Propre à ce banc, sans conséquence en déploiement : le noyau de l'hôte n'a *
 ```bash
 # 1. Construire la box
 cd backend && ./mvnw -DskipTests package && cd ..
-# 2. Préparer et démarrer la pile (ajouter -f campagne/compose.sans-ipv6.yml sur un hôte sans IPv6)
+# 2. Préparer et démarrer la pile (annuaire et box enrôlées : deploy/README.md)
 cd deploy
 ./campagne/prepare.sh
 docker compose -f docker-compose.yml -f campagne/compose.campagne.yml up -d --build
@@ -125,3 +126,31 @@ campagne/.venv/bin/python campagne/campagne.py tout          # ou : nominal pare
 ```
 
 Le pilote appaire les box si besoin, nettoie les Orthanc après chaque scénario et écrit ses mesures dans `campagne/resultats/`. Il a besoin de Docker (images `nicolaka/netshoot` pour `tc`, `iptables` et `nmap`).
+
+## 7. Campagne rejouée sur IU-T
+
+Même banc et même pilote, avec le transport IU-T à la place de SimpleX : relais IU-T (PostgreSQL et disque) et annuaire de l'organisation sur le réseau « relais », box en version signée 0.7.0, TPM logiciel, mises à jour signées, **aucun conteneur SimpleX**. Box enrôlées, appairées par l'annuaire. Résultats bruts : [`campagne-20261112-191908.json`](../deploy/campagne/resultats/campagne-20261112-191908.json).
+
+```
+Orthanc A ──C-STORE──► box A ──► relais IU-T (+ annuaire) ◄── box B ──C-STORE──► Orthanc B
+   site-a                         réseau « relais »                   site-b
+```
+
+| Scénario | Étude | Dépôt IU-T (SimpleX) | Accusé en A, IU-T (SimpleX) | Vérification |
+|---|---|---|---|---|
+| Nominal | 100 inst., 50 Mo | 1,9 s (1,5 s) | **12,7 s** (10,2 s) | 100/100 identiques |
+| Pare-feu (tout entrant bloqué) | 100 inst., 50 Mo | 1,2 s (2,0 s) | **10,3 s** (10,7 s) | 100/100 |
+| Liaison bridée à 20 Mbit/s | 200 inst., 100 Mo | 48,1 s (46,3 s) | **103,9 s** (101,1 s) | 200/200 |
+| Coupure de 60 s pendant le dépôt | 600 inst., 300 Mo | 73,7 s (119,5 s) | **95,9 s** (143,4 s) | 600/600 |
+| Box B éteinte | 100 inst., 50 Mo | 1,2 s (1,5 s) | **108,3 s**, restituée **11,1 s après le rallumage** (8,1 s) | 100/100 |
+| Examen volumineux | 1 024 inst. 1024×1024, 2 Go, 4 paquets | 23,3 s (80,8 s) | **92,0 s** (157,4 s) | 1 024/1 024 |
+
+- **Pare-feu et scan de ports** : depuis le réseau « relais », aucun port ouvert sur les box, avant comme après le pare-feu (console et entrée DICOM n'écoutent que sur le réseau du site) ; le transfert passe avec toute connexion entrante bloquée : la box ne fait que des connexions sortantes.
+- **Coupure** : l'annonce part **9,6 s** après le rétablissement ; l'envoi reprend aux morceaux non téléversés (état enregistré à chaque morceau), au lieu de reprendre le fichier XFTP.
+- **Destinataire éteint (90 s ici, 3 min 30 avec SimpleX)** : pendant l'attente, les **1 329 fichiers** du relais (121 Mo : morceaux sur disque et fichiers de la base PostgreSQL, écrits sur disque avant l'inspection) ne contiennent **ni le nom ni l'identifiant du patient, ni le Study Instance UID, ni la séquence `DICM`, ni le texte des messages** ImagUnity. Entropie des 13 morceaux : 7,77 bits/octet en moyenne ; le minimum (5,05) est celui du dernier morceau, complété par des zéros jusqu'à la taille standard (§ 5 de la spécification).
+- **Examen de 2 Go** : 41 % plus rapide de bout en bout, dépôt 3,5 fois plus rapide (téléversement direct au relais, sans client intermédiaire ni second chiffrement des morceaux).
+- **Nominal** : 2,5 s de plus que SimpleX, dans le bruit d'une mesure unique sur ce banc ; la phase RECEIVED → ANNOUNCED dure 2,5 s (empaquetage, chiffrement, dépôt, envoi de l'annonce par la boîte d'envoi).
+- Après les accusés, le relais est vide (morceaux supprimés à l'accusé, messages acquittés).
+
+Constat : le **remplissage par des zéros** du dernier morceau laisse voir au relais la taille exacte du paquet (à quelques octets près). Le relais connaît déjà la taille des morceaux, et le paquet est chiffré ; c'est une métadonnée de taille, à traiter avec la taille de morceau adaptative (étape 6) : remplissage aléatoire, ou chiffrement du remplissage.
+

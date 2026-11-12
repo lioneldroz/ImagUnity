@@ -6,16 +6,6 @@ import java.nio.file.Path;
 public sealed interface TransportEvent {
 
     /** Un partenaire est connecté : on peut lui envoyer messages et fichiers. */
-    /**
-     * Une box demande à se connecter par l'adresse de contact de cette box ; à accepter par
-     * {@link TransportPort#acceptContactRequest} (ou à ignorer).
-     *
-     * @param requestId   identifiant de la demande dans le transport
-     * @param displayName nom de profil annoncé par le demandeur (information seulement)
-     */
-    record ContactRequested(long requestId, String displayName) implements TransportEvent {
-    }
-
     record PeerConnected(PeerId peer, String displayName) implements TransportEvent {
     }
 
@@ -31,7 +21,7 @@ public sealed interface TransportEvent {
     record FileReceived(PeerId peer, long fileId, Path path) implements TransportEvent {
     }
 
-    /** Fichier entièrement déposé sur les relais. */
+    /** Fichier entièrement déposé sur le relais. */
     record FileSent(PeerId peer, long fileId) implements TransportEvent {
     }
 
@@ -41,9 +31,9 @@ public sealed interface TransportEvent {
 
     /** Sens d'un transfert de fichier. */
     enum Direction {
-        /** Téléversement vers les relais. */
+        /** Téléversement vers le relais. */
         SENDING,
-        /** Téléchargement depuis les relais. */
+        /** Téléchargement depuis le relais. */
         RECEIVING
     }
 

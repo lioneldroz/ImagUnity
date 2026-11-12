@@ -14,9 +14,9 @@ public enum TransferState {
     RECEIVED,
     /** L'examen est compressé, découpé et son manifeste est calculé. */
     PACKAGED,
-    /** Les morceaux sont déposés sur les relais XFTP. */
+    /** Les morceaux sont déposés sur le relais IU-T. */
     UPLOADED,
-    /** La description du fichier a été envoyée dans la file SMP du destinataire. */
+    /** La description du fichier a été envoyée dans la file de messages du destinataire. */
     ANNOUNCED,
     /** Le destinataire a confirmé que l'examen est arrivé complet et identique. */
     ACKNOWLEDGED,

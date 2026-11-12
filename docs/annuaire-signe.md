@@ -120,7 +120,7 @@ Module `directory-server` : une application Spring Boot autonome, sur **PostgreS
 - **Lecture libre** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. Les réserver aux box enrôlées est possible plus tard (signature des requêtes, § 6.4 de la spécification).
 - **Compte de dépôt** : `IMAGUNITY_DIRECTORY_PUBLISHER_USER` (par défaut `responsable`) et `IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD`, en clair ou haché `{bcrypt}`. Sans mot de passe, il est généré et journalisé au démarrage.
 - **Publication** depuis l'outil du responsable : `publier --annuaire <url> --entree <fichier>`. Le compte passe par `IMAGUNITY_ANNUAIRE_COMPTE=utilisateur:mot-de-passe`, plutôt que par l'option `--compte` qui est visible dans la liste des processus.
-- **Compose** : services `directory` et `directory-db` sous le profil `annuaire` (`docker compose --profile annuaire up -d`), avec la clé publique de l'organisation dans `deploy/annuaire/organisation.pub.json`.
+- **Compose** : services `directory` et `directory-db` du Compose de base, avec la clé publique de l'organisation dans `deploy/annuaire/organisation.pub.json`.
 
 Vérifié en réel sur PostgreSQL 17 :
 - migration appliquée, deux box publiées, publication en double « déjà publiée » ;
@@ -161,11 +161,11 @@ Activée par `IMAGUNITY_DIRECTORY_ENABLED=true`. Sans elle, la box fonctionne co
 
 ![Carte Annuaire de la console (box A, données d'essai)](images/annuaire-console.png)
 
-**Compose** : `compose.annuaire.yml` active l'annuaire dans les deux box.
+**Compose** : depuis la bascule sur IU-T (étape 5 de la [spécification](specification-protocole.md)), l'annuaire est activé dans les deux box du Compose de base : il n'est plus facultatif.
 
 ```bash
 export IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=<empreinte vérifiée hors bande>
-docker compose -f docker-compose.yml -f compose.annuaire.yml --profile annuaire up -d
+docker compose up -d
 ```
 
 **Vérifié en réel**, avec deux box, les relais SimpleX, l'annuaire et PostgreSQL :
@@ -252,7 +252,7 @@ Le fichier garde la clé publique en clair, avec la protection (`protection` : a
 - une identité protégée sans phrase, ou avec une mauvaise phrase, empêche la box de démarrer, avec un message explicite ;
 - sans phrase de passe, rien ne change, mais un avertissement est journalisé.
 
-Dans le Compose, `compose.annuaire.yml` passe les phrases en secrets `phrase-box-a` et `phrase-box-b` (fichiers `annuaire/phrase-box-x.txt`, non versionnés).
+Dans le Compose, les phrases passent en secrets `phrase-box-a` et `phrase-box-b` (fichiers `annuaire/phrase-box-x.txt`, non versionnés).
 
 **Ce que cela protège, et ce que cela ne protège pas.** La phrase de passe protège la clé sur les copies du disque : sauvegardes, volume extrait, disque remplacé. Elle ne protège pas d'un attaquant qui contrôle la box en fonctionnement, car la clé est alors en mémoire. Elle ne protège pas non plus si la phrase est stockée à côté de la clé, d'où le secret monté à part.
 

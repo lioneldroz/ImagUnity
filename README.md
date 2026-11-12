@@ -17,20 +17,19 @@ L'émetteur dépose l'examen chiffré sur un relais, et le destinataire vient le
 | Élément | Rôle |
 |---|---|
 | Box émettrice / réceptrice | Intégration PACS, routage DICOM, compression, chiffrement, découpage |
-| Relais SMP | Signalisation : annonce qu'un examen attend et comment le récupérer |
-| Relais XFTP | Transport du contenu volumineux, découpé en morceaux chiffrés |
-| Annuaire | Propre à l'organisation : clés publiques et adresses des files SMP des destinataires |
+| Relais IU-T | Aveugle : morceaux chiffrés du contenu (IU-FILE) et files de messages chiffrés de signalisation (IU-MSG) ; dépôts réservés aux box enrôlées |
+| Annuaire | Propre à l'organisation, signé par son responsable : clés des box et adresses de leurs files de réception |
 
-ImagUnity s'appuie sur deux protocoles de l'écosystème [SimpleX](https://simplex.chat) : **SMP** (SimpleX Messaging Protocol) et **XFTP** (SimpleX File Transfer Protocol).
+Le transport est propre à ImagUnity : **IU-T** ([spécification](docs/specification-protocole.md)), inspiré de SMP et XFTP de l'écosystème [SimpleX](https://simplex.chat), utilisés jusqu'à la phase 8 puis remplacés.
 
 ### Déroulé d'un envoi
 
 1. Le PACS envoie l'examen à la box émettrice, comme à n'importe quelle destination DICOM.
-2. La box identifie le destinataire (destination DICOM ou champ DICOM), puis récupère dans l'annuaire sa clé publique et l'adresse de sa file SMP.
-3. Elle compresse l'examen sans perte, le chiffre pour le destinataire, le découpe et dépose les morceaux sur un ou plusieurs relais XFTP.
-4. Elle envoie la description du fichier dans la file SMP du destinataire.
+2. La box identifie le destinataire (destination DICOM ou champ DICOM), puis récupère dans l'annuaire ses clés et l'adresse de sa file de réception.
+3. Elle compresse l'examen sans perte, le chiffre pour le destinataire, le découpe et dépose les morceaux sur le relais.
+4. Elle envoie la description du fichier, signée et chiffrée, dans la file du destinataire.
 5. La box réceptrice télécharge les morceaux, vérifie leurs empreintes, déchiffre et décompresse l'examen.
-6. Elle transmet l'examen au mini-PACS et renvoie un accusé de bout en bout par une file SMP de retour.
+6. Elle transmet l'examen au mini-PACS et renvoie un accusé de bout en bout, signé, dans la file de l'émetteur.
 7. Les relais suppriment les morceaux après leur retrait ou à l'expiration de leur durée de séjour.
 
 ## Organisation du dépôt
@@ -40,7 +39,9 @@ backend/     Java 25, Spring Boot 4, Maven multi-modules
   domain/       modèle métier, machine à états des transferts
   dicom/        adaptateur DICOM (dcm4che)
   packaging/    manifeste, compression zstd, découpage par série
-  transport/    port de transport et adaptateur simplex-chat
+  transport/    port de transport et adaptateur IU-T
+  protocol/     formats IU-T partagés par la box et le relais
+  relay/        relais IU-T (Spring Boot, PostgreSQL)
   persistence/  état des transferts et partenaires (H2 + Flyway)
   orchestration/ orchestrateur des transferts, appairage
   api/          API REST (+ SSE) pour la console
@@ -110,10 +111,10 @@ Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md]
 - [Clés de la box protégées par le TPM (pilote)](docs/cles-tpm.md)
 - [Routage par champ DICOM (pilote)](docs/routage-dicom.md)
 - [Réception DICOMweb STOW-RS (pilote)](docs/stow-rs.md)
-- [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (v0.3, implémentation en cours)
+- [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (v0.4 ; étapes 1 à 5 faites)
 
 ## Statut
 
-Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais SimpleX → box B → PACS B fonctionne, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
+Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais → box B → PACS B fonctionne. Depuis l'étape 5 de la [spécification](docs/specification-protocole.md), elle passe par le transport propre IU-T, sans SimpleX ; la campagne de tests y a été rejouée avec des résultats au moins équivalents, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
 
 Pilote, en cours : annuaire signé des box (enrôlement, révocation, annonces et accusés signés, clés protégées par phrase de passe) chiffrement applicatif des paquets pour la box destinataire (X25519 + ML-KEM-768) et mises à jour signées (lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière) clés de la box protégées par un secret scellé dans son TPM, routage des examens par champ DICOM et réception DICOMweb STOW-RS, tous vérifiés sur la pile Docker.

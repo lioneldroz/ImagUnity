@@ -1,10 +1,9 @@
 #!/bin/sh
-# Prépare le contexte de construction de la campagne : jar de la box (déjà construit),
-# binaire simplex-chat (téléchargé une fois), Dockerfiles et script de démarrage du client.
+# Prépare le contexte de construction de la campagne : jars de la box, du lanceur, de l'annuaire et du relais
+# IU-T (déjà construits), manifeste signé de la version et Dockerfiles.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-SIMPLEX_CHAT_VERSION=${SIMPLEX_CHAT_VERSION:-v7.1.2}
 BUILD="$HERE/build"
 mkdir -p "$BUILD"
 
@@ -36,17 +35,6 @@ if [ -f "$RELAY_JAR" ]; then
     cp "$RELAY_JAR" "$BUILD/imagunity-relay.jar"
 fi
 
-if [ ! -x "$BUILD/simplex-chat" ]; then
-    curl -fsSL -o "$BUILD/simplex-chat" \
-        "https://github.com/simplex-chat/simplex-chat/releases/download/${SIMPLEX_CHAT_VERSION}/simplex-chat-ubuntu-24_04-x86_64"
-    chmod +x "$BUILD/simplex-chat"
-fi
-
-# Hôte sans IPv6 seulement (compose.sans-ipv6.yml) : module qui force l'écoute des relais en IPv4.
-if [ ! -f /proc/net/if_inet6 ] && [ ! -f "$BUILD/force-ipv4.so" ]; then
-    cc -shared -fPIC -O2 -o "$BUILD/force-ipv4.so" "$HERE/ipv4/force-ipv4.c" -ldl
-fi
-
-cp "$ROOT/deploy/simplex-chat/entrypoint.sh" "$HERE/chat.Dockerfile" "$HERE/box.Dockerfile" \
-    "$HERE/directory.Dockerfile" "$HERE/relay.Dockerfile" "$BUILD/"
+rm -f "$BUILD/simplex-chat" "$BUILD/force-ipv4.so" "$BUILD/entrypoint.sh" "$BUILD/chat.Dockerfile"
+cp "$HERE/box.Dockerfile" "$HERE/directory.Dockerfile" "$HERE/relay.Dockerfile" "$BUILD/"
 echo "Contexte prêt : $BUILD"

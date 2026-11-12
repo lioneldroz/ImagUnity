@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Campagne de tests de la preuve de concept ImagUnity (phase 8).
 
-Pilote la pile Docker Compose (deux relais SimpleX, deux box, deux Orthanc) et déroule les scénarios
+Pilote la pile Docker Compose (relais IU-T, annuaire, deux box, deux Orthanc) et déroule les scénarios
 de la note d'architecture. Chaque scénario envoie une étude synthétique d'Orthanc A vers Orthanc B à
-travers les relais, mesure les durées et vérifie l'arrivée instance par instance.
+travers le relais, mesure les durées et vérifie l'arrivée instance par instance.
 
     ./campagne/prepare.sh
     docker compose -f docker-compose.yml -f campagne/compose.campagne.yml up -d --build
     campagne/.venv/bin/python campagne/campagne.py tout            # ou une liste de scénarios
+
+Les box doivent être enrôlées dans l'annuaire (deploy/README.md) ; le pilote les appaire par l'annuaire au besoin.
+Surcouches Compose supplémentaires de la pile (TPM logiciel, mises à jour signées…) : CAMPAGNE_COMPOSE, chemins
+relatifs à deploy/ séparés par des espaces.
 
 Données exclusivement synthétiques : patient « SYNTHETIQUE^CAMPAGNE », pixels aléatoires.
 """
@@ -76,8 +80,8 @@ def run(*args, check=True):
 
 def compose(*args):
     files = ["-f", str(DEPLOY / "docker-compose.yml"), "-f", str(HERE / "compose.campagne.yml")]
-    if not Path("/proc/net/if_inet6").exists():
-        files += ["-f", str(HERE / "compose.sans-ipv6.yml")]
+    for extra in os.environ.get("CAMPAGNE_COMPOSE", "").split():
+        files += ["-f", str(DEPLOY / extra)]
     return run("docker", "compose", "-p", PROJECT, *files, *args)
 
 
@@ -120,15 +124,22 @@ def wait(condition, timeout, step=0.5, what="condition"):
 
 # --- Pile et appairage ---------------------------------------------------------
 
+def _bound(base, peer_box):
+    return any(p.get("boxId") == peer_box for p in http("GET", f"{base}/api/v1/peers"))
+
+
 def ensure_paired():
+    """Appaire A et B par l'annuaire (console de A, box B de l'annuaire), si ce n'est pas déjà fait."""
     wait(lambda: _up(BOX_A) and _up(BOX_B), 180, 2, "démarrage des box")
-    if http("GET", f"{BOX_A}/api/v1/peers") and http("GET", f"{BOX_B}/api/v1/peers"):
+    box_a = http("GET", f"{BOX_A}/api/v1/directory")["boxId"]
+    box_b = http("GET", f"{BOX_B}/api/v1/directory")["boxId"]
+    if _bound(BOX_A, box_b) and _bound(BOX_B, box_a):
         return
-    log("Appairage des box A et B")
-    link = http("POST", f"{BOX_A}/api/v1/peers/invitations", {"name": "box-b"})["link"]
-    http("POST", f"{BOX_B}/api/v1/peers/connections", {"name": "box-a", "link": link})
-    wait(lambda: http("GET", f"{BOX_A}/api/v1/peers") and http("GET", f"{BOX_B}/api/v1/peers"), 120, 1,
-         "appairage")
+    wait(lambda: any(b["boxId"] == box_b and b["reachable"] for b in http("GET", f"{BOX_A}/api/v1/directory")["boxes"]),
+         180, 2, "box B active dans l'annuaire vu par A, avec son adresse IU-T")
+    log("Appairage des box A et B par l'annuaire")
+    http("POST", f"{BOX_A}/api/v1/directory/boxes/{box_b}/pair", {"name": "box-b"})
+    wait(lambda: _bound(BOX_A, box_b) and _bound(BOX_B, box_a), 120, 1, "appairage et poignée de main")
 
 
 def _up(base):
@@ -334,8 +345,8 @@ def scenario_nominal():
     return full_transfer("nominal", 2, 50)
 
 
-# Ports bien connus, plus ceux de la box (8080 console, 11112 DICOM), du client (5225) et des relais.
-SCAN_PORTS = "1-1024,5223,5225,8080,11112"
+# Ports bien connus, plus ceux de la box (8080 console, 11112 DICOM) et du relais IU-T (8443).
+SCAN_PORTS = "1-1024,8080,8443,11112"
 
 
 def nmap(service):
@@ -392,7 +403,7 @@ DEGRADATION = ("netem delay 40ms 10ms loss 1% rate 20mbit" if os.environ.get("NE
 
 
 def degrade(on):
-    for service in ("net-a", "net-b", "smp-server", "xftp-server"):
+    for service in ("net-a", "net-b", "relay"):
         iface = relais_iface(service)
         if on:
             netshoot(service, f"tc qdisc add dev {iface} root {DEGRADATION}")
@@ -407,7 +418,7 @@ def scenario_degrade():
         result = full_transfer("liaison-degradee", 2, 100)
     finally:
         degrade(False)
-    result["degradation"] = f"{DEGRADATION} (sortie de chaque box et de chaque relais)"
+    result["degradation"] = f"{DEGRADATION} (sortie de chaque box et du relais)"
     return result
 
 
@@ -447,8 +458,10 @@ def scenario_coupure(cut_seconds=60):
 
 
 def inspect_relays(markers):
-    """Cherche des données en clair dans tout ce que les relais ont écrit sur disque."""
-    volumes = [f"{PROJECT}_{v}" for v in ("xftp-files", "xftp-logs", "smp-logs", "smp-config", "xftp-config")]
+    """Cherche des données en clair dans tout ce que le relais a écrit sur disque : morceaux et base PostgreSQL."""
+    # Les pages modifiées de la base sont écrites sur disque avant l'inspection.
+    run("docker", "exec", container("relay-db"), "psql", "-U", "relais", "-d", "relais", "-c", "CHECKPOINT")
+    volumes = [f"{PROJECT}_{v}" for v in ("relay-data", "relay-db-data")]
     report = {"fichiers": 0, "octets": 0, "marqueursTrouves": {}, "entropieMin_bits": None,
               "volumes": volumes}
     found = Counter()
@@ -464,10 +477,10 @@ def inspect_relays(markers):
             for name, marker in markers.items():
                 if marker in data:
                     found[f"{name} dans {volume}/{path.relative_to(root)}"] += 1
-            if volume.endswith("xftp-files") and len(data) > 4096:
+            if volume.endswith("relay-data") and len(data) > 4096:
                 entropies.append(entropy(data[: 4 * MO]))
     report["marqueursTrouves"] = dict(found)
-    report["morceauxXftp"] = len(entropies)
+    report["morceaux"] = len(entropies)
     if entropies:
         report["entropieMin_bits"] = round(min(entropies), 4)
         report["entropieMoyenne_bits"] = round(sum(entropies) / len(entropies), 4)
@@ -481,31 +494,28 @@ def entropy(data):
 
 
 def scenario_destinataire_eteint(offline_seconds=90):
-    """Box B éteinte pendant l'envoi ; inspection des relais pendant l'attente ; box B rallumée."""
+    """Box B éteinte pendant l'envoi ; inspection du relais pendant l'attente ; box B rallumée."""
     events = {}
 
     def offline(transfer):
         transfer.wait_for(lambda s: s == "ANNOUNCED", 900, "annonce (dépôt sans destinataire)")
         events["annonce_s"] = transfer.elapsed()
-        # Le relais SMP écrit ses messages en attente sur disque à l'arrêt : on l'arrête pour les inspecter.
-        compose("stop", "smp-server")
         markers = {"nom du patient": PATIENT_NAME.encode(), "identifiant du patient": b"IU-CAMPAGNE-",
                    "Study Instance UID": transfer.study_uid.encode(), "en-tête DICOM": b"DICM",
                    "message ImagUnity": b"imagunity.transfer"}
         events["inspectionRelais"] = inspect_relays(markers)
-        compose("start", "smp-server")
         remaining = offline_seconds - (transfer.elapsed() - events["annonce_s"])
         time.sleep(max(remaining, 0))
         events["rallumage_s"] = transfer.elapsed()
-        compose("start", "chat-b", "box-b")
+        compose("start", "box-b")
         log("[destinataire-eteint] box B rallumée")
 
     log("[destinataire-eteint] arrêt de la box B")
-    compose("stop", "box-b", "chat-b")
+    compose("stop", "box-b")
     try:
         result = full_transfer("destinataire-eteint", 2, 50, during=offline)
     finally:
-        compose("start", "chat-b", "box-b")
+        compose("start", "box-b")
     result.update(events)
     if "restored" in result["chronologie_s"]:
         result["restitutionApresRallumage_s"] = round(result["chronologie_s"]["restored"] - events["rallumage_s"], 2)
@@ -537,7 +547,8 @@ def main():
 
     ensure_paired()
     results = {"date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-               "simplexChat": run("docker", "exec", container("chat-a"), "simplex-chat", "--version", check=False),
+               "transport": "IU-T",
+               "versionBox": http("GET", f"{BOX_A}/api/v1/box").get("version"),
                "scenarios": []}
     for name in names:
         log(f"=== {name} ===")

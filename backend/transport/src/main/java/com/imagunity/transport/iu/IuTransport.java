@@ -7,7 +7,6 @@ import com.imagunity.protocol.Codec;
 import com.imagunity.protocol.FileDescription;
 import com.imagunity.protocol.ProtocolException;
 import com.imagunity.protocol.SignedMessage;
-import com.imagunity.transport.Invitation;
 import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import com.imagunity.transport.TransportException;
@@ -39,7 +38,7 @@ import java.util.function.Consumer;
  *
  * <ul>
  *   <li><b>Appairage par l'annuaire</b> : l'adresse de la file de chaque box est publiée dans son entrée signée. La
- *       console appaire une box de l'annuaire ({@link #acceptInvitation} avec cette adresse) ; en face, le premier
+ *       console appaire une box de l'annuaire ({@link #connect} avec cette adresse) ; en face, le premier
  *       message signé d'une box active de l'annuaire crée le contact ({@link TransportEvent.PeerConnected}). Ni lien
  *       d'invitation, ni demande de contact à accepter.</li>
  *   <li><b>Messages</b> : signés par la box, chiffrés pour le destinataire, enregistrés dans une boîte d'envoi puis
@@ -263,22 +262,17 @@ public final class IuTransport implements TransportPort {
         }
     }
 
-    @Override
-    public Invitation createInvitation() {
-        throw new TransportException("IU-T : appairage par l'annuaire, sans lien d'invitation");
-    }
-
     /**
      * Appaire la box de l'annuaire qui publie cette adresse : le contact est créé et annoncé à la box distante, qui le
      * crée à son tour à la réception.
      */
     @Override
-    public void acceptInvitation(String invitationLink) {
+    public void connect(String contactAddress) {
         String address;
         try {
-            address = QueueAddress.parse(invitationLink).toString();
+            address = QueueAddress.parse(contactAddress).toString();
         } catch (TransportException e) {
-            throw new TransportException("Adresse IU-T invalide : " + invitationLink, e);
+            throw new TransportException("Adresse IU-T invalide : " + contactAddress, e);
         }
         IuDirectory.Partner partner = directory.byAddress(address)
                 .orElseThrow(() -> new TransportException("Aucune box de l'annuaire ne publie l'adresse " + address));
@@ -309,11 +303,6 @@ public final class IuTransport implements TransportPort {
 
     public void markPeersMigrated() {
         store.markPeersMigrated();
-    }
-
-    @Override
-    public void acceptContactRequest(long requestId) {
-        throw new TransportException("IU-T : appairage par l'annuaire, sans demande de contact");
     }
 
     // --- Messages ---

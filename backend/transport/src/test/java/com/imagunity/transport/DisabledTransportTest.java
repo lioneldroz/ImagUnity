@@ -12,8 +12,8 @@ class DisabledTransportTest {
     @Test
     void everyOperationFailsExplicitly() {
         PeerId peer = new PeerId(1);
-        assertThatThrownBy(transport::createInvitation).hasMessageContaining("désactivé");
-        assertThatThrownBy(() -> transport.acceptInvitation("lien")).isInstanceOf(TransportException.class);
+        assertThatThrownBy(transport::contactAddress).hasMessageContaining("désactivé");
+        assertThatThrownBy(() -> transport.connect("adresse")).isInstanceOf(TransportException.class);
         assertThatThrownBy(() -> transport.sendMessage(peer, "x")).isInstanceOf(TransportException.class);
         assertThatThrownBy(() -> transport.sendFile(peer, Path.of("x"))).isInstanceOf(TransportException.class);
         assertThatThrownBy(() -> transport.receiveFile(1, Path.of("x"))).isInstanceOf(TransportException.class);
@@ -21,6 +21,9 @@ class DisabledTransportTest {
 
     @Test
     void listenersAndCloseAreHarmless() {
+        transport.discardSentFile(1);
+        transport.catchUp();
+        org.assertj.core.api.Assertions.assertThat(transport.addressKind()).isEqualTo("iu");
         transport.addListener(e -> {
             throw new AssertionError("aucun événement attendu");
         });

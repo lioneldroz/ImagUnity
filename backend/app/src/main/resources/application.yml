@@ -75,18 +75,12 @@ imagunity:
     # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
     encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}
   transport:
-    # Transport IU-T (relais de l'organisation) à la place de simplex-chat ; exige l'annuaire.
+    # Transport IU-T : relais de l'organisation (exige l'annuaire). Sans relais, transport désactivé : la box
+    # démarre et reçoit les examens, mais leurs transferts passent en échec.
     iu:
-      enabled: ${IMAGUNITY_IU_ENABLED:false}
       relay: ${IMAGUNITY_IU_RELAY:}
       state-dir: ${IMAGUNITY_DATA_DIR:./data}/iu
       ttl: ${IMAGUNITY_IU_TTL:72h}
-    simplex:
-      # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.
-      enabled: ${IMAGUNITY_SIMPLEX_ENABLED:true}
-      url: ${IMAGUNITY_SIMPLEX_URL:ws://localhost:5225}
-      startup-timeout: 2m
-      command-timeout: 60s
 
 spring:
   application:

@@ -15,23 +15,18 @@ import com.imagunity.domain.peer.Peer;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.transport.DisabledTransport;
-import com.imagunity.transport.TransportException;
 import com.imagunity.transport.TransportPort;
 import com.imagunity.transport.iu.IuTransport;
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
@@ -41,15 +36,14 @@ import org.springframework.context.SmartLifecycle;
 class TransportConfigurationTest {
 
     private final TransportConfiguration configuration = new TransportConfiguration();
-    private final List<Duration> pauses = new ArrayList<>();
-    private static final IuTransportProperties IU_OFF = new IuTransportProperties(false, null, Path.of("x"),
+    private static final IuTransportProperties NO_RELAY = new IuTransportProperties(null, Path.of("x"),
             Duration.ofHours(72), 2, Duration.ofDays(8));
 
     @TempDir
     Path dir;
 
-    private TransportPort transport(TransportProperties properties) {
-        return configuration.transport(properties, IU_OFF, provider(BoxIdentity.class, null),
+    private TransportPort transport(IuTransportProperties properties) {
+        return configuration.transport(properties, provider(BoxIdentity.class, null),
                 provider(LocalDirectory.class, null), Clock.systemUTC());
     }
 
@@ -77,21 +71,15 @@ class TransportConfigurationTest {
     }
 
     @Test
-    void iuTransportNeedsTheDirectoryAndARelay() {
-        var simplex = new TransportProperties(true, URI.create("ws://localhost:1"), Duration.ZERO, Duration.ZERO);
-        var iu = new IuTransportProperties(true, URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
+    void iuTransportNeedsTheDirectory() {
+        var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
                 Duration.ofDays(8));
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
 
-        assertThatThrownBy(() -> configuration.transport(simplex, iu, provider(BoxIdentity.class, null),
-                provider(LocalDirectory.class, null), Clock.systemUTC())).hasMessageContaining("sans annuaire");
-        assertThatThrownBy(() -> configuration.transport(simplex, new IuTransportProperties(true, null, dir,
-                Duration.ofHours(72), 2, Duration.ofDays(8)), provider(BoxIdentity.class, identity),
-                provider(LocalDirectory.class, emptyDirectory()), Clock.systemUTC()))
-                .hasMessageContaining("sans relais");
+        assertThatThrownBy(() -> transport(iu)).hasMessageContaining("sans annuaire");
 
-        try (TransportPort transport = configuration.transport(simplex, iu, provider(BoxIdentity.class, identity),
+        try (TransportPort transport = configuration.transport(iu, provider(BoxIdentity.class, identity),
                 provider(LocalDirectory.class, emptyDirectory()), Clock.systemUTC())) {
             assertThat(transport).isInstanceOf(IuTransport.class);
             assertThat(transport.addressKind()).isEqualTo("iu");
@@ -108,11 +96,8 @@ class TransportConfigurationTest {
     }
 
     @Test
-    void disabledTransportWhenSwitchedOff() {
-        var properties = new TransportProperties(false, URI.create("ws://localhost:1"), Duration.ofSeconds(1),
-                Duration.ofSeconds(1));
-
-        assertThat(transport(properties)).isInstanceOf(DisabledTransport.class);
+    void disabledTransportWithoutRelay() {
+        assertThat(transport(NO_RELAY)).isInstanceOf(DisabledTransport.class);
     }
 
     /** Partenaires en mémoire : un même nom ou identifiant de transport est remplacé, comme en base. */
@@ -148,8 +133,7 @@ class TransportConfigurationTest {
 
     @Test
     void switchingToIuKeepsVerifiedPartnersUnderTheirNames() {
-        var simplex = new TransportProperties(true, URI.create("ws://localhost:1"), Duration.ZERO, Duration.ZERO);
-        var iu = new IuTransportProperties(true, URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
+        var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
                 Duration.ofDays(8));
         BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
                 HybridKemKeyPair.generate());
@@ -159,7 +143,7 @@ class TransportConfigurationTest {
         peers.save(new Peer("box-b", 2, "B", pairedAt, boxB));
         peers.save(new Peer("attente-1", 1, "inconnu", pairedAt));
 
-        try (TransportPort transport = configuration.transport(simplex, iu, provider(BoxIdentity.class, identity),
+        try (TransportPort transport = configuration.transport(iu, provider(BoxIdentity.class, identity),
                 provider(LocalDirectory.class, emptyDirectory()), Clock.systemUTC())) {
             SmartLifecycle migration = configuration.iuPeerMigration(transport, peers);
             assertThat(migration.getPhase()).as("avant l'orchestration").isLessThan(OrchestrationConfiguration.PHASE);
@@ -183,59 +167,4 @@ class TransportConfigurationTest {
         assertThat(peers.findByName("box-c")).isPresent();
     }
 
-    @Test
-    void retriesUntilTheClientAnswers() {
-        AtomicInteger attempts = new AtomicInteger();
-
-        String result = TransportConfiguration.connectWithRetry(() -> {
-            if (attempts.incrementAndGet() < 3) {
-                throw new TransportException("pas encore prêt");
-            }
-            return "connecté";
-        }, Duration.ofMinutes(1), Duration.ofMillis(1), pauses::add);
-
-        assertThat(result).isEqualTo("connecté");
-        assertThat(pauses).hasSize(2);
-    }
-
-    @Test
-    void givesUpAfterTheTimeout() {
-        assertThatThrownBy(() -> TransportConfiguration.connectWithRetry(() -> {
-            throw new TransportException("injoignable");
-        }, Duration.ZERO, Duration.ofMillis(1), pauses::add))
-                .isInstanceOf(TransportException.class)
-                .hasMessageContaining("injoignable après")
-                .hasCauseInstanceOf(TransportException.class);
-        assertThat(pauses).isEmpty();
-    }
-
-    @Test
-    void interruptionStopsWaiting() {
-        try {
-            assertThatThrownBy(() -> TransportConfiguration.connectWithRetry(() -> {
-                throw new TransportException("injoignable");
-            }, Duration.ofMinutes(1), Duration.ofMillis(1), d -> {
-                throw new InterruptedException();
-            }))
-                    .isInstanceOf(TransportException.class)
-                    .hasMessageContaining("interrompue");
-            assertThat(Thread.currentThread().isInterrupted()).isTrue();
-        } finally {
-            Thread.interrupted();
-        }
-    }
-
-    @Test
-    void enabledTransportFailsWhenNoClientListens() throws IOException {
-        int port;
-        try (ServerSocket socket = new ServerSocket(0)) {
-            port = socket.getLocalPort();
-        }
-        var properties = new TransportProperties(true, URI.create("ws://127.0.0.1:" + port), Duration.ZERO,
-                Duration.ofSeconds(1));
-
-        assertThatThrownBy(() -> transport(properties))
-                .isInstanceOf(TransportException.class)
-                .hasMessageContaining("injoignable");
-    }
 }
