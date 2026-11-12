@@ -24,6 +24,7 @@
         <module>directory-server</module>
         <module>release</module>
         <module>protocol</module>
+        <module>relay</module>
         <module>dicom</module>
         <module>packaging</module>
         <module>transport</module>

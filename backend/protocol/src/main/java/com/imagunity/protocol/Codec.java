@@ -19,6 +19,11 @@ public final class Codec {
     private Codec() {
     }
 
+    /** Lecteur JSON strict (champ inconnu refusé), pour les corps de requête du relais. */
+    public static JsonMapper json() {
+        return JSON;
+    }
+
     public static String base64Url(byte[] bytes) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }

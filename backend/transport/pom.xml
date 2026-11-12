@@ -19,6 +19,22 @@
             <groupId>com.imagunity</groupId>
             <artifactId>imagunity-domain</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-protocol</artifactId>
+        </dependency>
+        <!-- Tests du client IU-T contre un vrai relais, démarré en mémoire. -->
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-relay</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- Messages JSON de l'API WebSocket de simplex-chat -->
         <dependency>
             <groupId>tools.jackson.core</groupId>
