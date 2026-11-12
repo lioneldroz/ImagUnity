@@ -30,7 +30,7 @@ chaque démarrage  : TPM ──descelle──► secret ──ouvre──► cl�
 | `IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS` | Registres PCR auxquels lier le secret, par exemple `sha256:0,7` (vide : aucun) |
 | `TPM2TOOLS_TCTI` | Accès au TPM, par défaut `device:/dev/tpmrm0` |
 
-L'image de la box contient `tpm2-tools`. `deploy/compose.tpm.yml` donne aux box l'accès au TPM de l'hôte (`/dev/tpmrm0`), en surcharge de `compose.annuaire.yml`. Pour les essais sans TPM matériel, `deploy/campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel (swtpm) dans son espace réseau.
+L'image de la box contient `tpm2-tools`. `deploy/compose.tpm.yml` donne aux box l'accès au TPM de l'hôte (`/dev/tpmrm0`), en surcharge du Compose de base. Pour les essais sans TPM matériel, `deploy/campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel (swtpm) dans son espace réseau.
 
 **Jamais de repli silencieux.** Le TPM activé mais injoignable, ou qui refuse de desceller : la box ne démarre pas, avec un message explicite, par exemple « Le TPM refuse de desceller le secret des clés de la box (autre TPM, ou état de démarrage modifié)… ».
 

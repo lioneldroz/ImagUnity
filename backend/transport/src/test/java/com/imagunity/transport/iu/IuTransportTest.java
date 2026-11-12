@@ -117,7 +117,7 @@ class IuTransportTest {
 
     /** A appaire B par son adresse d'annuaire ; B crée le contact à la réception. */
     private PeerId[] pair(Box a, Box b) throws InterruptedException {
-        a.transport().acceptInvitation(entries.get(RelayHarness.B).address());
+        a.transport().connect(entries.get(RelayHarness.B).address());
         PeerId bAtA = a.await(TransportEvent.PeerConnected.class).peer();
         PeerId aAtB = b.await(TransportEvent.PeerConnected.class).peer();
         return new PeerId[] {bAtA, aAtB};
@@ -142,7 +142,7 @@ class IuTransportTest {
         PeerId[] peers = pair(a, b);
         assertThat(b.await(TransportEvent.PeerConnected.class).displayName()).isEqualTo("Site A");
         assertThat(a.await(TransportEvent.PeerConnected.class).displayName()).isEqualTo("Site B");
-        a.transport().acceptInvitation(entries.get(RelayHarness.B).address());
+        a.transport().connect(entries.get(RelayHarness.B).address());
         assertThat(a.all(TransportEvent.PeerConnected.class)).as("même contact").extracting(e -> e.peer())
                 .containsOnly(peers[0]);
 
@@ -267,13 +267,11 @@ class IuTransportTest {
     void refusesWhatTheDirectoryDoesNotAllow() throws Exception {
         Box a = a(true);
         Box b = b(true);
-        assertThatThrownBy(() -> a.transport().createInvitation()).isInstanceOf(TransportException.class);
-        assertThatThrownBy(() -> a.transport().acceptContactRequest(1)).isInstanceOf(TransportException.class);
-        assertThatThrownBy(() -> a.transport().acceptInvitation("simplex:/contact#x"))
+        assertThatThrownBy(() -> a.transport().connect("simplex:/contact#x"))
                 .hasMessageContaining("invalide");
-        assertThatThrownBy(() -> a.transport().acceptInvitation(RelayHarness.relayUrl + "/iu/v1/queues/"
+        assertThatThrownBy(() -> a.transport().connect(RelayHarness.relayUrl + "/iu/v1/queues/"
                 + "z".repeat(43))).hasMessageContaining("Aucune box");
-        assertThatThrownBy(() -> a.transport().acceptInvitation(entries.get(RelayHarness.A).address()))
+        assertThatThrownBy(() -> a.transport().connect(entries.get(RelayHarness.A).address()))
                 .hasMessageContaining("cette box");
         assertThatThrownBy(() -> a.transport().sendMessage(new PeerId(999), "x")).hasMessageContaining("inconnu");
         assertThatThrownBy(() -> a.transport().receiveFile(999, dir.resolve("x"))).hasMessageContaining("inconnu");

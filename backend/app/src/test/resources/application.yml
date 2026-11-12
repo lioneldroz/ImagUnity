@@ -10,9 +10,6 @@ imagunity:
     outbox-dir: ./target/test-outbox
   restore:
     inbox-dir: ./target/test-inbox
-  transport:
-    simplex:
-      enabled: false
 
 spring:
   datasource:

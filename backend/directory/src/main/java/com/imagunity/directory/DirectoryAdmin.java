@@ -23,7 +23,7 @@ import java.util.UUID;
  * <pre>
  * organisation-creer --organisation &lt;id&gt; --cles &lt;fichier&gt;
  * empreinte          --cle-publique &lt;fichier&gt;
- * box-demande        --cles &lt;fichier&gt; --box-id &lt;uuid&gt; --nom &lt;nom&gt; [--simplex &lt;adresse&gt;] --sortie &lt;fichier&gt;
+ * box-demande        --cles &lt;fichier&gt; --box-id &lt;uuid&gt; --nom &lt;nom&gt; [--iu &lt;adresse&gt;] --sortie &lt;fichier&gt;
  * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 365] [--serie 1] --sortie &lt;fichier&gt;
  * revoquer           --cles &lt;clé organisation&gt; --entree &lt;fichier&gt; --motif &lt;texte&gt; --sortie &lt;fichier&gt;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
@@ -162,8 +162,8 @@ public final class DirectoryAdmin {
             out.println("Identité de la box créée : " + keysFile + " (chiffrement : " + encryptionFile + ")");
         }
         Map<String, String> transport = new LinkedHashMap<>();
-        if (o.containsKey("simplex")) {
-            transport.put("simplex", o.get("simplex"));
+        if (o.containsKey("iu")) {
+            transport.put("iu", o.get("iu"));
         }
         SignedDocument request = EnrollmentRequest.create(keys, encryption.publicKey(),
                 UUID.fromString(require(o, "box-id")),
@@ -337,7 +337,7 @@ public final class DirectoryAdmin {
                 Usage :
                   organisation-creer --organisation <id> --cles <fichier>
                   empreinte          --cle-publique <fichier>
-                  box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--simplex <adresse>] --sortie <fichier>
+                  box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--iu <adresse>] --sortie <fichier>
                   enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
                   verifier           --cle-publique <fichier> --entree <fichier>

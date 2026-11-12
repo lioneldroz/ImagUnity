@@ -12,7 +12,6 @@ import com.imagunity.orchestration.RetryRefusedException;
 import com.imagunity.orchestration.SendOrchestrator;
 import com.imagunity.packaging.PackagingConfig;
 import com.imagunity.packaging.StudyPackager;
-import com.imagunity.transport.Invitation;
 import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import com.imagunity.transport.TransportPort;
@@ -40,12 +39,12 @@ class TransferControllerTest {
         final List<Path> sent = new ArrayList<>();
 
         @Override
-        public Invitation createInvitation() {
-            return null;
+        public String contactAddress() {
+            return "adresse";
         }
 
         @Override
-        public void acceptInvitation(String link) {
+        public void connect(String link) {
         }
 
         @Override

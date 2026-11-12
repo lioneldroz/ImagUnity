@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param signingKeys      clés de signature de la box
  * @param encryptionKeys   clés de chiffrement de la box : les paquets qui lui sont destinés sont chiffrés pour elles
  *                         ({@code null} pour une entrée antérieure au chiffrement applicatif, à réémettre)
- * @param transport        adresses de transport (par exemple {@code simplex} : adresse de contact SimpleX)
+ * @param transport        adresses de transport (par exemple {@code iu} : adresse de la file de réception IU-T)
  * @param serial           numéro d'émission ; seule l'entrée de numéro le plus haut compte
  * @param validFrom        début de validité
  * @param validUntil       fin de validité (exclue)

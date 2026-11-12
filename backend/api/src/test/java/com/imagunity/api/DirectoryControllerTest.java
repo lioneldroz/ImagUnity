@@ -49,13 +49,8 @@ class DirectoryControllerTest {
         }
 
         @Override
-        public void acceptInvitation(String link) {
+        public void connect(String link) {
             joined.add(link);
-        }
-
-        @Override
-        public com.imagunity.transport.Invitation createInvitation() {
-            return null;
         }
 
         @Override
@@ -99,12 +94,12 @@ class DirectoryControllerTest {
         LocalDirectory directory = new LocalDirectory(new EntryVerifier("chu-exemple", organization.publicKey(),
                 SerialMemory.inMemory(), clock), noCache, clock);
         SignedDocument revokedEntry = organization.enroll(EnrollmentRequest.create(revoked.keys(), revoked.boxId(),
-                "Site D", Map.of("simplex", "simplex:/contact#d"), NOW), NOW, Duration.ofDays(30), 1);
+                "Site D", Map.of("iu", "simplex:/contact#d"), NOW), NOW, Duration.ofDays(30), 1);
         directory.synchronize(() -> List.of(
                 organization.enroll(EnrollmentRequest.create(partner.keys(), partner.boxId(), "Site B",
-                        Map.of("simplex", "simplex:/contact#b"), NOW), NOW, Duration.ofDays(30), 1),
+                        Map.of("iu", "simplex:/contact#b"), NOW), NOW, Duration.ofDays(30), 1),
                 organization.enroll(EnrollmentRequest.create(me.keys(), me.boxId(), "Site A",
-                        Map.of("simplex", "simplex:/contact#a"), NOW), NOW, Duration.ofDays(30), 1),
+                        Map.of("iu", "simplex:/contact#a"), NOW), NOW, Duration.ofDays(30), 1),
                 organization.enroll(EnrollmentRequest.create(silent.keys(), silent.boxId(), "Site C", Map.of(), NOW),
                         NOW, Duration.ofDays(30), 1),
                 organization.revoke(revokedEntry, NOW, "Box volée")));
@@ -155,7 +150,7 @@ class DirectoryControllerTest {
 
         EnrollmentRequest request = EnrollmentRequest.verify(SignedDocument.fromJson(response.getBody()));
         assertThat(request.boxId()).isEqualTo(me.boxId());
-        assertThat(request.transport()).containsEntry("simplex", "simplex:/contact#box-a");
+        assertThat(request.transport()).containsEntry("iu", "simplex:/contact#box-a");
         assertThat(request.encryptionKeys()).isEqualTo(me.encryption().publicKey().encoded());
         transport.noAddress = true;
         assertThat(EnrollmentRequest.verify(SignedDocument.fromJson(controller(true).enrollmentRequest(null).getBody()))

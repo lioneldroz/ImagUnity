@@ -1,16 +1,12 @@
 package com.imagunity.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.imagunity.domain.peer.Peer;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.PairingService;
-import com.imagunity.transport.DisabledTransport;
-import com.imagunity.transport.Invitation;
 import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
-import com.imagunity.transport.TransportException;
 import com.imagunity.transport.TransportPort;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -21,7 +17,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 
 class PeerControllerTest {
 
@@ -61,13 +56,13 @@ class PeerControllerTest {
         Consumer<TransportEvent> listener = e -> { };
 
         @Override
-        public Invitation createInvitation() {
-            return new Invitation("https://simplex.chat/invitation#x", "https://s/i#x");
+        public String contactAddress() {
+            return "https://relais.example/iu/v1/queues/" + "a".repeat(43);
         }
 
         @Override
-        public void acceptInvitation(String link) {
-            joined.add(link);
+        public void connect(String address) {
+            joined.add(address);
         }
 
         @Override
@@ -99,48 +94,17 @@ class PeerControllerTest {
     private final PeerController controller = new PeerController(pairing, Providers.none(com.imagunity.directory.LocalDirectory.class));
 
     @Test
-    void createsInvitation() {
-        var response = controller.invite(new PeerController.InvitationRequest("box-b"));
-
-        assertThat(response).isEqualTo(new PeerController.InvitationResponse("box-b", "https://simplex.chat/invitation#x"));
-    }
-
-    @Test
-    void joinsAndListsPeers() {
+    void listsPeersPairedThroughTheDirectory() {
         pairing.start();
-        controller.join(new PeerController.JoinRequest("box-a", "https://simplex.chat/invitation#y"));
+        pairing.join("box-a", "https://relais.example/iu/v1/queues/" + "b".repeat(43));
         transport.listener.accept(new TransportEvent.PeerConnected(new PeerId(3), "box-a"));
 
-        assertThat(transport.joined).containsExactly("https://simplex.chat/invitation#y");
+        assertThat(transport.joined).hasSize(1);
         assertThat(controller.peers()).singleElement().satisfies(p -> {
             assertThat(p.name()).isEqualTo("box-a");
             assertThat(p.displayName()).isEqualTo("box-a");
             assertThat(p.pairedAt()).isBeforeOrEqualTo(Instant.now());
+            assertThat(p.directoryStatus()).isNull();
         });
-    }
-
-    @Test
-    void rejectsMissingLink() {
-        assertThatThrownBy(() -> controller.join(new PeerController.JoinRequest("box-a", null)))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> controller.join(new PeerController.JoinRequest("box-a", " ")))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void mapsErrorsToHttpStatuses() {
-        assertThat(controller.invalidRequest(new IllegalArgumentException("nom invalide")).getStatus())
-                .isEqualTo(HttpStatus.BAD_REQUEST.value());
-        var problem = new PeerController(new PairingService(peers, new DisabledTransport(), Clock.systemUTC(),
-                Duration.ofHours(1)), Providers.none(com.imagunity.directory.LocalDirectory.class));
-        TransportException failure = null;
-        try {
-            problem.invite(new PeerController.InvitationRequest("box-b"));
-        } catch (TransportException e) {
-            failure = e;
-        }
-        assertThat(failure).isNotNull();
-        assertThat(controller.transportUnavailable(failure).getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY.value());
-        assertThat(controller.transportUnavailable(failure).getDetail()).contains("désactivé");
     }
 }

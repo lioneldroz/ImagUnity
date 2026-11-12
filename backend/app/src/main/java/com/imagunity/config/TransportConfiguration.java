@@ -5,17 +5,13 @@ import com.imagunity.domain.peer.Peer;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.transport.DisabledTransport;
-import com.imagunity.transport.TransportException;
 import com.imagunity.transport.TransportPort;
 import com.imagunity.transport.iu.IuDirectory;
 import com.imagunity.transport.iu.IuTransport;
 import com.imagunity.transport.iu.Retry;
-import com.imagunity.transport.simplex.SimplexChatClient;
-import com.imagunity.transport.simplex.SimplexTransport;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,34 +19,21 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Transport entre box : IU-T (relais de l'organisation), client simplex-chat, ou transport désactivé. */
+/** Transport entre box : IU-T, par le relais de l'organisation ; désactivé sans relais configuré. */
 @Configuration(proxyBeanMethods = false)
 class TransportConfiguration {
 
     private static final Logger LOG = LoggerFactory.getLogger(TransportConfiguration.class);
-    private static final Duration RETRY_PAUSE = Duration.ofSeconds(2);
-
-    /** Attente entre deux tentatives ; remplaçable pour les tests. */
-    @FunctionalInterface
-    interface Sleeper {
-        void sleep(Duration duration) throws InterruptedException;
-    }
 
     @Bean(destroyMethod = "close")
-    TransportPort transport(TransportProperties properties, IuTransportProperties iu,
-                            ObjectProvider<BoxIdentity> identity, ObjectProvider<LocalDirectory> directory,
-                            Clock clock) {
-        if (iu.enabled()) {
-            return iuTransport(iu, identity.getIfAvailable(), directory.getIfAvailable(), clock);
-        }
-        if (!properties.enabled()) {
-            LOG.warn("Transport désactivé : les transferts passeront en échec");
+    TransportPort transport(IuTransportProperties iu, ObjectProvider<BoxIdentity> identity,
+                            ObjectProvider<LocalDirectory> directory, Clock clock) {
+        if (iu.relay() == null) {
+            LOG.warn("Transport désactivé, aucun relais IU-T configuré (IMAGUNITY_IU_RELAY) : les transferts "
+                    + "passeront en échec");
             return new DisabledTransport();
         }
-        LOG.info("Connexion au client simplex-chat sur {}", properties.url());
-        return connectWithRetry(
-                () -> new SimplexTransport(SimplexChatClient.connect(properties.url(), properties.commandTimeout())),
-                properties.startupTimeout(), RETRY_PAUSE, Thread::sleep);
+        return iuTransport(iu, identity.getIfAvailable(), directory.getIfAvailable(), clock);
     }
 
     static IuTransport iuTransport(IuTransportProperties iu, BoxIdentity identity, LocalDirectory directory,
@@ -58,9 +41,6 @@ class TransportConfiguration {
         if (identity == null || directory == null) {
             throw new IllegalStateException("Transport IU-T sans annuaire : l'activer (IMAGUNITY_DIRECTORY_ENABLED=true)"
                     + ", l'appairage, les clés et les adresses de file en viennent");
-        }
-        if (iu.relay() == null) {
-            throw new IllegalStateException("Transport IU-T sans relais (IMAGUNITY_IU_RELAY)");
         }
         LOG.info("Transport IU-T par le relais {}", iu.relay());
         return new IuTransport(new IuTransport.Settings(iu.relay(), iu.stateDir(), iu.ttl(), iu.parallel(),
@@ -151,29 +131,5 @@ class TransportConfiguration {
             LOG.info("Bascule IU-T : partenaire {} (box {}) repris", peer.name(), peer.boxId());
         }
         iu.markPeersMigrated();
-    }
-
-    /**
-     * Répète la tentative jusqu'au succès ou jusqu'à l'expiration du délai : dans un conteneur,
-     * simplex-chat peut ouvrir son port après le démarrage de la box.
-     */
-    static <T> T connectWithRetry(Supplier<T> attempt, Duration timeout, Duration pause, Sleeper sleeper) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (true) {
-            try {
-                return attempt.get();
-            } catch (TransportException e) {
-                if (System.nanoTime() + pause.toNanos() > deadline) {
-                    throw new TransportException("Client simplex-chat injoignable après " + timeout, e);
-                }
-                LOG.info("Client simplex-chat pas encore prêt ({}), nouvelle tentative", e.getMessage());
-                try {
-                    sleeper.sleep(pause);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new TransportException("Attente du client simplex-chat interrompue", ie);
-                }
-            }
-        }
     }
 }

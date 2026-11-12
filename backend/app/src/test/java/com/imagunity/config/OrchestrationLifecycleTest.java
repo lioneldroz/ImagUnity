@@ -8,7 +8,6 @@ import com.imagunity.orchestration.SendOrchestrator;
 import com.imagunity.packaging.PackageReader;
 import com.imagunity.packaging.PackagingConfig;
 import com.imagunity.packaging.StudyPackager;
-import com.imagunity.transport.Invitation;
 import com.imagunity.transport.PeerId;
 import com.imagunity.transport.TransportEvent;
 import com.imagunity.transport.TransportException;
@@ -32,12 +31,12 @@ class OrchestrationLifecycleTest {
         int catchUps;
 
         @Override
-        public Invitation createInvitation() {
-            return null;
+        public String contactAddress() {
+            return "adresse";
         }
 
         @Override
-        public void acceptInvitation(String link) {
+        public void connect(String link) {
         }
 
         @Override
@@ -62,7 +61,7 @@ class OrchestrationLifecycleTest {
         public void catchUp() {
             catchUps++;
             if (failCatchUp) {
-                throw new TransportException("client simplex-chat injoignable");
+                throw new TransportException("relais injoignable");
             }
         }
 

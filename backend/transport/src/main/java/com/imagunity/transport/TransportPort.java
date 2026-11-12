@@ -6,41 +6,46 @@ import java.util.function.Consumer;
 /**
  * Transport entre box, indépendant de son implémentation.
  *
- * <p>Le cœur métier ne connaît que cette interface. Deux implémentations : {@code SimplexTransport} pilote un
- * client simplex-chat exécuté comme processus séparé ; {@code IuTransport} parle directement au relais IU-T de
- * l'organisation (spécification {@code docs/specification-protocole.md}).
+ * <p>Le cœur métier ne connaît que cette interface. Implémentation : {@code IuTransport}, qui parle directement au
+ * relais IU-T de l'organisation (spécification {@code docs/specification-protocole.md}) ; {@link DisabledTransport}
+ * sans relais configuré.
  *
  * <p>Les méthodes sont bloquantes (prévues pour des threads virtuels). Les arrivées
  * (partenaire connecté, message, fichier) sont signalées par des {@link TransportEvent}.
- *
- * <p><b>Statut :</b> brouillon de la phase 1, à stabiliser à l'issue des essais.
  */
 public interface TransportPort extends AutoCloseable {
 
     /**
-     * Crée un lien d'invitation à usage unique, à transmettre hors bande au partenaire
-     * (QR code, code court). C'est l'appairage de la preuve de concept, sans annuaire.
+     * Adresse de contact durable de cette box (créée au premier appel), publiée par sa demande d'enrôlement dans
+     * l'annuaire.
+     *
+     * @throws TransportException si le transport ne propose pas d'adresse
      */
-    Invitation createInvitation();
+    String contactAddress();
+
+    /** Clé de l'adresse de contact dans le champ {@code transport} des entrées d'annuaire. */
+    default String addressKind() {
+        return "iu";
+    }
 
     /**
-     * Rejoint le partenaire qui a émis ce lien. La connexion s'établit de façon
-     * asynchrone : elle est confirmée par un événement {@link TransportEvent.PeerConnected}.
+     * Appaire la box de l'annuaire qui publie cette adresse de contact. La connexion est confirmée par un événement
+     * {@link TransportEvent.PeerConnected} ; la box distante crée le contact de son côté.
      */
-    void acceptInvitation(String invitationLink);
+    void connect(String contactAddress);
 
     /** Envoie un petit message de signalisation (quelques Ko au plus). */
     void sendMessage(PeerId peer, String text);
 
     /**
-     * Dépose un fichier sur les relais et l'annonce au partenaire.
+     * Dépose un fichier sur le relais et l'annonce au partenaire.
      *
      * @return l'identifiant local du fichier, repris dans les événements de suivi
      */
     long sendFile(PeerId peer, Path file);
 
     /**
-     * Retire des relais un fichier envoyé dont le destinataire n'a plus besoin (après son accusé), au lieu
+     * Retire du relais un fichier envoyé dont le destinataire n'a plus besoin (après son accusé), au lieu
      * d'attendre son expiration. Sans effet si le transport ne le permet pas.
      *
      * @param fileId identifiant renvoyé par {@link #sendFile}
@@ -51,37 +56,12 @@ public interface TransportPort extends AutoCloseable {
     /** Accepte un fichier annoncé et le télécharge à l'emplacement donné. */
     void receiveFile(long fileId, Path target);
 
-    /**
-     * Adresse de contact durable de cette box (créée au premier appel), publiée dans l'annuaire : une box de
-     * l'organisation s'y connecte avec {@link #acceptInvitation}, et cette box reçoit un
-     * {@link TransportEvent.ContactRequested}.
-     *
-     * @throws TransportException si le transport ne propose pas d'adresse de contact
-     */
-    default String contactAddress() {
-        throw new TransportException("Ce transport ne propose pas d'adresse de contact");
-    }
-
-    /**
-     * Clé de l'adresse de contact dans le champ {@code transport} des entrées d'annuaire : {@code simplex} (adresse de
-     * contact SimpleX) ou {@code iu} (file de réception IU-T).
-     */
-    default String addressKind() {
-        return "simplex";
-    }
-
-    /** Accepte une demande de contact reçue par l'adresse de cette box. */
-    default void acceptContactRequest(long requestId) {
-        throw new TransportException("Ce transport ne propose pas d'adresse de contact");
-    }
-
     /** Abonne un écouteur à tous les événements du transport. */
     void addListener(Consumer<TransportEvent> listener);
 
     /**
-     * Rejoue les arrivées récentes (messages, fichiers proposés ou reçus) que le transport a pu recevoir
-     * pendant que la box n'était pas à l'écoute (box redémarrée alors que le client de transport tournait).
-     * À appeler une fois les écouteurs abonnés. Les événements rejoués peuvent être des doublons :
+     * Rejoue les arrivées que l'orchestrateur a pu manquer pendant un arrêt de la box (fichiers proposés, reçus ou
+     * envoyés). À appeler une fois les écouteurs abonnés. Les événements rejoués peuvent être des doublons :
      * les écouteurs doivent être idempotents.
      */
     default void catchUp() {

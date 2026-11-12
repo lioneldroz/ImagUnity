@@ -151,7 +151,7 @@ class SendOrchestratorTest {
         orchestrator.handleStudy(study("box-b", 1, 1));
 
         assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
-        assertThat(transfers.only().errorMessage()).contains("paquet 1/1").contains("XFTP");
+        assertThat(transfers.only().errorMessage()).contains("paquet 1/1").contains("relais");
     }
 
     @Test

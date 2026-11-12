@@ -52,62 +52,56 @@ class PairingServiceTest {
         return new TransportEvent.PeerConnected(new PeerId(id), displayName);
     }
 
+    private static final String ADDRESS = "https://relais.example/iu/v1/queues/" + "b".repeat(43);
+
     @Test
-    void inviterNamesThePeerLocally() {
-        assertThat(pairing.invite("box-b").link()).isEqualTo("https://simplex.chat/invitation#test");
+    void theOperatorNamesThePeerItConnectsTo() {
+        pairing.join("box-b", ADDRESS);
 
         transport.emit(connected(5, "profil-annonce"));
 
+        assertThat(transport.acceptedLinks).containsExactly(ADDRESS);
         assertThat(pairing.peers()).singleElement().satisfies(p -> {
             assertThat(p.name()).isEqualTo("box-b");
             assertThat(p.transportPeerId()).isEqualTo(5);
             assertThat(p.displayName()).isEqualTo("profil-annonce");
             assertThat(p.pairedAt()).isEqualTo(clock.now);
+            assertThat(p.boxId()).as("liée par la poignée de main").isNull();
         });
     }
 
     @Test
-    void joinerNamesThePeerLocally() {
-        pairing.join("box-a", "https://simplex.chat/invitation#lien");
+    void incomingConnectionsAreProvisionalUntilTheHandshake() {
+        transport.emit(connected(12, "box-a"));
 
-        transport.emit(connected(9, "box-a"));
-
-        assertThat(transport.acceptedLinks).containsExactly("https://simplex.chat/invitation#lien");
-        assertThat(peers.findByName("box-a")).map(Peer::transportPeerId).contains(9L);
-    }
-
-    @Test
-    void unexpectedConnectionIsIgnored() {
-        transport.emit(connected(5, "intrus"));
-
-        assertThat(pairing.peers()).isEmpty();
+        assertThat(peers.findByName("attente-12")).hasValueSatisfying(p -> assertThat(p.boxId()).isNull());
     }
 
     @Test
     void pairingExpires() {
-        pairing.invite("box-b");
+        pairing.join("box-b", ADDRESS);
         clock.now = clock.now.plus(Duration.ofHours(2));
 
         transport.emit(connected(5, "box-b"));
 
-        assertThat(pairing.peers()).isEmpty();
+        assertThat(pairing.peers()).extracting(Peer::name).containsExactly("attente-5");
     }
 
     @Test
     void onlyOneConnectionPerPairing() {
-        pairing.invite("box-b");
+        pairing.join("box-b", ADDRESS);
         transport.emit(connected(5, "box-b"));
 
         transport.emit(connected(6, "autre"));
 
-        assertThat(pairing.peers()).extracting(Peer::transportPeerId).containsExactly(5L);
+        assertThat(pairing.peers()).extracting(Peer::name).containsExactlyInAnyOrder("attente-6", "box-b");
     }
 
     @Test
     void alreadyPairedContactIsNotRenamed() {
-        pairing.invite("box-b");
+        pairing.join("box-b", ADDRESS);
         transport.emit(connected(5, "box-b"));
-        pairing.invite("box-c");
+        pairing.join("box-c", ADDRESS);
 
         transport.emit(connected(5, "box-b")); // reconnexion d'un contact connu
 
@@ -120,57 +114,24 @@ class PairingServiceTest {
     void failedJoinLeavesNoPendingPairing() {
         transport.failAccept = true;
 
-        assertThatThrownBy(() -> pairing.join("box-a", "lien")).isInstanceOf(TransportException.class);
+        assertThatThrownBy(() -> pairing.join("box-a", ADDRESS)).isInstanceOf(TransportException.class);
         transport.emit(connected(9, "box-a"));
 
-        assertThat(pairing.peers()).isEmpty();
+        assertThat(pairing.peers()).extracting(Peer::name).containsExactly("attente-9");
     }
 
     @Test
     void rejectsInvalidNames() {
-        assertThatThrownBy(() -> pairing.invite("../x")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> pairing.join("a b", "lien")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> pairing.join("a b", ADDRESS)).isInstanceOf(IllegalArgumentException.class);
         assertThat(transport.acceptedLinks).isEmpty();
     }
 
     @Test
     void otherEventsAreIgnored() {
-        pairing.invite("box-b");
+        pairing.join("box-b", ADDRESS);
 
         transport.emit(new TransportEvent.MessageReceived(new PeerId(5), "x"));
 
         assertThat(pairing.peers()).isEmpty();
-    }
-
-    @Test
-    void withTheDirectoryIncomingContactsAreAcceptedAsProvisionalPeers() {
-        InMemoryRepositories.Peers repository = new InMemoryRepositories.Peers();
-        FakeTransport fake = new FakeTransport();
-        PairingService service = new PairingService(repository, fake, java.time.Clock.systemUTC(),
-                java.time.Duration.ofHours(1), Runnable::run, true);
-        service.start();
-
-        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(4, "box-a"));
-        fake.emit(new com.imagunity.transport.TransportEvent.PeerConnected(new com.imagunity.transport.PeerId(12),
-                "box-a"));
-
-        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).containsExactly(4L);
-        org.assertj.core.api.Assertions.assertThat(repository.findByName("attente-12"))
-                .hasValueSatisfying(p -> org.assertj.core.api.Assertions.assertThat(p.boxId()).isNull());
-        fake.failAcceptRequest = true;
-        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(5, "box-z"));
-        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).containsExactly(4L);
-    }
-
-    @Test
-    void withoutTheDirectoryContactRequestsAreIgnored() {
-        FakeTransport fake = new FakeTransport();
-        PairingService service = new PairingService(new InMemoryRepositories.Peers(), fake,
-                java.time.Clock.systemUTC(), java.time.Duration.ofHours(1));
-        service.start();
-
-        fake.emit(new com.imagunity.transport.TransportEvent.ContactRequested(4, "box-a"));
-
-        org.assertj.core.api.Assertions.assertThat(fake.acceptedRequests).isEmpty();
     }
 }

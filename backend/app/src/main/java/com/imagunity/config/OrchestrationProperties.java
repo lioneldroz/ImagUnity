@@ -12,7 +12,7 @@ import org.springframework.util.unit.DataSize;
  *
  * @param outboxDir        dossier d'envoi : paquets en attente ou en cours de transfert
  * @param pairingTimeout   durée de validité d'un appairage en cours
- * @param maxPartSize      taille maximale du contenu d'un paquet (900 Mo par défaut, sous la limite XFTP)
+ * @param maxPartSize      taille maximale du contenu d'un paquet (900 Mo par défaut)
  * @param compressionLevel niveau de compression zstd
  */
 @ConfigurationProperties("imagunity.orchestration")
