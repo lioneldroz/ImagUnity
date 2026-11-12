@@ -31,10 +31,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <ul>
  *   <li>{@code /actuator/health} reste libre (supervision, contrôles de santé des conteneurs) ;</li>
+ *   <li>{@code /dicomweb/**} (dépôt STOW-RS par le PACS) demande le compte DICOMweb, et lui seul ;</li>
  *   <li>tout le reste demande le compte opérateur ;</li>
  *   <li>les requêtes qui modifient l'état (POST, PUT, PATCH, DELETE) doivent porter l'en-tête
  *       {@value #CONSOLE_HEADER} : un site tiers ne peut pas l'ajouter (CORS fermé), ce qui protège des
- *       requêtes intersites qu'un navigateur authentifié enverrait sinon de lui-même.</li>
+ *       requêtes intersites qu'un navigateur authentifié enverrait sinon de lui-même. Le dépôt DICOMweb en est
+ *       dispensé : il vient d'un PACS, pas d'un navigateur, avec un compte qui n'ouvre pas la console.</li>
  * </ul>
  * Le compte circule en clair sur HTTP : sur le réseau du site, servir la console derrière un proxy TLS.
  */
@@ -42,6 +44,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 class SecurityConfiguration {
 
     static final String CONSOLE_HEADER = "X-ImagUnity-Console";
+    static final String DICOMWEB = "/dicomweb";
+    static final String ROLE_OPERATOR = "OPERATEUR";
+    static final String ROLE_DICOMWEB = "DICOMWEB";
     private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS");
     private static final Logger LOG = LoggerFactory.getLogger(SecurityConfiguration.class);
 
@@ -50,7 +55,8 @@ class SecurityConfiguration {
         return http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                        .anyRequest().authenticated())
+                        .requestMatchers(DICOMWEB + "/**").hasRole(ROLE_DICOMWEB)
+                        .anyRequest().hasRole(ROLE_OPERATOR))
                 .httpBasic(basic -> basic.realmName("ImagUnity"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // Pas de jeton CSRF : sans session ni cookie, l'en-tête de la console en tient lieu.
@@ -66,7 +72,22 @@ class SecurityConfiguration {
     }
 
     @Bean
-    UserDetailsService operator(ConsoleAccessProperties properties, PasswordEncoder encoder) {
+    UserDetailsService accounts(ConsoleAccessProperties properties, DicomWebProperties dicomweb,
+                                PasswordEncoder encoder) {
+        InMemoryUserDetailsManager accounts = operator(properties, encoder);
+        if (dicomweb.enabled()) {
+            if (dicomweb.user().equals(properties.user())) {
+                throw new IllegalStateException("Le compte DICOMweb doit être distinct du compte opérateur");
+            }
+            String stored = dicomweb.password().startsWith("{") ? dicomweb.password()
+                    : encoder.encode(dicomweb.password());
+            accounts.createUser(User.withUsername(dicomweb.user()).password(stored).roles(ROLE_DICOMWEB).build());
+            LOG.info("Réception DICOMweb (STOW-RS) ouverte au compte « {} »", dicomweb.user());
+        }
+        return accounts;
+    }
+
+    InMemoryUserDetailsManager operator(ConsoleAccessProperties properties, PasswordEncoder encoder) {
         String password = properties.password();
         if (password == null || password.isBlank()) {
             password = generatedPassword();
@@ -75,7 +96,7 @@ class SecurityConfiguration {
         }
         String stored = password.startsWith("{") ? password : encoder.encode(password);
         return new InMemoryUserDetailsManager(User.withUsername(properties.user()).password(stored)
-                .roles("OPERATEUR").build());
+                .roles(ROLE_OPERATOR).build());
     }
 
     static String generatedPassword() {
@@ -90,7 +111,8 @@ class SecurityConfiguration {
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
-            if (SAFE_METHODS.contains(request.getMethod()) || request.getHeader(CONSOLE_HEADER) != null) {
+            if (SAFE_METHODS.contains(request.getMethod()) || request.getHeader(CONSOLE_HEADER) != null
+                    || request.getRequestURI().startsWith(request.getContextPath() + DICOMWEB + "/")) {
                 chain.doFilter(request, response);
                 return;
             }

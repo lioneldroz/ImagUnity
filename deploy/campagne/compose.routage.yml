@@ -1,5 +1,6 @@
-# Essai du routage par champ DICOM (docs/routage-dicom.md) : sur la destination IU_AUTO de la box A, le partenaire
-# est choisi par les règles ; Orthanc A déclare les deux destinations (IU_TO_B, routage fixe, et IU_AUTO).
+# Essai du routage par champ DICOM (docs/routage-dicom.md) et de la réception STOW-RS (docs/stow-rs.md) : sur la
+# destination IU_AUTO de la box A, le partenaire est choisi par les règles ; Orthanc A déclare les deux destinations
+# DICOM (IU_TO_B, routage fixe, et IU_AUTO) et le serveur DICOMweb de la box A (dépôt STOW-RS sur IU_AUTO).
 #
 #   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f campagne/compose.routage.yml up -d
 
@@ -17,7 +18,12 @@ services:
       IMAGUNITY_DICOM_RULES_1_WHEN_MODALITY: MR
       IMAGUNITY_DICOM_RULES_1_TO_0: box-b
       IMAGUNITY_DICOM_RULES_1_TO_1: box-c
+      # Compte DICOMweb du PACS : mot de passe d'essai de cet environnement de test seulement.
+      IMAGUNITY_DICOMWEB_PASSWORD: essai-synthetique
   orthanc-a:
     environment:
       ORTHANC__DICOM_MODALITIES: |
         { "imagunity-b": ["IU_TO_B", "net-a", 11112], "imagunity-auto": ["IU_AUTO", "net-a", 11112] }
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_WEB__SERVERS: |
+        { "imagunity-auto": ["http://172.31.1.10:8080/dicomweb/IU_AUTO", "pacs", "essai-synthetique"] }

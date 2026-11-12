@@ -28,6 +28,10 @@
             <artifactId>imagunity-directory</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-dicom</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>

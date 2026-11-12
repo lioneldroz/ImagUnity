@@ -1,6 +1,7 @@
 package com.imagunity.config;
 
 import com.imagunity.dicom.DicomStoreScp;
+import com.imagunity.dicom.StowService;
 import com.imagunity.dicom.StudyListener;
 import com.imagunity.orchestration.SendOrchestrator;
 import java.io.IOException;
@@ -24,6 +25,12 @@ class DicomInputConfiguration {
     @Bean
     DicomStoreScp dicomStoreScp(DicomProperties properties, StudyListener listener) {
         return new DicomStoreScp(properties.toConfig(), listener);
+    }
+
+    /** Réception STOW-RS (DICOMweb) : mêmes contrôles et même routage que le C-STORE. */
+    @Bean
+    StowService stowService(DicomStoreScp scp) {
+        return new StowService(scp);
     }
 
     @Bean
