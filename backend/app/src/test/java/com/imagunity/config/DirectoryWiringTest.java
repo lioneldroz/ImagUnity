@@ -194,14 +194,44 @@ class DirectoryWiringTest {
 
         Path phraseFile = Files.writeString(dir.resolve("phrase.txt"), "phrase de la box de test\n");
         assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "ignorée",
-                phraseFile.toString()).passphrase()).isEqualTo(phrase);
-        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "directe", "")
+                phraseFile.toString(), true).passphrase()).isEqualTo(phrase);
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "directe", "", true)
                 .passphrase()).isEqualTo("directe".toCharArray());
-        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "", null)
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "", null, true)
                 .passphrase()).isNull();
         Path emptyFile = Files.writeString(dir.resolve("vide.txt"), "\n");
         assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), null,
-                emptyFile.toString()).passphrase()).isNull();
+                emptyFile.toString(), true).passphrase()).isNull();
+    }
+
+    @Test
+    void encryptionKeysAreCreatedProtectedAndMigrated() throws IOException {
+        char[] phrase = "phrase de la box de test".toCharArray();
+        Path fresh = dir.resolve("chiffree/identite.json");
+        BoxIdentity created = DirectoryConfiguration.loadOrCreateIdentity(fresh, phrase);
+        Path encryption = DirectoryConfiguration.encryptionFileOf(fresh);
+        assertThat(KeyFiles.isProtected(encryption)).isTrue();
+        assertThat(DirectoryConfiguration.loadOrCreateIdentity(fresh, phrase).encryption().publicKey().fingerprint())
+                .isEqualTo(created.encryption().publicKey().fingerprint());
+
+        // Identité antérieure au chiffrement applicatif : ses clés de chiffrement sont créées au démarrage.
+        Path older = dir.resolve("ancienne/identite.json");
+        BoxIdentity before = DirectoryConfiguration.loadOrCreateIdentity(older);
+        Files.delete(DirectoryConfiguration.encryptionFileOf(older));
+        BoxIdentity after = DirectoryConfiguration.loadOrCreateIdentity(older);
+        assertThat(after.boxId()).isEqualTo(before.boxId());
+        assertThat(Files.exists(DirectoryConfiguration.encryptionFileOf(older))).isTrue();
+        assertThat(KeyFiles.isProtected(DirectoryConfiguration.encryptionFileOf(older))).isFalse();
+
+        // Phrase de passe fournie ensuite : les deux fichiers sont chiffrés sur place.
+        BoxIdentity migrated = DirectoryConfiguration.loadOrCreateIdentity(older, phrase);
+        assertThat(KeyFiles.isProtected(DirectoryConfiguration.encryptionFileOf(older))).isTrue();
+        assertThat(migrated.encryption().publicKey().fingerprint())
+                .isEqualTo(after.encryption().publicKey().fingerprint());
+
+        DirectoryConfiguration configuration = new DirectoryConfiguration();
+        assertThat(configuration.packetEncryption(null, created, new DirectoryProperties(true, null, null, null,
+                fresh, Duration.ofMinutes(5), null, null, false))).isNotNull();
     }
 
     @Test

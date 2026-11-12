@@ -50,6 +50,8 @@ imagunity:
     identity-passphrase: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE:}
     identity-passphrase-file: ${IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
+    # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
+    encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}
   transport:
     simplex:
       # false : transport désactivé (développement sans simplex-chat) ; les transferts passent en échec.

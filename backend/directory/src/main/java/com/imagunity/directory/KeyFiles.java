@@ -27,7 +27,6 @@ public final class KeyFiles {
     private KeyFiles() {
     }
 
-    /** Clé privée enregistrée. */
     /**
      * Clé privée enregistrée : en clair ({@code ed25519Private}, {@code mlDsa65Private}) ou chiffrée par phrase de
      * passe ({@code protection}, champs en clair absents).
@@ -38,6 +37,21 @@ public final class KeyFiles {
 
     /** Parties privées, chiffrées ensemble quand la clé est protégée. */
     record PrivateParts(String ed25519Private, String mlDsa65Private) {
+    }
+
+    /** Usage inscrit dans un fichier de clés de chiffrement. */
+    static final String ENCRYPTION_USAGE = "chiffrement";
+
+    /**
+     * Clés privées de chiffrement enregistrées : en clair ({@code x25519Private}, {@code mlKem768Private}) ou chiffrées
+     * par phrase de passe ({@code protection}).
+     */
+    record EncryptionKeyFile(String suite, String usage, HybridKemPublicKey.Encoded publicKey, String x25519Private,
+                             String mlKem768Private, KeyProtection.Sealed protection) {
+    }
+
+    /** Parties privées de chiffrement, chiffrées ensemble quand la clé est protégée. */
+    record EncryptionParts(String x25519Private, String mlKem768Private) {
     }
 
     /**
@@ -82,13 +96,20 @@ public final class KeyFiles {
         Files.writeString(file, content, StandardCharsets.UTF_8);
     }
 
-    /** Vrai si ce fichier de clé privée est chiffré par phrase de passe. */
+    /** Vrai si ce fichier de clés privées (signature ou chiffrement) est chiffré par phrase de passe. */
     public static boolean isProtected(Path file) throws IOException {
-        return readFile(file).protection() != null;
+        try {
+            tools.jackson.databind.JsonNode protection = Json.MAPPER.readTree(Files.readString(file,
+                    StandardCharsets.UTF_8)).path("protection");
+            return !protection.isMissingNode() && !protection.isNull();
+        } catch (tools.jackson.core.JacksonException e) {
+            throw new DirectoryException("Fichier de clé privée illisible : " + e.getOriginalMessage(), e);
+        }
     }
 
     /**
-     * Chiffre par phrase de passe une clé privée enregistrée en clair ; le fichier est remplacé d'un coup.
+     * Chiffre par phrase de passe des clés privées (signature ou chiffrement) enregistrées en clair ; le fichier est
+     * remplacé d'un coup.
      *
      * @throws DirectoryException si la clé est déjà protégée
      */
@@ -96,12 +117,82 @@ public final class KeyFiles {
         if (isProtected(file)) {
             throw new DirectoryException("Clé déjà protégée par une phrase de passe : " + file);
         }
-        String content = content(readPrivate(file), passphrase);
+        String content = isEncryptionFile(file) ? encryptionContent(readEncryptionPrivate(file, null), passphrase)
+                : content(readPrivate(file), passphrase);
         Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
         Files.deleteIfExists(temporary);
         createOwnerOnly(temporary);
         Files.writeString(temporary, content, StandardCharsets.UTF_8);
         Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private static boolean isEncryptionFile(Path file) throws IOException {
+        return ENCRYPTION_USAGE.equals(Json.MAPPER.readTree(Files.readString(file, StandardCharsets.UTF_8))
+                .path("usage").asString(""));
+    }
+
+    /**
+     * Enregistre des clés privées de chiffrement dans un nouveau fichier, lisible par son seul propriétaire, chiffré
+     * par cette phrase de passe ({@code null} : en clair, déconseillé).
+     *
+     * @throws FileAlreadyExistsException si le fichier existe : une clé n'est jamais écrasée
+     */
+    public static void writeEncryptionPrivate(Path file, HybridKemKeyPair keys, char[] passphrase)
+            throws IOException {
+        String content = encryptionContent(keys, passphrase);
+        Path parent = file.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        createOwnerOnly(file);
+        Files.writeString(file, content, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Lit des clés privées de chiffrement, protégées ou non (la phrase de passe est ignorée pour des clés en clair).
+     *
+     * @throws DirectoryException si la phrase de passe manque ou est incorrecte, ou si le fichier est altéré
+     */
+    public static HybridKemKeyPair readEncryptionPrivate(Path file, char[] passphrase) throws IOException {
+        EncryptionKeyFile content = Json.read(Files.readString(file, StandardCharsets.UTF_8), EncryptionKeyFile.class,
+                "Fichier de clés de chiffrement");
+        Suite.require(content.suite());
+        if (!ENCRYPTION_USAGE.equals(content.usage())) {
+            throw new DirectoryException("Fichier de clés de chiffrement d'usage inattendu : " + content.usage());
+        }
+        HybridKemPublicKey publicKey = HybridKemPublicKey.decode(content.publicKey());
+        EncryptionParts parts;
+        if (content.protection() == null) {
+            parts = new EncryptionParts(content.x25519Private(), content.mlKem768Private());
+        } else {
+            byte[] secret = KeyProtection.open(content.protection(), passphrase, publicKey.fingerprint());
+            try {
+                parts = Json.read(new String(secret, StandardCharsets.UTF_8), EncryptionParts.class,
+                        "Clés de chiffrement");
+            } finally {
+                Arrays.fill(secret, (byte) 0);
+            }
+        }
+        return new HybridKemKeyPair(
+                new KeyPair(publicKey.x25519(), privateKey(Suite.X25519, parts.x25519Private())),
+                new KeyPair(publicKey.mlKem768(), privateKey(Suite.ML_KEM_768, parts.mlKem768Private())));
+    }
+
+    private static String encryptionContent(HybridKemKeyPair keys, char[] passphrase) {
+        EncryptionParts parts = new EncryptionParts(base64(keys.x25519().getPrivate()),
+                base64(keys.mlKem768().getPrivate()));
+        if (passphrase == null) {
+            return Json.write(new EncryptionKeyFile(Suite.ID, ENCRYPTION_USAGE, keys.publicKey().encoded(),
+                    parts.x25519Private(), parts.mlKem768Private(), null));
+        }
+        byte[] secret = Json.write(parts).getBytes(StandardCharsets.UTF_8);
+        try {
+            KeyProtection.Sealed sealed = KeyProtection.seal(secret, passphrase, keys.publicKey().fingerprint());
+            return Json.write(new EncryptionKeyFile(Suite.ID, ENCRYPTION_USAGE, keys.publicKey().encoded(), null, null,
+                    sealed));
+        } finally {
+            Arrays.fill(secret, (byte) 0);
+        }
     }
 
     private static String content(HybridKeyPair keys, char[] passphrase) {

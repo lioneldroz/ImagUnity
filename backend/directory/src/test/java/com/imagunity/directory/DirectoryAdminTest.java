@@ -59,7 +59,7 @@ class DirectoryAdminTest {
     }
 
     @Test
-    void fullLifecycleFromOrganizationToRevocation() {
+    void fullLifecycleFromOrganizationToRevocation() throws Exception {
         assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"))).isZero();
         assertThat(output()).contains("org.json.pub.json").containsPattern("[A-Z2-7]{4}(-[A-Z2-7]{4}){5}");
         assertThat(run("empreinte", "--cle-publique", p("org.json.pub.json"))).isZero();
@@ -67,7 +67,8 @@ class DirectoryAdminTest {
 
         assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "CHU Exemple",
                 "--simplex", "simplex:/contact#x", "--sortie", p("demande.json"))).isZero();
-        assertThat(output()).contains("Identité de la box créée");
+        assertThat(output()).contains("Identité de la box créée").contains("box.json.chiffrement");
+        assertThat(KeyFiles.isProtected(dir.resolve("box.json.chiffrement"))).isTrue();
         out.reset();
         assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "CHU Exemple",
                 "--sortie", p("demande.json"))).as("identité réutilisée").isZero();
@@ -77,13 +78,35 @@ class DirectoryAdminTest {
                 "--sortie", p("entree.json"))).isZero();
         assertThat(output()).contains("enrôlée pour 30 jours, n° 1").contains("Vérifiez hors bande");
         assertThat(run("verifier", "--cle-publique", p("org.json.pub.json"), "--entree", p("entree.json"))).isZero();
-        assertThat(output()).contains("Signature valide").contains("ACTIVE");
+        assertThat(output()).contains("Signature valide").contains("ACTIVE")
+                .contains("Clés de chiffrement publiées");
 
         assertThat(run("revoquer", "--cles", p("org.json"), "--entree", p("entree.json"), "--motif", "Box volée",
                 "--sortie", p("revocation.json"))).isZero();
         assertThat(run("verifier", "--cle-publique", p("org.json.pub.json"), "--entree", p("revocation.json")))
                 .as("box révoquée : code 1").isEqualTo(1);
         assertThat(output()).contains("REVOKED");
+    }
+
+    @Test
+    void encryptionKeysAreAddedToAnExistingBoxIdentity() throws Exception {
+        run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"));
+        KeyFiles.writePrivate(dir.resolve("ancienne.json"), HybridKeyPair.generate(), "phrase de la box de test".toCharArray());
+        out.reset();
+        assertThat(run("box-demande", "--cles", p("ancienne.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie",
+                p("d.json"))).isZero();
+        assertThat(output()).contains("Clés de chiffrement de la box créées");
+        assertThat(KeyFiles.isProtected(dir.resolve("ancienne.json.chiffrement"))).isTrue();
+
+        // Demande d'une box antérieure, sans clés de chiffrement : enrôlée, avec un avertissement.
+        Files.writeString(dir.resolve("vieille.json"), EnrollmentRequest.create(HybridKeyPair.generate(),
+                java.util.UUID.fromString(BOX_ID), "B", java.util.Map.of(), java.time.Instant.now()).toJson());
+        out.reset();
+        assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("vieille.json"), "--sortie",
+                p("e.json"))).isZero();
+        assertThat(output()).contains("demande sans clés de chiffrement");
+        assertThat(run("verifier", "--cle-publique", p("org.json.pub.json"), "--entree", p("e.json"))).isZero();
+        assertThat(output()).contains("entrée à réémettre");
     }
 
     @Test
@@ -214,6 +237,10 @@ class DirectoryAdminTest {
         run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie", p("d.json"),
                 "--sans-phrase");
         err.reset();
+        assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie",
+                p("d.json"))).isZero();
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("clé non protégée");
+        err.reset();
         assertThat(run("enroler", "--cles", p("org.json"), "--demande", p("d.json"), "--sortie", p("e.json"))).isZero();
         assertThat(err.toString(StandardCharsets.UTF_8)).contains("clé non protégée");
 
@@ -224,6 +251,8 @@ class DirectoryAdminTest {
         assertThat(run("proteger", "--cles", p("org.json"))).as("déjà protégée").isEqualTo(1);
         environment = java.util.Map.of();
         assertThat(run("proteger", "--cles", p("org.json"))).as("phrase manquante").isEqualTo(2);
+        assertThat(run("proteger", "--cles", p("box.json"), "--box")).as("phrase de box manquante").isEqualTo(2);
+        assertThat(KeyFiles.isProtected(dir.resolve("box.json.chiffrement"))).isTrue();
         assertThat(run("box-demande", "--cles", p("box.json"), "--box-id", BOX_ID, "--nom", "B", "--sortie",
                 p("d.json"))).as("clé de box protégée sans phrase").isEqualTo(2);
         assertThat(run("proteger", "--cles", p("org.json"), "inattendu")).isEqualTo(2);

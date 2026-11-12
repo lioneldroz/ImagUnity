@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **toutes les étapes faites** (A, B, C1, C2a, C2b) : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box, appairage par l'annuaire, annonces et accusés signés. Clés privées chiffrées par phrase de passe (§ 9) ; le support matériel attend la prise en charge de ML-DSA par les TPM et HSM.
+> Statut : **toutes les étapes faites** (A, B, C1, C2a, C2b) : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box, appairage par l'annuaire, annonces et accusés signés. Clés privées chiffrées par phrase de passe (§ 9) ; le support matériel attend la prise en charge de ML-DSA par les TPM et HSM. Les entrées publient aussi les clés de chiffrement des box : voir le [chiffrement applicatif](chiffrement-applicatif.md).
 
 ## 1. Principes
 
@@ -44,6 +44,7 @@ La signature porte sur les **octets UTF-8 exacts** du texte `payload`. Celui-ci 
   "boxId": "3f6c…",
   "displayName": "CHU Exemple — imagerie",
   "signingKeys": { "ed25519": "<X.509 base64>", "mlDsa65": "<X.509 base64>" },
+  "encryptionKeys": { "x25519": "<X.509 base64>", "mlKem768": "<X.509 base64>" },
   "transport": { "simplex": "<adresse de contact SimpleX>" },
   "serial": 1,
   "validFrom": "2026-11-12T00:00:00Z",
@@ -54,10 +55,11 @@ La signature porte sur les **octets UTF-8 exacts** du texte `payload`. Celui-ci 
 
 - `serial` augmente à chaque nouvelle émission pour la même box (renouvellement, changement d'adresse, révocation) : seule l'entrée de numéro le plus haut compte.
 - La **révocation** est une entrée signée de numéro supérieur, avec `revoked: true`.
+- `encryptionKeys` porte les clés de chiffrement de la box (X25519 et ML-KEM-768). Les paquets qui lui sont destinés sont chiffrés pour elles ([chiffrement applicatif](chiffrement-applicatif.md)). Le champ est absent des entrées antérieures, qui sont à réémettre.
 
 ### 2.3 Demande d'enrôlement
 
-La box produit une demande signée **par ses propres clés** : identifiant, nom proposé, clés publiques, adresse de transport, date. Cette signature prouve qu'elle détient les clés privées correspondantes. Le responsable vérifie cette preuve, puis confirme hors bande l'empreinte de la box avec son installateur avant de signer l'entrée.
+La box produit une demande signée **par ses propres clés** : identifiant, nom proposé, clés publiques de signature et de chiffrement, adresse de transport, date. Cette signature prouve qu'elle détient les clés privées correspondantes. Le responsable vérifie cette preuve, puis confirme hors bande l'empreinte de la box avec son installateur avant de signer l'entrée.
 
 ### 2.4 Empreinte courte
 
@@ -82,7 +84,7 @@ L'outil est en ligne de commande, et le responsable l'exécute sur un poste qui 
 |---|---|
 | `organisation-creer --organisation <id> --cles <fichier>` | Génère la clé du responsable (fichier privé, droits 600) et sa clé publique `<fichier>.pub.json` ; affiche l'empreinte courte |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte courte d'une clé publique d'organisation |
-| `box-demande --cles <fichier> --box-id <uuid> --nom <nom> [--simplex <adresse>] --sortie <fichier>` | Côté box, en attendant l'étape C : génère l'identité de la box si besoin et produit une demande signée |
+| `box-demande --cles <fichier> --box-id <uuid> --nom <nom> [--simplex <adresse>] --sortie <fichier>` | Côté box, en attendant l'étape C : génère l'identité de la box si besoin (clés de signature, et clés de chiffrement dans `<fichier>.chiffrement`) et produit une demande signée |
 | `enroler --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>` | Vérifie la preuve de possession, affiche l'empreinte de la box à confirmer hors bande, puis signe l'entrée |
 | `revoquer --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>` | Émet l'entrée révoquée (numéro + 1) |
 | `verifier --cle-publique <fichier> --entree <fichier>` | Vérifie une entrée et affiche son état |
@@ -264,3 +266,4 @@ Dans le Compose, `compose.annuaire.yml` passe les phrases en secrets `phrase-box
 - **Support matériel** (TPM pour la box ; carte à puce ou HSM pour le responsable), dès qu'il prendra en charge ML-DSA.
 - **Lecture de l'annuaire** réservée aux box enrôlées (requêtes signées), si l'organisation le souhaite.
 - **Annonces de très gros examens** : découpage au-delà de la taille d'un message.
+- Chiffrement applicatif : fait, voir [chiffrement-applicatif.md](chiffrement-applicatif.md).

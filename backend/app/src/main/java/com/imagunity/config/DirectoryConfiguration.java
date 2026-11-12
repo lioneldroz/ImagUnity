@@ -2,13 +2,16 @@ package com.imagunity.config;
 
 import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.EntryVerifier;
+import com.imagunity.directory.HybridKemKeyPair;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.KeyFiles;
 import com.imagunity.directory.LocalDirectory;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
+import com.imagunity.orchestration.DirectoryPacketEncryption;
 import com.imagunity.orchestration.DirectoryPeerAuthorization;
 import com.imagunity.orchestration.MessageSigner;
+import com.imagunity.orchestration.PacketEncryption;
 import com.imagunity.orchestration.PeerAuthorization;
 import com.imagunity.orchestration.PeerHandshake;
 import com.imagunity.persistence.JdbcDirectoryStore;
@@ -35,7 +38,8 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Annuaire signé (activé par {@code imagunity.directory.enabled=true}) : clé épinglée du responsable, identité de la
- * box, vue locale de l'annuaire et sa synchronisation, poignée de main avec les partenaires, autorisation.
+ * box, vue locale de l'annuaire et sa synchronisation, poignée de main avec les partenaires, autorisation, chiffrement
+ * applicatif des paquets.
  */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "imagunity.directory.enabled", havingValue = "true")
@@ -87,24 +91,26 @@ class DirectoryConfiguration {
     static BoxIdentity loadOrCreateIdentity(Path keysFile, char[] passphrase) throws IOException {
         Path idFile = Path.of(keysFile + ".id");
         if (Files.exists(keysFile)) {
-            boolean protectedKey = KeyFiles.isProtected(keysFile);
-            if (protectedKey && passphrase == null) {
-                throw new IllegalStateException("Identité de la box protégée par phrase de passe : la fournir par "
-                        + "IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE (ou ..._PASSPHRASE)");
+            HybridKeyPair keys = readKeys(keysFile, passphrase);
+            UUID boxId = UUID.fromString(Files.readString(idFile, StandardCharsets.UTF_8).strip());
+            Path encryptionFile = encryptionFileOf(keysFile);
+            HybridKemKeyPair encryption;
+            if (Files.exists(encryptionFile)) {
+                encryption = readEncryption(encryptionFile, passphrase);
+            } else {
+                encryption = HybridKemKeyPair.generate();
+                KeyFiles.writeEncryptionPrivate(encryptionFile, encryption, passphrase);
+                LOG.warn("Clés de chiffrement de la box créées : faire réémettre son entrée d'annuaire par le "
+                        + "responsable, à partir d'une nouvelle demande d'enrôlement (console, onglet Annuaire)");
             }
-            if (!protectedKey && passphrase != null) {
-                KeyFiles.protect(keysFile, passphrase);
-                LOG.info("Identité de la box désormais protégée par phrase de passe");
-            } else if (!protectedKey) {
-                warnUnprotected();
-            }
-            BoxIdentity identity = new BoxIdentity(UUID.fromString(Files.readString(idFile, StandardCharsets.UTF_8)
-                    .strip()), KeyFiles.readPrivate(keysFile, passphrase));
+            BoxIdentity identity = new BoxIdentity(boxId, keys, encryption);
             LOG.info("Identité de la box {} ({})", identity.boxId(), identity.keys().publicKey().shortCode());
             return identity;
         }
-        BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate());
+        BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
+                HybridKemKeyPair.generate());
         KeyFiles.writePrivate(keysFile, identity.keys(), passphrase);
+        KeyFiles.writeEncryptionPrivate(encryptionFileOf(keysFile), identity.encryption(), passphrase);
         Files.writeString(idFile, identity.boxId().toString(), StandardCharsets.UTF_8);
         if (passphrase == null) {
             warnUnprotected();
@@ -112,6 +118,34 @@ class DirectoryConfiguration {
         LOG.info("Identité de la box créée : {} ({}) — à faire enrôler par le responsable", identity.boxId(),
                 identity.keys().publicKey().shortCode());
         return identity;
+    }
+
+    /** Clés de chiffrement de la box, à côté de sa clé de signature. */
+    static Path encryptionFileOf(Path keysFile) {
+        return Path.of(keysFile + ".chiffrement");
+    }
+
+    private static HybridKeyPair readKeys(Path keysFile, char[] passphrase) throws IOException {
+        boolean protectedKey = KeyFiles.isProtected(keysFile);
+        if (protectedKey && passphrase == null) {
+            throw new IllegalStateException("Identité de la box protégée par phrase de passe : la fournir par "
+                    + "IMAGUNITY_DIRECTORY_IDENTITY_PASSPHRASE_FILE (ou ..._PASSPHRASE)");
+        }
+        if (!protectedKey && passphrase != null) {
+            KeyFiles.protect(keysFile, passphrase);
+            LOG.info("Identité de la box désormais protégée par phrase de passe");
+        } else if (!protectedKey) {
+            warnUnprotected();
+        }
+        return KeyFiles.readPrivate(keysFile, passphrase);
+    }
+
+    private static HybridKemKeyPair readEncryption(Path file, char[] passphrase) throws IOException {
+        if (!KeyFiles.isProtected(file) && passphrase != null) {
+            KeyFiles.protect(file, passphrase);
+            LOG.info("Clés de chiffrement de la box désormais protégées par phrase de passe");
+        }
+        return KeyFiles.readEncryptionPrivate(file, passphrase);
     }
 
     private static void warnUnprotected() {
@@ -133,6 +167,16 @@ class DirectoryConfiguration {
     @Bean
     MessageSigner messageSigner(BoxIdentity identity, LocalDirectory directory) {
         return new MessageSigner(identity, directory);
+    }
+
+    /** Paquets chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire. */
+    @Bean
+    PacketEncryption packetEncryption(LocalDirectory directory, BoxIdentity identity, DirectoryProperties properties) {
+        if (!properties.encryptionRequired()) {
+            LOG.warn("Chiffrement applicatif NON exigé (IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED=false) : réservé à la "
+                    + "migration d'un parc");
+        }
+        return new DirectoryPacketEncryption(directory, identity, properties.encryptionRequired());
     }
 
     @Bean

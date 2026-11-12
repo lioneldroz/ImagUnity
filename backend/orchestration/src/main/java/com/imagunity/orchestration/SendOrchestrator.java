@@ -1,5 +1,6 @@
 package com.imagunity.orchestration;
 
+import com.imagunity.directory.SealedFiles;
 import com.imagunity.domain.exam.ReceivedInstance;
 import com.imagunity.domain.exam.ReceivedStudy;
 import com.imagunity.domain.peer.Peer;
@@ -47,6 +48,11 @@ import java.util.stream.Stream;
  * d'envoi du transfert ; après un accusé « en échec », les paquets sont gardés. Dans les deux cas, le destinataire
  * en a fini avec les paquets déposés : ils sont retirés des relais (une relance les redépose).
  *
+ * <p>Avec l'annuaire, chaque paquet est chiffré pour la box destinataire ({@link PacketEncryption}) au moment d'être
+ * confié au transport : l'annonce porte la taille et l'empreinte du paquet chiffré. Une relance renvoie les paquets
+ * déjà chiffrés ; un paquet resté en clair (destinataire sans clés de chiffrement lors de l'essai précédent) est
+ * chiffré à la relance.
+ *
  * <p>Un transfert {@code FAILED} empaqueté peut être {@link #retry relancé} : ses paquets, gardés dans le dossier
  * d'envoi, sont de nouveau confiés au transport ({@code FAILED → PACKAGED}), puis annoncés.
  *
@@ -72,6 +78,7 @@ public final class SendOrchestrator {
     private final Clock clock;
     private final TransferMessages messages;
     private final PeerAuthorization authorization;
+    private final PacketEncryption encryption;
 
     public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
                             TransportPort transport, Path outboxDir, Executor executor, Clock clock) {
@@ -91,7 +98,18 @@ public final class SendOrchestrator {
     public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
                             TransportPort transport, Path outboxDir, Executor executor, Clock clock,
                             PeerAuthorization authorization, MessageSigner signer) {
+        this(transfers, peers, packager, transport, outboxDir, executor, clock, authorization, signer,
+                PacketEncryption.none());
+    }
+
+    /**
+     * @param encryption chiffre les paquets pour la box destinataire, au moment de les confier au transport
+     */
+    public SendOrchestrator(TransferRepository transfers, PeerRepository peers, StudyPackager packager,
+                            TransportPort transport, Path outboxDir, Executor executor, Clock clock,
+                            PeerAuthorization authorization, MessageSigner signer, PacketEncryption encryption) {
         this.authorization = authorization;
+        this.encryption = encryption;
         this.messages = new TransferMessages(signer);
         this.transfers = transfers;
         this.peers = peers;
@@ -184,9 +202,9 @@ public final class SendOrchestrator {
         hand(packaged);
     }
 
-    /** Confie au transport les paquets qui ne l'ont pas encore été. */
+    /** Chiffre pour le destinataire, puis confie au transport, les paquets qui ne l'ont pas encore été. */
     private void hand(Transfer transfer) {
-        Optional<PeerId> peer = peerOf(transfer);
+        Optional<Peer> peer = peerOf(transfer);
         if (peer.isEmpty()) {
             return;
         }
@@ -194,16 +212,40 @@ public final class SendOrchestrator {
             if (part.transportFileId() != null) {
                 continue; // déjà confié : le transport poursuit le dépôt de lui-même
             }
+            String label = "paquet " + part.index() + "/" + part.count();
             try {
-                long fileId = transport.sendFile(peer.get(), part.file());
+                part = seal(peer.get(), part);
+            } catch (IOException | RuntimeException e) {
+                fail(transfer, "Chiffrement du " + label + " impossible : " + e.getMessage());
+                return;
+            }
+            try {
+                long fileId = transport.sendFile(new PeerId(peer.get().transportPeerId()), part.file());
                 transfers.updatePart(part.handedOver(fileId));
             } catch (TransportException e) {
-                fail(transfer, "Envoi du paquet " + part.index() + "/" + part.count() + " impossible : "
-                        + e.getMessage());
+                fail(transfer, "Envoi du " + label + " impossible : " + e.getMessage());
                 return;
             }
         }
         completeUploadIfDone(transfer);
+    }
+
+    /**
+     * Remplace un paquet en clair par sa version chiffrée pour le destinataire : le chiffré est enregistré avant que
+     * le clair soit supprimé. Un paquet déjà chiffré (relance) repart tel quel.
+     */
+    private TransferPart seal(Peer peer, TransferPart part) throws IOException {
+        if (part.file().getFileName().toString().endsWith(SealedFiles.EXTENSION)) {
+            return part;
+        }
+        Path sealed = encryption.seal(peer, part.file());
+        if (sealed.equals(part.file())) {
+            return part;
+        }
+        TransferPart replaced = part.sealedAs(sealed, Files.size(sealed), ReceiveOrchestrator.sha256(sealed));
+        transfers.updatePart(replaced);
+        Files.delete(part.file());
+        return replaced;
     }
 
     private void completeUploadIfDone(Transfer transfer) {
@@ -217,7 +259,7 @@ public final class SendOrchestrator {
     }
 
     private void announce(Transfer transfer) {
-        Optional<PeerId> peer = peerOf(transfer);
+        Optional<PeerId> peer = peerOf(transfer).map(p -> new PeerId(p.transportPeerId()));
         if (peer.isEmpty()) {
             return;
         }
@@ -358,7 +400,7 @@ public final class SendOrchestrator {
 
     // --- Outils ---
 
-    private Optional<PeerId> peerOf(Transfer transfer) {
+    private Optional<Peer> peerOf(Transfer transfer) {
         Optional<Peer> peer = peers.findByName(transfer.destination());
         if (peer.isEmpty()) {
             fail(transfer, "Partenaire non appairé : " + transfer.destination());
@@ -369,7 +411,7 @@ public final class SendOrchestrator {
             fail(transfer, refusal.get());
             return Optional.empty();
         }
-        return Optional.of(new PeerId(peer.get().transportPeerId()));
+        return peer;
     }
 
     private Path outboxOf(Transfer transfer) {

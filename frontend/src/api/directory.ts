@@ -12,6 +12,8 @@ export interface DirectoryBox {
   reachable: boolean
   /** Nom local du partenaire lié à cette box (null : pas appairée). */
   pairedAs: string | null
+  /** L’entrée publie les clés de chiffrement de la box (sinon : entrée à réémettre). */
+  encrypted: boolean
 }
 
 /** GET /api/v1/directory. */

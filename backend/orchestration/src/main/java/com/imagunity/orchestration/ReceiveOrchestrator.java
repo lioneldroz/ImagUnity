@@ -1,5 +1,6 @@
 package com.imagunity.orchestration;
 
+import com.imagunity.directory.SealedFiles;
 import com.imagunity.domain.exam.DicomUids;
 import com.imagunity.domain.exam.StudyRestorer;
 import com.imagunity.domain.inbound.InboundFile;
@@ -59,8 +60,9 @@ import java.util.stream.Stream;
  *   <li>seuls les partenaires appairés sont écoutés ;</li>
  *   <li>un fichier n'est téléchargé que si son nom suit le format des paquets et si sa taille est bornée ;</li>
  *   <li>une annonce mal formée est ignorée ;</li>
- *   <li>chaque paquet doit avoir la taille et l'empreinte SHA-256 annoncées, puis passer les contrôles du
- *       {@link PackageReader} ; son manifeste doit correspondre à l'annonce ;</li>
+ *   <li>chaque paquet doit avoir la taille et l'empreinte SHA-256 annoncées ; chiffré pour cette box
+ *       ({@link PacketEncryption}), il doit se déchiffrer ; il doit ensuite passer les contrôles du
+ *       {@link PackageReader}, et son manifeste correspondre à l'annonce ;</li>
  *   <li>le {@link StudyRestorer} valide chaque instance avant de l'envoyer au PACS.</li>
  * </ul>
  *
@@ -70,7 +72,7 @@ public final class ReceiveOrchestrator {
 
     private static final System.Logger LOG = System.getLogger(ReceiveOrchestrator.class.getName());
     private static final String UUID_REGEX = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-    static final Pattern FILE_NAME = Pattern.compile("(" + UUID_REGEX + ")-([1-9][0-9]{0,3})-of-([1-9][0-9]{0,3})\\.tar\\.zst");
+    static final Pattern FILE_NAME = Pattern.compile("(" + UUID_REGEX + ")-([1-9][0-9]{0,3})-of-([1-9][0-9]{0,3})\\.tar\\.zst(\\.iu1)?");
     private static final Pattern GROUP_ID = Pattern.compile(UUID_REGEX);
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
@@ -85,6 +87,7 @@ public final class ReceiveOrchestrator {
     private final Clock clock;
     private final TransferMessages messages;
     private final PeerAuthorization authorization;
+    private final PacketEncryption encryption;
 
     public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
                                PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
@@ -107,7 +110,20 @@ public final class ReceiveOrchestrator {
                                PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
                                Executor executor, Clock clock, PeerAuthorization authorization,
                                MessageSigner signer) {
+        this(inbound, peers, transport, reader, restorer, inboxDir, maxFileSize, executor, clock, authorization, signer,
+                PacketEncryption.none());
+    }
+
+    /**
+     * @param encryption déchiffre les paquets chiffrés pour cette box, et refuse les paquets en clair si le chiffrement
+     *                   est exigé
+     */
+    public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
+                               PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
+                               Executor executor, Clock clock, PeerAuthorization authorization,
+                               MessageSigner signer, PacketEncryption encryption) {
         this.authorization = authorization;
+        this.encryption = encryption;
         this.messages = new TransferMessages(signer);
         this.inbound = inbound;
         this.peers = peers;
@@ -283,13 +299,17 @@ public final class ReceiveOrchestrator {
         Set<Integer> indexes = new HashSet<>();
         for (TransferAnnouncement.Part p : a.parts()) {
             boolean ok = p.count() == n && p.index() >= 1 && p.index() <= n && indexes.add(p.index())
-                    && (a.packageGroupId() + "-" + p.index() + "-of-" + n + ".tar.zst").equals(p.fileName())
+                    && isPartName(a.packageGroupId() + "-" + p.index() + "-of-" + n + ".tar.zst", p.fileName())
                     && p.size() > 0 && p.sha256() != null && SHA256.matcher(p.sha256()).matches();
             if (!ok) {
                 return Optional.of("paquet " + p.index());
             }
         }
         return Optional.empty();
+    }
+
+    private static boolean isPartName(String expected, String fileName) {
+        return expected.equals(fileName) || (expected + SealedFiles.EXTENSION).equals(fileName);
     }
 
     // --- Restitution ---
@@ -329,7 +349,11 @@ public final class ReceiveOrchestrator {
                     throw new IOException("Empreinte du paquet " + part.index() + "/" + part.count()
                             + " différente de l'annonce");
                 }
-                UnpackedPackage unpacked = reader.unpack(file, work.resolve("part-" + part.index()));
+                Path plain = encryption.open(file, part.fileName(), work.resolve("clair-" + part.index()));
+                UnpackedPackage unpacked = reader.unpack(plain, work.resolve("part-" + part.index()));
+                if (!plain.equals(file)) {
+                    Files.delete(plain); // déchiffré, puis dépaqueté : la copie en clair ne sert plus
+                }
                 PackageManifest m = unpacked.manifest();
                 if (!m.packageGroupId().equals(a.packageGroupId()) || m.partIndex() != part.index()
                         || m.partCount() != part.count() || !m.studyInstanceUid().equals(a.studyInstanceUid())) {

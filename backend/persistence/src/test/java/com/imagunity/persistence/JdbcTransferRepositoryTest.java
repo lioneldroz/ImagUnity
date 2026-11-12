@@ -116,6 +116,12 @@ class JdbcTransferRepositoryTest {
         repository.updatePart(repository.findPartByTransportFileId(42).orElseThrow().markUploaded());
         assertThat(repository.parts(transfer.id()).getFirst().uploaded()).isTrue();
         assertThat(repository.findPartByTransportFileId(43)).isEmpty();
+
+        repository.updatePart(parts.get(1).sealedAs(Path.of("outbox", "2.tar.zst.iu1"), 99, "b".repeat(64)));
+        TransferPart sealed = repository.parts(transfer.id()).get(1);
+        assertThat(sealed.file()).isEqualTo(Path.of("outbox", "2.tar.zst.iu1"));
+        assertThat(sealed.size()).isEqualTo(99);
+        assertThat(sealed.sha256()).isEqualTo("b".repeat(64));
     }
 
     @Test

@@ -15,6 +15,7 @@ class DocumentsTest {
 
     private static final HybridKeyPair ORG_KEYS = HybridKeyPair.generate();
     private static final HybridKeyPair BOX_KEYS = HybridKeyPair.generate();
+    private static final HybridKemKeyPair BOX_ENCRYPTION = HybridKemKeyPair.generate();
     private static final Instant NOW = Instant.parse("2026-11-12T10:00:00Z");
     private static final UUID BOX = UUID.fromString("3f6c0d2e-8a8b-4b6e-9a51-0f6d3c2b1a00");
 
@@ -55,6 +56,31 @@ class DocumentsTest {
         assertThatThrownBy(() -> EnrollmentRequest.verify(otherSuite)).hasMessageContaining("IU2");
         assertThatThrownBy(() -> EnrollmentRequest.verify(SignedDocument.sign("{\"inconnu\":1}", BOX_KEYS)))
                 .isInstanceOf(DirectoryException.class).hasMessageContaining("illisible");
+    }
+
+    @Test
+    void encryptionKeysTravelFromTheRequestToTheEntryAndSurviveRevocation() {
+        SignedDocument request = EnrollmentRequest.create(BOX_KEYS, BOX_ENCRYPTION.publicKey(), BOX, "CHU Exemple",
+                Map.of(), NOW);
+        SignedDocument entry = organization.enroll(request, NOW, Duration.ofDays(365), 1);
+        BoxEntry e = verifier(NOW.plusSeconds(60)).verify(entry).entry();
+
+        assertThat(e.encryptionKey()).get().extracting(HybridKemPublicKey::fingerprint)
+                .isEqualTo(BOX_ENCRYPTION.publicKey().fingerprint());
+        BoxEntry revoked = verifier(NOW.plusSeconds(120))
+                .verify(organization.revoke(entry, NOW.plusSeconds(90), "Box volée")).entry();
+        assertThat(revoked.encryptionKeys()).isEqualTo(e.encryptionKeys());
+
+        // Sans clés de chiffrement, le champ est absent du document : les box antérieures le lisent encore.
+        SignedDocument plain = organization.enroll(request(), NOW, Duration.ofDays(365), 1);
+        assertThat(plain.payload()).doesNotContain("encryptionKeys");
+        assertThat(verifier(NOW.plusSeconds(60)).verify(plain).entry().encryptionKey()).isEmpty();
+
+        SignedDocument unreadable = SignedDocument.sign(request.payload().replaceFirst(
+                "\"x25519\":\"[^\"]+\"", "\"x25519\":\"AAAA\""), BOX_KEYS);
+        assertThatThrownBy(() -> EnrollmentRequest.verify(unreadable)).hasMessageContaining("illisible");
+        assertThat(new EnrollmentRequest(Suite.ID, BOX, "B", BOX_KEYS.publicKey().encoded(), null, NOW)
+                .encryptionKeys()).isNull();
     }
 
     @Test

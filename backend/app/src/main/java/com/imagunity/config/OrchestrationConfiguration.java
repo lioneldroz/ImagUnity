@@ -11,6 +11,7 @@ import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.domain.transfer.TransferRepository;
 import com.imagunity.orchestration.MessageSigner;
 import com.imagunity.orchestration.PairingService;
+import com.imagunity.orchestration.PacketEncryption;
 import com.imagunity.orchestration.PeerAuthorization;
 import com.imagunity.orchestration.ReceiveOrchestrator;
 import com.imagunity.orchestration.SendOrchestrator;
@@ -68,10 +69,12 @@ class OrchestrationConfiguration {
     SendOrchestrator sendOrchestrator(TransferRepository transfers, PeerRepository peers, TransportPort transport,
                                       OrchestrationProperties properties, ExecutorService orchestrationExecutor,
                                       Clock clock, ObjectProvider<PeerAuthorization> authorization,
-                                      ObjectProvider<MessageSigner> signer) {
+                                      ObjectProvider<MessageSigner> signer,
+                                      ObjectProvider<PacketEncryption> encryption) {
         return new SendOrchestrator(transfers, peers, new StudyPackager(properties.packagingConfig()), transport,
                 properties.outboxDir(), orchestrationExecutor, clock,
-                authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable());
+                authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable(),
+                encryption.getIfAvailable(PacketEncryption::none));
     }
 
     @Bean
@@ -89,10 +92,12 @@ class OrchestrationConfiguration {
                                             StudyRestorer restorer, RestoreProperties properties,
                                             ExecutorService orchestrationExecutor, Clock clock,
                                             ObjectProvider<PeerAuthorization> authorization,
-                                            ObjectProvider<MessageSigner> signer) {
+                                            ObjectProvider<MessageSigner> signer,
+                                            ObjectProvider<PacketEncryption> encryption) {
         return new ReceiveOrchestrator(inbound, peers, transport, new PackageReader(properties.maxUnpackedSize().toBytes()),
                 restorer, properties.inboxDir(), properties.maxInboundFileSize().toBytes(), orchestrationExecutor,
-                clock, authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable());
+                clock, authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable(),
+                encryption.getIfAvailable(PacketEncryption::none));
     }
 
     @Bean

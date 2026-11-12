@@ -32,6 +32,11 @@ public record TransferPart(
         Objects.requireNonNull(sha256, "sha256");
     }
 
+    /** Paquet remplacé par sa version chiffrée, pas encore confiée au transport. */
+    public TransferPart sealedAs(Path sealed, long sealedSize, String sealedSha256) {
+        return new TransferPart(transferId, index, count, sealed, sealedSize, sealedSha256, null, false);
+    }
+
     public TransferPart handedOver(long fileId) {
         return new TransferPart(transferId, index, count, file, size, sha256, fileId, false);
     }

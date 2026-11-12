@@ -55,9 +55,10 @@ public class DirectoryController {
     /**
      * @param reachable vrai si la box publie une adresse de contact
      * @param pairedAs  nom local du partenaire lié à cette box ({@code null} : pas appairée)
+     * @param encrypted vrai si l'entrée publie les clés de chiffrement de la box (sinon, entrée à réémettre)
      */
     public record BoxView(UUID boxId, String displayName, long serial, BoxEntry.Status status, Instant validUntil,
-                          boolean reachable, String pairedAs) {
+                          boolean reachable, String pairedAs, boolean encrypted) {
     }
 
     /** Corps de {@code POST /boxes/{boxId}/pair}. */
@@ -108,7 +109,7 @@ public class DirectoryController {
         List<BoxView> boxes = local.entries().stream()
                 .sorted(Comparator.comparing(BoxEntry::displayName))
                 .map(e -> new BoxView(e.boxId(), e.displayName(), e.serial(), e.statusAt(now), e.validUntil(),
-                        e.transport().containsKey(SIMPLEX), paired.get(e.boxId())))
+                        e.transport().containsKey(SIMPLEX), paired.get(e.boxId()), e.encryptionKeys() != null))
                 .toList();
         return new DirectoryView(true, me.boxId(), me.keys().publicKey().shortCode(),
                 new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes);
@@ -128,8 +129,8 @@ public class DirectoryController {
         } catch (TransportException e) {
             LOG.log(System.Logger.Level.WARNING, "Demande d''enrôlement sans adresse de contact : {0}", e.getMessage());
         }
-        String request = EnrollmentRequest.create(me.keys(), me.boxId(), displayName, addresses, clock.instant())
-                .toJson();
+        String request = EnrollmentRequest.create(me.keys(), me.encryption().publicKey(), me.boxId(), displayName,
+                addresses, clock.instant()).toJson();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"demande-" + me.boxId() + ".json\"")
                 .body(request);

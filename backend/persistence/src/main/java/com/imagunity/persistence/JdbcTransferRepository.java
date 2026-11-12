@@ -108,9 +108,10 @@ public final class JdbcTransferRepository implements TransferRepository {
 
     @Override
     public void updatePart(TransferPart p) {
-        int updated = jdbc.sql("UPDATE transfer_part SET transport_file_id = ?, uploaded = ? "
-                        + "WHERE transfer_id = ? AND part_index = ?")
-                .params(p.transportFileId(), p.uploaded(), p.transferId(), p.index())
+        int updated = jdbc.sql("UPDATE transfer_part SET file_path = ?, size_bytes = ?, sha256 = ?, "
+                        + "transport_file_id = ?, uploaded = ? WHERE transfer_id = ? AND part_index = ?")
+                .params(p.file().toString(), p.size(), p.sha256(), p.transportFileId(), p.uploaded(), p.transferId(),
+                        p.index())
                 .update();
         if (updated != 1) {
             throw new IllegalStateException("Paquet inconnu : " + p.transferId() + " #" + p.index());
