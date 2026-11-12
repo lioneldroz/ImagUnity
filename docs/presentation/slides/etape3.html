@@ -1,0 +1,46 @@
+<section id="etape3" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Étape 4 · Vers Internet</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Le dépôt et l’annonce</h2>
+</div>
+<div style="display:grid;grid-template-columns:360px 1fr 520px;gap:24px 28px;align-items:center">
+<div style="grid-row:span 2;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:12px;background:#2563A8;border-radius:20px;padding:32px">
+<h3 style="font-size:40px;font-weight:700;color:#F3F4EE">Box A</h3>
+<p style="font-size:28px;color:#DCE8F5">chiffre chaque paquet pour la seule box B</p>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+<p style="font-size:26px;font-weight:600;color:#2563A8">les paquets chiffrés</p>
+<x-shape kind="arrow-right" style="width:180px;height:48px;background:#2563A8"></x-shape>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:20px;padding:28px">
+<x-icon name="Lock" style="color:#F3F4EE;width:52px;height:52px"></x-icon>
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais XFTP</h3>
+<p style="font-size:26px;color:#D5DEEA">garde des morceaux chiffrés</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+<p style="font-size:26px;font-weight:600;color:#2563A8">l’annonce : liste et empreintes</p>
+<x-shape kind="arrow-right" style="width:180px;height:48px;background:#2563A8"></x-shape>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:20px;padding:28px">
+<x-icon name="Chat" style="color:#F3F4EE;width:52px;height:52px"></x-icon>
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais SMP</h3>
+<p style="font-size:26px;color:#D5DEEA">transmet le message chiffré</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#E3E6EA;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Le relais ne voit rien</h3>
+<p style="font-size:28px;color:#3A4556">Mesuré : aucun nom, identifiant ni UID en clair dans 5,5 Go stockés, des données indiscernables du hasard</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#E3E6EA;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Le destinataire peut être absent</h3>
+<p style="font-size:28px;color:#3A4556">Les paquets attendent sur le relais ; ils en sont retirés dès l’accusé de réception</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Dépôt et annonce</p>
+<aside>Deux envois partent de la box A, chacun par une connexion sortante. Les paquets, chiffrés pour la seule box B, vont sur le relais de fichiers (XFTP). Un court message, l’annonce, part par le relais de messages (SMP) : il liste les paquets, leurs tailles et leurs empreintes. Pendant la campagne de tests, nous avons fouillé tout ce que les relais avaient écrit sur disque : aucune donnée lisible. La box B n’a pas besoin d’être allumée à ce moment-là ; quand elle a confirmé la réception, la box A fait retirer les paquets du relais.</aside>
+</section>

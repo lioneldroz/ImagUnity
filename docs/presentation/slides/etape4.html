@@ -1,0 +1,39 @@
+<section id="etape4" data-transition="fade" style="background:#EAF0F5;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#B84A12">Étapes 5 et 6 · Hôpital B</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">La box B télécharge, puis vérifie tout</h2>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<div style="width:320px;display:flex;flex-direction:column;align-items:center;gap:12px;background:#3A4556;border-radius:20px;padding:28px">
+<x-icon name="Lock" style="color:#F3F4EE;width:52px;height:52px"></x-icon>
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais</h3>
+<p style="font-size:26px;color:#D5DEEA;text-align:center">paquets chiffrés et annonce</p>
+</div>
+<x-shape kind="arrow-right" style="width:96px;height:48px;background:#B84A12"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#FDFDFB;border:3px solid #B84A12;border-radius:20px;padding:32px">
+<h3 style="font-size:36px;font-weight:700;color:#B84A12">Box B : quatre contrôles</h3>
+<div style="display:flex;flex-direction:row;align-items:center;gap:16px">
+<x-icon name="CheckCircle" style="color:#B84A12;width:40px;height:40px"></x-icon>
+<p style="font-size:28px">Chaque paquet a la taille et l’empreinte annoncées</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:16px">
+<x-icon name="CheckCircle" style="color:#B84A12;width:40px;height:40px"></x-icon>
+<p style="font-size:28px">Le manifeste correspond à l’annonce : même étude, rien ne manque</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:16px">
+<x-icon name="CheckCircle" style="color:#B84A12;width:40px;height:40px"></x-icon>
+<p style="font-size:28px">Chaque image DICOM est relue entièrement, ses identifiants sont cohérents</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:16px">
+<x-icon name="CheckCircle" style="color:#B84A12;width:40px;height:40px"></x-icon>
+<p style="font-size:28px">L’expéditeur est bien un partenaire appairé</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px;background:#14213D;border-radius:20px;padding:28px 40px">
+<x-icon name="Warning" style="color:#F2A65A;width:52px;height:52px"></x-icon>
+<p style="font-size:30px;line-height:1.35;color:#F3F4EE"><b>Une seule anomalie, et rien n’est envoyé au PACS</b> : le transfert passe en échec et la box A en est prévenue.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Vérification</p>
+<aside>La box B ne fait confiance à rien de ce qui arrive d’Internet. Elle ne télécharge que des fichiers au format attendu, venant d’un partenaire appairé. Puis elle vérifie : l’empreinte de chaque paquet, la cohérence du manifeste avec l’annonce, et chaque image DICOM relue de bout en bout. C’est du tout ou rien : à la moindre anomalie, rien n’est envoyé au PACS, et la box A reçoit un accusé « en échec » avec la cause. Le PACS de l’hôpital B ne reçoit donc jamais un examen incomplet ou altéré.</aside>
+</section>

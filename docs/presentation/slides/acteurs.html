@@ -1,0 +1,47 @@
+<section id="acteurs" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Les acteurs</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Qui fait quoi</h2>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px">
+<div style="display:flex;flex-direction:column;gap:16px;background:#DCE8F5;border-radius:20px;padding:28px">
+<p style="font-size:26px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Hôpital A</p>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">PACS A</h3>
+<p style="font-size:26px;color:#4A5568">Envoie l’examen en DICOM, comme vers n’importe quel appareil</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">Box A</h3>
+<p style="font-size:26px;color:#4A5568">Logiciel ImagUnity + client SimpleX : empaquette et envoie</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px;background:#E3E6EA;border-radius:20px;padding:28px">
+<p style="font-size:26px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3A4556">Internet</p>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">Relais SMP</h3>
+<p style="font-size:26px;color:#4A5568">Petits messages : annonces et accusés de réception</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">Relais XFTP</h3>
+<p style="font-size:26px;color:#4A5568">Gros fichiers : les paquets chiffrés de l’examen</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px;background:#FBE3D3;border-radius:20px;padding:28px">
+<p style="font-size:26px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#B84A12">Hôpital B</p>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">Box B</h3>
+<p style="font-size:26px;color:#4A5568">Télécharge, vérifie, puis restitue l’examen</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;background:#FDFDFB;border-radius:14px;padding:22px">
+<h3 style="font-size:32px;font-weight:700">PACS B</h3>
+<p style="font-size:26px;color:#4A5568">Reçoit l’examen en DICOM, comme s’il venait d’un appareil local</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#FDFDFB;border-radius:16px;padding:22px 28px">
+<x-icon name="Activity" style="color:#2563A8;width:44px;height:44px"></x-icon>
+<p style="font-size:28px;color:#1B2433"><b>Console web de chaque box</b> : suivi en direct et relance, réservée au réseau de l’hôpital, avec compte opérateur</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Les acteurs</p>
+<aside>Six acteurs. Les PACS ne changent pas : ils parlent DICOM à la box comme à n’importe quel appareil du service. Chaque box est un petit serveur placé dans l’hôpital, qui contient le logiciel ImagUnity et un client SimpleX non modifié. Sur Internet, deux types de relais : SMP pour les messages courts (annonce d’un envoi, accusé de réception), XFTP pour les fichiers. La console web permet de suivre les transferts ; elle n’est joignable que depuis le réseau de l’hôpital et demande un compte.</aside>
+</section>

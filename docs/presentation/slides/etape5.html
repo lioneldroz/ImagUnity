@@ -1,0 +1,43 @@
+<section id="etape5" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#B84A12">Étapes 7 et 8 · Arrivée</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">La restitution, puis l’accusé de réception</h2>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<div style="width:380px;display:flex;flex-direction:column;gap:8px;background:#B84A12;border-radius:20px;padding:28px">
+<h3 style="font-size:36px;font-weight:700;color:#F3F4EE">Box B</h3>
+<p style="font-size:26px;color:#FBE3D3">examen vérifié</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+<p style="font-size:26px;font-weight:600;color:#B84A12">C-STORE, images d’origine</p>
+<x-shape kind="arrow-right" style="width:200px;height:52px;background:#B84A12"></x-shape>
+</div>
+<div style="width:520px;display:flex;flex-direction:row;align-items:center;gap:20px;background:#FDFDFB;border:3px solid #B84A12;border-radius:20px;padding:28px">
+<x-icon name="Database" style="color:#B84A12;width:56px;height:56px"></x-icon>
+<div style="display:flex;flex-direction:column;gap:6px">
+<h3 style="font-size:36px;font-weight:700;color:#B84A12">PACS B</h3>
+<p style="font-size:26px;color:#1B2433">100 / 100 images identiques</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<div style="width:520px;display:flex;flex-direction:column;gap:8px;background:#2563A8;border-radius:20px;padding:28px">
+<h3 style="font-size:36px;font-weight:700;color:#F3F4EE">Box A</h3>
+<p style="font-size:26px;color:#DCE8F5">transfert confirmé, dossier d’envoi vidé, paquets retirés du relais</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+<p style="font-size:26px;font-weight:600;color:#B84A12;text-align:center">accusé « restitué » par le relais SMP</p>
+<x-shape kind="arrow-left" style="width:200px;height:52px;background:#B84A12"></x-shape>
+</div>
+<div style="width:380px;display:flex;flex-direction:column;gap:8px;background:#B84A12;border-radius:20px;padding:28px">
+<h3 style="font-size:36px;font-weight:700;color:#F3F4EE">Box B</h3>
+<p style="font-size:26px;color:#FBE3D3">envoie l’accusé</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#E3E6EA;border-radius:16px;padding:22px 28px">
+<x-icon name="Key" style="color:#3A4556;width:44px;height:44px"></x-icon>
+<p style="font-size:28px;color:#1B2433">L’accusé contient le nombre d’images restituées et l’empreinte des paquets : la box A vérifie que c’est bien <b>son</b> envoi qui est arrivé.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Restitution et accusé</p>
+<aside>Une fois tout vérifié, la box B envoie l’examen à son PACS par C-STORE, chaque image dans son format d’origine, sans conversion. Puis elle renvoie un accusé de réception à la box A par le relais de messages : nombre d’images restituées et empreinte des paquets reçus. La box A contrôle cette empreinte, marque le transfert comme confirmé, vide son dossier d’envoi et fait retirer les paquets du relais. En cas d’échec chez B, l’accusé dit « en échec » avec la cause, et la box A garde les paquets pour une relance.</aside>
+</section>
