@@ -151,7 +151,8 @@ public final class IuTransport implements TransportPort {
         this.patientDownloader = new IuFileDownloader(http, clock,
                 new Retry(settings.ttl(), retry.maxDelay(), retry.sleeper()));
         this.outbox = new IuOutbox(store, messages, boxId, identity, this::addressOf, clock, settings.keepState());
-        this.transfers = new Semaphore(settings.parallel());
+        // Équitable : les paquets partent dans l'ordre où ils sont confiés (les prioritaires d'abord).
+        this.transfers = new Semaphore(settings.parallel(), true);
     }
 
     /**

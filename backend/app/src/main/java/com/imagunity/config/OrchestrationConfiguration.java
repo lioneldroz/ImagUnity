@@ -65,13 +65,20 @@ class OrchestrationConfiguration {
         return Executors.newSingleThreadExecutor(Thread.ofPlatform().name("orchestrateur").daemon().factory());
     }
 
+    /** Priorité des séries : règles des propriétés ou d'un fichier JSON rechargé à chaud. */
+    @Bean
+    ReloadablePriority seriesPriority(PriorityProperties properties, Clock clock) {
+        return ReloadablePriority.of(properties, clock);
+    }
+
     @Bean
     SendOrchestrator sendOrchestrator(TransferRepository transfers, PeerRepository peers, TransportPort transport,
                                       OrchestrationProperties properties, ExecutorService orchestrationExecutor,
                                       Clock clock, ObjectProvider<PeerAuthorization> authorization,
                                       ObjectProvider<MessageSigner> signer,
-                                      ObjectProvider<PacketEncryption> encryption) {
-        return new SendOrchestrator(transfers, peers, new StudyPackager(properties.packagingConfig()), transport,
+                                      ObjectProvider<PacketEncryption> encryption, ReloadablePriority priority) {
+        return new SendOrchestrator(transfers, peers, new StudyPackager(properties.packagingConfig(), priority),
+                transport,
                 properties.outboxDir(), orchestrationExecutor, clock,
                 authorization.getIfAvailable(PeerAuthorization::allowAll), signer.getIfAvailable(),
                 encryption.getIfAvailable(PacketEncryption::none));

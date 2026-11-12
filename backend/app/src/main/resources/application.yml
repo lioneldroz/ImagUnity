@@ -74,6 +74,12 @@ imagunity:
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
     # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
     encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}
+  priority:
+    # Priorité des séries (1 = la plus haute, 9 = la plus basse) : les prioritaires partent et sont restituées les
+    # premières. Règles dans un fichier JSON rechargé à chaud (IMAGUNITY_PRIORITY_FILE), ou ici / en variables
+    # d'environnement (IMAGUNITY_PRIORITY_RULES_0_NAME, _PRIORITY, _AND_MODALITY, _OR_IMAGETYPE…).
+    default-priority: ${IMAGUNITY_PRIORITY_DEFAULT:5}
+    file: ${IMAGUNITY_PRIORITY_FILE:}
   transport:
     # Transport IU-T : relais de l'organisation (exige l'annuaire). Sans relais, transport désactivé : la box
     # démarre et reçoit les examens, mais leurs transferts passent en échec.

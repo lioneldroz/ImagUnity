@@ -51,7 +51,7 @@ class RoutingRuleTest {
                 .isTrue();
         assertThat(new RoutingRule("avec", Map.of("InstitutionName", "!"), List.of("b")).matches(instance("CT", null)))
                 .isFalse();
-        assertThat(new RoutingRule("toujours", null, List.of("b")).matches(instance("SR", null))).isTrue();
+        assertThat(new RoutingRule("toujours", (Map<String, String>) null, List.of("b")).matches(instance("SR", null))).isTrue();
         assertThat(new RoutingRule("point", Map.of("StudyDescription", "a.b"), List.of("b"))
                 .matches(withDescription("axb"))).as("caractères spéciaux pris tels quels").isFalse();
     }
