@@ -27,9 +27,19 @@ public final class QueueService {
      *
      * @param suite    {@code IU1}
      * @param queueKey clé publique Ed25519 de la file (X.509, base64url)
+     * @param sendId   identifiant de dépôt réservé par la box et publié dans son entrée d'annuaire signée, ou
+     *                 {@code null} pour un identifiant tiré par le relais
      */
-    public record CreateRequest(String suite, String queueKey) {
+    public record CreateRequest(String suite, String queueKey, String sendId) {
+
+        public CreateRequest(String suite, String queueKey) {
+            this(suite, queueKey, null);
+        }
     }
+
+    private static final java.util.regex.Pattern ID = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{43}");
+    private static final java.util.regex.Pattern PUBLISHED = java.util.regex.Pattern.compile(
+            ".*/iu/v1/queues/([A-Za-z0-9_-]{43})");
 
     /** Identifiants d'une file. */
     public record Ids(String sendId, String recvId) {
@@ -48,10 +58,17 @@ public final class QueueService {
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    public QueueService(QueueStore store, RelayProperties properties, Clock clock) {
+    private final java.util.function.Function<UUID, java.util.Optional<String>> publishedAddress;
+
+    /**
+     * @param publishedAddress adresse de file publiée dans l'entrée d'annuaire de chaque box ({@code transport.iu})
+     */
+    public QueueService(QueueStore store, RelayProperties properties, Clock clock,
+                        java.util.function.Function<UUID, java.util.Optional<String>> publishedAddress) {
         this.store = store;
         this.properties = properties;
         this.clock = clock;
+        this.publishedAddress = publishedAddress;
     }
 
     public Ids create(UUID boxId, CreateRequest request) {
@@ -62,9 +79,30 @@ public final class QueueService {
         if (store.countOf(boxId) >= properties.maxQueuesPerBox()) {
             throw new RelayException(HttpStatus.INSUFFICIENT_STORAGE, "Nombre maximal de files de cette box atteint");
         }
-        Ids ids = new Ids(id(32), id(32));
+        String sendId = request.sendId() == null ? id(32) : reserved(boxId, request.sendId());
+        Ids ids = new Ids(sendId, id(32));
         store.create(new QueueStore.Queue(ids.recvId(), ids.sendId(), boxId, request.queueKey(), clock.instant()));
         return ids;
+    }
+
+    /**
+     * Identifiant de dépôt réservé par la box avant son enrôlement : admis seulement s'il est celui de l'adresse
+     * publiée dans son entrée d'annuaire signée (aucune autre box ne peut se l'approprier), et pas encore pris.
+     */
+    private String reserved(UUID boxId, String sendId) {
+        if (!ID.matcher(sendId).matches()) {
+            throw new RelayException(HttpStatus.BAD_REQUEST, "Identifiant de dépôt invalide");
+        }
+        String published = publishedAddress.apply(boxId).map(PUBLISHED::matcher)
+                .filter(java.util.regex.Matcher::matches).map(m -> m.group(1)).orElse(null);
+        if (!sendId.equals(published)) {
+            throw new RelayException(HttpStatus.CONFLICT,
+                    "Identifiant de dépôt absent de l'entrée d'annuaire de la box");
+        }
+        if (store.bySendId(sendId).isPresent()) {
+            throw new RelayException(HttpStatus.CONFLICT, "File déjà créée");
+        }
+        return sendId;
     }
 
     /** File désignée par son identifiant de dépôt ; 404 sinon. */

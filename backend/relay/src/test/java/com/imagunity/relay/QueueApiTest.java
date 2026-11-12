@@ -142,6 +142,26 @@ class QueueApiTest {
                 .statusCode()).as("l'identifiant de dépôt ne permet pas de relever").isEqualTo(404);
     }
 
+    private HttpResponse<byte[]> createWith(String sendId) throws Exception {
+        byte[] body = ("{\"suite\":\"IU1\",\"queueKey\":\"" + Codec.base64Url(queueKey.getPublic().getEncoded())
+                + "\",\"sendId\":\"" + sendId + "\"}").getBytes(StandardCharsets.UTF_8);
+        return send(deposit("/iu/v1/queues", RelayFixture.ACTIVE, RelayFixture.ACTIVE_KEYS, body, "application/json"));
+    }
+
+    @Test
+    void aBoxCreatesTheQueueWhoseAddressItsDirectoryEntryPublishes() throws Exception {
+        assertThat(RelayFixture.ACTIVE_SEND_ID).hasSize(43);
+        assertThat(createWith("x".repeat(43)).statusCode()).as("pas l'adresse de son entrée").isEqualTo(409);
+        assertThat(createWith("court").statusCode()).isEqualTo(400);
+        HttpResponse<byte[]> created = createWith(RelayFixture.ACTIVE_SEND_ID);
+        assertThat(created.statusCode()).isEqualTo(201);
+        JsonNode ids = Codec.json().readTree(created.body());
+        assertThat(ids.get("sendId").asString()).isEqualTo(RelayFixture.ACTIVE_SEND_ID);
+        assertThat(ids.get("recvId").asString()).isNotEqualTo(RelayFixture.ACTIVE_SEND_ID).hasSize(43);
+        assertThat(createWith(RelayFixture.ACTIVE_SEND_ID).statusCode()).as("déjà créée").isEqualTo(409);
+        assertThat(post(RelayFixture.ACTIVE_SEND_ID, "bonjour").statusCode()).isEqualTo(202);
+    }
+
     @Test
     void depositIsReservedToActiveBoxesAndBounded() throws Exception {
         JsonNode ids = createQueue();

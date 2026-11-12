@@ -6,10 +6,9 @@ import java.util.function.Consumer;
 /**
  * Transport entre box, indépendant de son implémentation.
  *
- * <p>Le cœur métier ne connaît que cette interface. L'implémentation actuelle
- * ({@code SimplexTransport}) pilote un client simplex-chat exécuté comme processus
- * séparé ; une réimplémentation propriétaire de SMP et XFTP ne remplacerait que
- * l'adaptateur.
+ * <p>Le cœur métier ne connaît que cette interface. Deux implémentations : {@code SimplexTransport} pilote un
+ * client simplex-chat exécuté comme processus séparé ; {@code IuTransport} parle directement au relais IU-T de
+ * l'organisation (spécification {@code docs/specification-protocole.md}).
  *
  * <p>Les méthodes sont bloquantes (prévues pour des threads virtuels). Les arrivées
  * (partenaire connecté, message, fichier) sont signalées par des {@link TransportEvent}.
@@ -61,6 +60,14 @@ public interface TransportPort extends AutoCloseable {
      */
     default String contactAddress() {
         throw new TransportException("Ce transport ne propose pas d'adresse de contact");
+    }
+
+    /**
+     * Clé de l'adresse de contact dans le champ {@code transport} des entrées d'annuaire : {@code simplex} (adresse de
+     * contact SimpleX) ou {@code iu} (file de réception IU-T).
+     */
+    default String addressKind() {
+        return "simplex";
     }
 
     /** Accepte une demande de contact reçue par l'adresse de cette box. */

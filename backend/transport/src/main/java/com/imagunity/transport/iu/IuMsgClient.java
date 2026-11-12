@@ -54,8 +54,24 @@ public final class IuMsgClient {
 
     /** Crée une file sur ce relais (requête de dépôt, signée par l'identité de la box). */
     public Ids createQueue(URI relay, UUID boxId, HybridKeyPair identity, PublicKey queueKey) throws IOException {
-        byte[] body = Codec.json().writeValueAsBytes(java.util.Map.of("suite", "IU1", "queueKey",
-                Codec.base64Url(queueKey.getEncoded())));
+        return createQueue(relay, boxId, identity, queueKey, null);
+    }
+
+    /**
+     * Crée une file de réception.
+     *
+     * @param sendId identifiant de dépôt réservé par la box et publié dans son entrée d'annuaire, ou {@code null}
+     *               pour un identifiant tiré par le relais
+     */
+    public Ids createQueue(URI relay, UUID boxId, HybridKeyPair identity, PublicKey queueKey, String sendId)
+            throws IOException {
+        java.util.Map<String, String> fields = new java.util.LinkedHashMap<>();
+        fields.put("suite", "IU1");
+        fields.put("queueKey", Codec.base64Url(queueKey.getEncoded()));
+        if (sendId != null) {
+            fields.put("sendId", sendId);
+        }
+        byte[] body = Codec.json().writeValueAsBytes(fields);
         SignedRequest signed = SignedRequest.of("POST", BASE, body, clock.instant());
         HttpRequest request = builder(relay, BASE, signed, boxId.toString(), signed.signDeposit(identity))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofByteArray(body))

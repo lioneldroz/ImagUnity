@@ -133,8 +133,9 @@ class RelayConfiguration {
     }
 
     @Bean
-    QueueService queueService(QueueStore store, RelayProperties properties, Clock clock) {
-        return new QueueService(store, properties, clock);
+    QueueService queueService(QueueStore store, RelayProperties properties, Clock clock, LocalDirectory directory) {
+        return new QueueService(store, properties, clock,
+                box -> directory.entry(box).map(e -> e.transport().get("iu")));
     }
 
     @Bean
