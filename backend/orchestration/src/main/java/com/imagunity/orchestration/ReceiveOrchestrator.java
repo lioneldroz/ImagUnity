@@ -83,7 +83,7 @@ public final class ReceiveOrchestrator {
     private final long maxFileSize;
     private final Executor executor;
     private final Clock clock;
-    private final TransferMessages messages = new TransferMessages();
+    private final TransferMessages messages;
     private final PeerAuthorization authorization;
 
     public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
@@ -93,11 +93,22 @@ public final class ReceiveOrchestrator {
                 PeerAuthorization.allowAll());
     }
 
-    /** @param authorization décide si l'on peut recevoir du partenaire (annuaire) */
     public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
                                PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
                                Executor executor, Clock clock, PeerAuthorization authorization) {
+        this(inbound, peers, transport, reader, restorer, inboxDir, maxFileSize, executor, clock, authorization, null);
+    }
+
+    /**
+     * @param authorization décide si l'on peut recevoir du partenaire (annuaire)
+     * @param signer        vérifie les annonces et signe les accusés ({@code null} : messages non signés)
+     */
+    public ReceiveOrchestrator(InboundRepository inbound, PeerRepository peers, TransportPort transport,
+                               PackageReader reader, StudyRestorer restorer, Path inboxDir, long maxFileSize,
+                               Executor executor, Clock clock, PeerAuthorization authorization,
+                               MessageSigner signer) {
         this.authorization = authorization;
+        this.messages = new TransferMessages(signer);
         this.inbound = inbound;
         this.peers = peers;
         this.transport = transport;
@@ -206,13 +217,15 @@ public final class ReceiveOrchestrator {
     // --- Annonces ---
 
     private void onMessage(TransportEvent.MessageReceived message) {
-        Optional<TransferAnnouncement> announcement = messages.decodeAnnouncement(message.text());
-        if (announcement.isEmpty()) {
-            return;
-        }
         Optional<Peer> peer = peers.findByTransportPeerId(message.peer().value());
         if (peer.isEmpty()) {
-            LOG.log(Level.WARNING, "Annonce d'un contact non appairé : ignorée");
+            if (TransferMessages.looksLikeAnnouncement(message.text())) {
+                LOG.log(Level.WARNING, "Annonce d''un contact non appairé : ignorée");
+            }
+            return;
+        }
+        Optional<TransferAnnouncement> announcement = messages.receiveAnnouncement(peer.get(), message.text());
+        if (announcement.isEmpty()) {
             return;
         }
         if (refused(peer.get())) {
@@ -242,7 +255,7 @@ public final class ReceiveOrchestrator {
             LOG.log(Level.INFO, "Transfert {0} relancé par {1}", a.transferId(), peer.get().name());
         }
         inbound.saveTransfer(new InboundTransfer(a.transferId(), peer.get().name(), a.packageGroupId(),
-                a.studyInstanceUid(), a.parts().size(), messages.encode(a), InboundTransfer.State.ANNOUNCED, null,
+                a.studyInstanceUid(), a.parts().size(), messages.store(a), InboundTransfer.State.ANNOUNCED, null,
                 createdAt, clock.instant()));
         LOG.log(Level.INFO, "Transfert {0} annoncé par {1} ({2} paquet(s))", a.transferId(), peer.get().name(),
                 a.parts().size());

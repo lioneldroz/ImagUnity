@@ -1,7 +1,7 @@
 # Annuaire signé
 
 > Objectif (pilote, priorité 1 du [plan](plan-de-realisation.md)) : savoir **qui est qui** entre les box d'une organisation. Chaque box est enrôlée par le responsable de l'organisation, qui signe son entrée ; les box vérifient ces signatures avant d'échanger et refusent une box révoquée. Conforme au § 9 de la [spécification IU-T](specification-protocole.md), et utilisable dès maintenant avec le transport SimpleX.
-> Statut : **étapes A, B, C1 et C2a faites** : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box et appairage par l'annuaire. Reste C2b (annonces et accusés signés).
+> Statut : **toutes les étapes faites** (A, B, C1, C2a, C2b) : socle cryptographique, outil du responsable, service d'annuaire, intégration dans la box, appairage par l'annuaire, annonces et accusés signés. Reste pour le pilote : la protection matérielle ou par phrase de passe des clés privées.
 
 ## 1. Principes
 
@@ -200,7 +200,29 @@ Box A (console)                         Annuaire                      Box B
 3. Le transfert réussit : 100 instances identiques sur 100, accusé en 12,5 s.
 4. Une seconde connexion à l'adresse de B n'aboutit pas : le client SimpleX la reconnaît comme un contact existant.
 
-## 8. Étape suivante (C2b)
+## 8. Annonces et accusés signés (étape C2b)
 
-- **Annonces et accusés signés** par la box et vérifiés par le destinataire avec la clé publiée dans l'annuaire : c'est la non-répudiation, conformément au § 8.4 de la spécification.
-- **Clés privées** protégées par phrase de passe ou par support matériel (pilote).
+Avec l'annuaire, les messages de signalisation passent à l'enveloppe **version 2** :
+
+```json
+{"type": "imagunity.transfer.announce", "version": 2, "boxId": "<box émettrice>",
+ "payload": "{…annonce ou accusé, texte JSON exact…}",
+ "signature": {"suite": "IU1", "ed25519": "…", "mlDsa65": "…"}}
+```
+
+- La box émettrice signe « `IU1-msg`, type, `payload` » avec ses clés.
+- Le destinataire n'accepte le message que si `boxId` est la box à laquelle ce contact est lié, et si la signature est valide avec la clé de cette box **publiée dans l'annuaire**. Un message non signé (version 1), signé par une autre box ou falsifié est refusé et journalisé.
+- Le résultat est la **non-répudiation** : l'émetteur ne peut pas nier avoir annoncé un examen, ni le destinataire l'avoir accusé (§ 8.4 de la spécification).
+- La forme gardée en base reste non signée (version 1). Sans annuaire, rien ne change.
+- La signature ajoute environ 4,5 Ko par message, à cause de ML-DSA-65. C'est sans effet sur les annonces courantes, mais une annonce de plusieurs milliers de paquets dépasserait la taille d'un message SimpleX (environ 15 Ko) : il faudra alors découper l'annonce.
+
+**Vérifié en réel** :
+- transfert entre box appairées par l'annuaire réussi : 100 instances identiques sur 100, accusé en 11,8 s ;
+- dans la base du client SimpleX de B, l'annonce et l'accusé échangés sont en version 2, signés respectivement par A et par B ;
+- une annonce non signée, envoyée par le canal de A hors de la box A, est refusée par B (« message non signé »), et aucun transfert n'est créé.
+
+## 9. Reste pour le pilote
+
+- **Clés privées** de la box et du responsable : protection par phrase de passe, ou par support matériel (TPM pour la box ; carte à puce ou HSM pour le responsable).
+- **Lecture de l'annuaire** réservée aux box enrôlées (requêtes signées), si l'organisation le souhaite.
+- **Annonces de très gros examens** : découpage au-delà de la taille d'un message.

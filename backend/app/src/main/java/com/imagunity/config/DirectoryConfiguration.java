@@ -8,6 +8,7 @@ import com.imagunity.directory.LocalDirectory;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.orchestration.DirectoryPeerAuthorization;
+import com.imagunity.orchestration.MessageSigner;
 import com.imagunity.orchestration.PeerAuthorization;
 import com.imagunity.orchestration.PeerHandshake;
 import com.imagunity.persistence.JdbcDirectoryStore;
@@ -98,6 +99,12 @@ class DirectoryConfiguration {
     LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, JdbcDirectoryStore store, Clock clock) {
         // Le cache est relu au démarrage du cycle de vie, une fois les migrations de la base faites.
         return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock);
+    }
+
+    /** Annonces et accusés signés par cette box, vérifiés avec l'annuaire à la réception. */
+    @Bean
+    MessageSigner messageSigner(BoxIdentity identity, LocalDirectory directory) {
+        return new MessageSigner(identity, directory);
     }
 
     @Bean
