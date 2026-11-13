@@ -214,14 +214,22 @@ public final class ReleaseStore {
         if (Files.exists(target)) {
             throw new ReleaseException("Version n° " + manifest.sequence() + " déjà installée");
         }
-        Path staging = versions.resolve(".installation-" + manifest.sequence());
-        deleteRecursively(staging);
-        Files.createDirectories(staging);
-        Files.copy(artifact, staging.resolve(manifest.artifact().name()));
-        Files.writeString(staging.resolve("manifeste.json"), document.toJson(), StandardCharsets.UTF_8);
-        // Revérifie la copie : c'est elle qui sera exécutée.
-        verifier.verify(document, staging.resolve(manifest.artifact().name()));
-        Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
+        // Dossier de préparation propre à cette installation : deux installations simultanées de la même version
+        // (choix au démarrage et mise à jour de la nuit) ne se mélangent pas ; la première arrivée l'emporte.
+        Path staging = Files.createTempDirectory(versions, ".installation-" + manifest.sequence() + "-");
+        try {
+            Files.copy(artifact, staging.resolve(manifest.artifact().name()));
+            Files.writeString(staging.resolve("manifeste.json"), document.toJson(), StandardCharsets.UTF_8);
+            // Revérifie la copie : c'est elle qui sera exécutée.
+            verifier.verify(document, staging.resolve(manifest.artifact().name()));
+            try {
+                Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.FileAlreadyExistsException | java.nio.file.DirectoryNotEmptyException e) {
+                throw new ReleaseException("Version n° " + manifest.sequence() + " déjà installée");
+            }
+        } finally {
+            deleteRecursively(staging);
+        }
     }
 
     // --- Choix au démarrage ---
@@ -243,7 +251,13 @@ public final class ReleaseStore {
         }
         for (Path version : installedDirs()) {
             Optional<Candidate> c = readInstalled(version);
-            c.ifPresent(candidates::add);
+            if (c.isPresent()) {
+                candidates.add(c.get());
+            } else {
+                // Version invalide (incomplète ou altérée) : supprimée, sinon elle bloquerait à jamais son
+                // téléchargement (déjà « installée ») ; elle sera téléchargée de nouveau.
+                deleteRecursively(version);
+            }
         }
         Candidate best = candidates.stream().max(Comparator.comparingLong(c -> c.manifest().sequence()))
                 .orElseThrow(() -> new ReleaseException("Aucune version signée valide : la box ne démarre pas"));

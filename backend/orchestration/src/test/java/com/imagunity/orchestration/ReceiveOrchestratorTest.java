@@ -249,6 +249,30 @@ class ReceiveOrchestratorTest {
     }
 
     @Test
+    void aSecondCopyOfAPacketIsDeletedAndItsFailureDoesNotFailTheTransfer() throws IOException {
+        List<PackagePart> parts = packages(2, 60); // deux paquets : le transfert reste ouvert après le premier
+        announce(announcement(parts));
+        // Le même paquet 1 proposé deux fois (émetteur redémarré entre l'envoi et son enregistrement).
+        long first = offer(parts.get(0));
+        long second = offer(parts.get(0));
+        long other = offer(parts.get(1));
+
+        download(first, parts.get(0));
+        assertThat(onlyTransfer().restoredParts()).containsExactly(1);
+        download(second, parts.get(0));
+        assertThat(inbound.files.get(second).state()).isEqualTo(InboundFile.State.CONSUMED);
+        assertThat(transport.downloads.get(second)).as("copie en double supprimée").doesNotExist();
+
+        // Une copie du paquet 2 échoue, l'autre arrive : le transfert n'échoue pas.
+        long otherCopy = offer(parts.get(1));
+        orchestrator.onTransportEvent(new TransportEvent.FileFailed(other, "réception : NETWORK"));
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.ANNOUNCED);
+        download(otherCopy, parts.get(1));
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(restored).hasSize(2);
+    }
+
+    @Test
     void fileFailureBeforeAnnouncementOnlyMarksTheFile() throws IOException {
         PackagePart part = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE).getFirst();
         long fileId = offer(part);

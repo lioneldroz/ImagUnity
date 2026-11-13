@@ -174,6 +174,14 @@ public final class ChunkService {
         // Contenu d'abord : si le stockage refuse, la ligne reste et la purge réessaiera (pas d'objet orphelin).
         files.delete(senderId);
         store.delete(senderId);
+        // Puis encore une fois : un téléversement mis en place entre les deux (après la première suppression, avant
+        // celle de la ligne) aurait laissé un contenu sans ligne, que ni la purge ni le quota ne verraient. Un
+        // téléversement mis en place plus tard trouve la ligne supprimée et retire son contenu lui-même.
+        try {
+            files.delete(senderId);
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Contenu du morceau supprimé non retiré : {0}", e.getMessage());
+        }
     }
 
     /** Supprime les morceaux expirés, et ceux créés mais jamais téléversés à temps. */

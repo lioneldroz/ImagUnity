@@ -92,8 +92,7 @@ public final class KeyFiles {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        createOwnerOnly(file);
-        Files.writeString(file, content, StandardCharsets.UTF_8);
+        writeNew(file, content);
     }
 
     /** Vrai si ce fichier de clés privées (signature ou chiffrement) est chiffré par phrase de passe. */
@@ -155,8 +154,7 @@ public final class KeyFiles {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        createOwnerOnly(file);
-        Files.writeString(file, content, StandardCharsets.UTF_8);
+        writeNew(file, content);
     }
 
     /**
@@ -219,6 +217,31 @@ public final class KeyFiles {
             return Json.write(new PrivateKeyFile(Suite.ID, keys.publicKey().encoded(), null, null, sealed));
         } finally {
             Arrays.fill(secret, (byte) 0);
+        }
+    }
+
+    /**
+     * Écrit un nouveau fichier d'un coup : contenu complet dans un fichier temporaire, puis lien vers le nom définitif.
+     * Un arrêt en cours d'écriture ne laisse jamais un fichier de clés vide ou tronqué sous son nom.
+     *
+     * @throws FileAlreadyExistsException si le fichier existe
+     */
+    public static void writeNew(Path file, String content) throws IOException {
+        if (Files.exists(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw new FileAlreadyExistsException(file.toString());
+        }
+        Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
+        Files.deleteIfExists(temporary);
+        createOwnerOnly(temporary);
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            try {
+                Files.createLink(file, temporary); // échoue si le fichier existe : jamais écrasé
+            } catch (UnsupportedOperationException e) {
+                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

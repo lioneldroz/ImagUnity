@@ -85,5 +85,9 @@ class ReloadablePriorityTest {
                 .hasMessageContaining("invalides").hasMessageContaining("hors de 1 à 9");
         assertThatThrownBy(() -> ReloadablePriority.fromFile(dir.resolve("absent.json"), clock)).hasMessageContaining("illisibles");
         assertThat(ReloadablePriority.parse("{}").rules()).isEmpty();
+        assertThatThrownBy(() -> ReloadablePriority.parse("null")).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("objet attendu");
+        assertThatThrownBy(() -> ReloadablePriority.parse("{\"rules\":[null]}"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("règle vide");
     }
 }

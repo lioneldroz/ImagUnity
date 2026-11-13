@@ -54,6 +54,9 @@ public class PublicationService {
         this.clock = clock;
     }
 
+    /** Longueur maximale du nom de box (colonne {@code display_name}). */
+    static final int MAX_DISPLAY_NAME = 256;
+
     @Transactional
     public Outcome publish(SignedDocument document) {
         BoxEntry entry;
@@ -61,6 +64,9 @@ public class PublicationService {
             entry = verifier.verify(document).entry();
         } catch (DirectoryException e) {
             throw new InvalidEntryException(e.getMessage());
+        }
+        if (entry.displayName().length() > MAX_DISPLAY_NAME) {
+            throw new InvalidEntryException("Nom de box trop long (" + MAX_DISPLAY_NAME + " caractères au plus)");
         }
         OptionalLong highest = store.highestSerial(entry.boxId());
         if (highest.isPresent() && entry.serial() < highest.getAsLong()) {
@@ -74,7 +80,13 @@ public class PublicationService {
             throw new ConflictException("Une autre entrée n° " + entry.serial() + " est déjà publiée pour la box "
                     + entry.boxId());
         }
-        store.save(entry, document, clock.instant());
+        try {
+            store.save(entry, document, clock.instant());
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // Même numéro publié au même moment par une autre requête.
+            throw new ConflictException("Une autre entrée n° " + entry.serial() + " vient d'être publiée pour la box "
+                    + entry.boxId());
+        }
         LOG.info("Entrée publiée : box {} « {} », n° {}{}", entry.boxId(), entry.displayName(), entry.serial(),
                 entry.revoked() ? " (révocation)" : "");
         return Outcome.PUBLISHED;

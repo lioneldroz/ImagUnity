@@ -63,6 +63,10 @@ class ReleaseStoreTest {
         assertThat(dir.resolve("maj/versions/1")).doesNotExist();
         assertThat(messages).anyMatch(m -> m.contains("7 écartée") && m.contains("Numéro différent"))
                 .anyMatch(m -> m.contains("9 écartée"));
+        assertThat(dir.resolve("maj/versions/7")).as("version invalide supprimée, à télécharger de nouveau")
+                .doesNotExist();
+        assertThat(dir.resolve("maj/versions/9")).doesNotExist();
+        assertThat(store().highestInstalled()).isEqualTo(3);
         assertThat(store().installed()).get().extracting(ReleaseStore.Installed::sequence).isEqualTo(3L);
 
         // Même version au redémarrage : état inchangé.
@@ -96,6 +100,10 @@ class ReleaseStoreTest {
         messages.clear();
         store().importDepot();
         assertThat(messages).anyMatch(m -> m.contains("déjà installée"));
+        try (var left = Files.list(dir.resolve("maj/versions"))) {
+            assertThat(left.map(p -> p.getFileName().toString())).as("aucun dossier de préparation laissé")
+                    .containsExactly("2");
+        }
 
         new ReleaseStore(dir.resolve("vide"), null, null, messages::add).importDepot();
     }

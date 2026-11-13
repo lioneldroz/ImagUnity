@@ -240,6 +240,19 @@ class PackageReaderTest {
     }
 
     @Test
+    void rejectsAnInstanceListedTwiceInPlaceOfAnother() throws IOException {
+        // Deux instances dans le paquet ; le manifeste liste la première deux fois et omet la seconde.
+        PackageManifest valid = validManifest();
+        var listed = valid.series().getFirst().instances().getFirst();
+        PackageManifest twice = new PackageManifest(valid.format(), valid.version(), valid.packageGroupId(),
+                valid.partIndex(), valid.partCount(), valid.studyInstanceUid(), valid.createdAt(), valid.studyTotals(),
+                List.of(new PackageManifest.SeriesEntry(SERIES, List.of(listed, listed))));
+        Entry unlisted = Entry.file(PackageManifest.entryPath(SERIES, "2.25.7.1.2"), DATA);
+
+        assertRejected(archive(List.of(instanceEntry(), unlisted, manifestEntry(twice))), "listée deux fois");
+    }
+
+    @Test
     void rejectsDecompressionBomb() throws IOException {
         PackageReader strict = new PackageReader(DATA.length - 1);
         Path paquet = archive(List.of(instanceEntry(), manifestEntry(validManifest())));

@@ -206,6 +206,27 @@ class DirectoryWiringTest {
     }
 
     @Test
+    void anIdentityCreationInterruptedByAStopIsResumed() throws IOException {
+        // Arrêt après l'écriture de l'identifiant, puis des clés de chiffrement : la création reprend, même identifiant.
+        Path keys = dir.resolve("interrompue/identite.json");
+        Files.createDirectories(keys.getParent());
+        UUID id = UUID.randomUUID();
+        Files.writeString(Path.of(keys + ".id"), id.toString());
+        Files.writeString(DirectoryConfiguration.encryptionFileOf(keys), "à moitié écrit");
+
+        BoxIdentity resumed = DirectoryConfiguration.loadOrCreateIdentity(keys);
+
+        assertThat(resumed.boxId()).isEqualTo(id);
+        assertThat(DirectoryConfiguration.loadOrCreateIdentity(keys).encryption().publicKey().fingerprint())
+                .isEqualTo(resumed.encryption().publicKey().fingerprint());
+
+        // Clés sans identifiant (fichier perdu) : refus explicite, rien n'est recréé.
+        Files.delete(Path.of(keys + ".id"));
+        assertThatThrownBy(() -> DirectoryConfiguration.loadOrCreateIdentity(keys))
+                .hasMessageContaining("Identifiant de la box absent");
+    }
+
+    @Test
     void encryptionKeysAreCreatedProtectedAndMigrated() throws IOException {
         char[] phrase = "phrase de la box de test".toCharArray();
         Path fresh = dir.resolve("chiffree/identite.json");

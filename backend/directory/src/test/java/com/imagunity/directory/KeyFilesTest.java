@@ -37,6 +37,9 @@ class KeyFilesTest {
 
         assertThatThrownBy(() -> KeyFiles.writePrivate(file, HybridKeyPair.generate()))
                 .isInstanceOf(FileAlreadyExistsException.class);
+        try (var files = java.nio.file.Files.list(dir)) {
+            assertThat(files).as("aucun fichier temporaire laissé").containsExactly(file);
+        }
     }
 
     @Test

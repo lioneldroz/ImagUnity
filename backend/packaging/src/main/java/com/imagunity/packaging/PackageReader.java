@@ -163,12 +163,17 @@ public final class PackageReader {
             throw new PackageIntegrityException("Study Instance UID invalide dans le manifeste");
         }
         int expected = 0;
+        java.util.Set<String> listed = new java.util.HashSet<>();
         for (PackageManifest.SeriesEntry series : manifest.series()) {
             for (PackageManifest.InstanceEntry instance : series.instances()) {
                 expected++;
                 String path = PackageManifest.entryPath(series.seriesInstanceUid(), instance.sopInstanceUid());
                 if (!path.equals(instance.path())) {
                     throw new PackageIntegrityException("Chemin incohérent dans le manifeste");
+                }
+                // Une instance listée deux fois compenserait, dans le décompte, une instance du paquet non listée.
+                if (!listed.add(path)) {
+                    throw new PackageIntegrityException("Instance listée deux fois dans le manifeste");
                 }
                 Extracted x = extracted.get(path);
                 if (x == null) {

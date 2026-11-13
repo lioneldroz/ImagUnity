@@ -166,6 +166,10 @@ class DirectoryConfiguration {
     static BoxIdentity loadOrCreateIdentity(Path keysFile, char[] passphrase) throws IOException {
         Path idFile = Path.of(keysFile + ".id");
         if (Files.exists(keysFile)) {
+            if (!Files.exists(idFile)) {
+                throw new IllegalStateException("Identifiant de la box absent (" + idFile + ") à côté de ses clés : "
+                        + "le restaurer depuis une sauvegarde (il figure aussi dans l'entrée d'annuaire de la box)");
+            }
             HybridKeyPair keys = readKeys(keysFile, passphrase);
             UUID boxId = UUID.fromString(Files.readString(idFile, StandardCharsets.UTF_8).strip());
             Path encryptionFile = encryptionFileOf(keysFile);
@@ -182,11 +186,23 @@ class DirectoryConfiguration {
             LOG.info("Identité de la box {} ({})", identity.boxId(), identity.keys().publicKey().shortCode());
             return identity;
         }
-        BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
-                HybridKemKeyPair.generate());
-        KeyFiles.writePrivate(keysFile, identity.keys(), passphrase);
+        // Création : l'identifiant d'abord, puis les clés, chaque fichier écrit d'un coup. Après un arrêt pendant la
+        // création, on repart de l'identifiant déjà écrit (la box n'a pas encore pu être enrôlée sans ses clés).
+        UUID boxId;
+        if (Files.exists(idFile)) {
+            boxId = UUID.fromString(Files.readString(idFile, StandardCharsets.UTF_8).strip());
+            Files.deleteIfExists(encryptionFileOf(keysFile)); // clés de chiffrement d'une création interrompue
+        } else {
+            boxId = UUID.randomUUID();
+            Path parent = idFile.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            KeyFiles.writeNew(idFile, boxId.toString());
+        }
+        BoxIdentity identity = new BoxIdentity(boxId, HybridKeyPair.generate(), HybridKemKeyPair.generate());
         KeyFiles.writeEncryptionPrivate(encryptionFileOf(keysFile), identity.encryption(), passphrase);
-        Files.writeString(idFile, identity.boxId().toString(), StandardCharsets.UTF_8);
+        KeyFiles.writePrivate(keysFile, identity.keys(), passphrase);
         if (passphrase == null) {
             warnUnprotected();
         }

@@ -52,6 +52,9 @@ class DirectoryServerTest {
     @Autowired
     private Environment environment;
 
+    @Autowired
+    private javax.sql.DataSource dataSource;
+
     private final HttpClient http = HttpClient.newHttpClient();
 
     private HttpResponse<String> get(String path) throws Exception {
@@ -119,6 +122,32 @@ class DirectoryServerTest {
         assertThat(forged.body()).contains("non signée par le responsable");
         assertThat(garbage.statusCode()).isEqualTo(422);
         assertThat(garbage.body()).contains("illisible");
+
+        HttpResponse<String> longName = publish(enrolled(UUID.randomUUID(), "x".repeat(257), 1).toJson(),
+                "responsable:secret-de-test");
+        assertThat(longName.statusCode()).isEqualTo(422);
+        assertThat(longName.body()).contains("trop long");
+    }
+
+    @Test
+    void twoSimultaneousPublicationsOfTheSameSerialGiveAConflict() {
+        UUID box = UUID.randomUUID();
+        EntryStore store = new EntryStore(dataSource);
+        // Seconde publication du même numéro, dont la lecture du plus haut numéro a précédé l'écriture de la première.
+        EntryStore late = new EntryStore(dataSource) {
+            @Override
+            java.util.OptionalLong highestSerial(UUID boxId) {
+                return java.util.OptionalLong.empty();
+            }
+        };
+        PublicationService first = new PublicationService(store, "chu-exemple", ORG_KEYS.publicKey(),
+                java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC));
+        PublicationService second = new PublicationService(late, "chu-exemple", ORG_KEYS.publicKey(),
+                java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC));
+        first.publish(enrolled(box, "Site", 1));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.publish(enrolled(box, "Site bis", 1)))
+                .isInstanceOf(PublicationService.ConflictException.class).hasMessageContaining("vient d'être publiée");
     }
 
     @Test
