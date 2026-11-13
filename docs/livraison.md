@@ -116,6 +116,6 @@ Toute la chaîne a été déroulée sur une copie du dépôt :
 
 Les refus aussi ont été vérifiés : mauvaise clé de l'éditeur, version absente du registre, manifeste altéré, version `-SNAPSHOT`, version déjà signée ou plus ancienne, `--version` ou `--sequence` en désaccord avec le jar ou le registre.
 
-**Non vérifiés** :
-- le workflow sur GitHub, à essayer par un essai à blanc ;
-- la publication sans Java, avec l'image du relais : Docker Hub refusait les téléchargements pendant l'essai.
+Le workflow Livraison a aussi été lancé sur GitHub, en essai à blanc sur la version 0.15.0-SNAPSHOT. Toutes les étapes ont réussi en 6 min 30 : construction et tests, jar, images du site central, empreintes, artefact de 214 Mo.
+
+**Non vérifié** : la publication sans Java, avec l'image du relais. Docker Hub refusait les téléchargements pendant l'essai.
