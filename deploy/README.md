@@ -2,6 +2,8 @@
 
 Environnement Docker Compose de la preuve de concept : deux établissements, deux box, le relais IU-T et l'annuaire de l'organisation, sans aucun chemin réseau direct entre les sites.
 
+Installation pas à pas sur une machine Rocky Linux (Docker CE, enrôlement, appairage, envoi d'essai) : [docs/installation-rocky-linux.md](../docs/installation-rocky-linux.md).
+
 ```
  site-a                        relais (« Internet »)               site-b
 ┌──────────────┐   ┌────────────────────────────────────┐   ┌──────────────┐
