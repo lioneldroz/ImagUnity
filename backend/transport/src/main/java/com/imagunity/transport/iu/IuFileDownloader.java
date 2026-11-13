@@ -16,7 +16,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
