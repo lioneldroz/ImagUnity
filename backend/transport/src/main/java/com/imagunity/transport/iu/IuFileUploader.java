@@ -137,6 +137,31 @@ public final class IuFileUploader {
     }
 
     /**
+     * Crée sur le relais de cet envoyeur une copie des morceaux d'un envoi déjà préparé sur un autre relais : mêmes
+     * morceaux (même découpage, même remplissage, mêmes empreintes), autres identifiants et clés. Le paquet n'est pas
+     * relu.
+     */
+    public UploadState prepareCopy(UploadState of) {
+        Duration ttl = Duration.between(clock.instant(), of.expiresAt());
+        if (ttl.isNegative() || ttl.isZero()) {
+            throw new TransportException("Envoi expiré, copie impossible");
+        }
+        List<ChunkState> chunks = new ArrayList<>();
+        for (ChunkState original : of.chunks()) {
+            KeyPair sender = ed25519();
+            KeyPair recipient = ed25519();
+            IuFileClient.Created created = retry.run("Création de la copie du morceau " + original.index(),
+                    () -> client.create(boxId, identity, of.chunkSize(), original.digest(), sender.getPublic(),
+                            List.of(recipient.getPublic()), ttl));
+            chunks.add(new ChunkState(original.index(), original.digest(), created.senderId(),
+                    Codec.base64Url(sender.getPrivate().getEncoded()), created.recipientIds().getFirst(),
+                    Codec.base64Url(recipient.getPrivate().getEncoded()), false));
+        }
+        return new UploadState(of.transferId(), of.fileName(), client.relay().toString(), of.chunkSize(), of.size(),
+                of.digest(), of.expiresAt(), chunks, of.paddingKey());
+    }
+
+    /**
      * Téléverse les morceaux qui ne l'ont pas encore été.
      *
      * @param checkpoint reçoit l'état après chaque morceau téléversé (à enregistrer)
@@ -176,6 +201,26 @@ public final class IuFileUploader {
     /** Description à transmettre au destinataire, une fois l'envoi téléversé (dans un message chiffré et signé). */
     public static FileDescription description(UploadState state) {
         return description(state, false);
+    }
+
+    /**
+     * Description d'un envoi copié sur plusieurs relais : chaque morceau a une réplique par copie, dans l'ordre des
+     * copies (le destinataire essaie la première, puis bascule sur les suivantes).
+     */
+    public static FileDescription description(List<UploadState> copies, boolean early) {
+        UploadState first = copies.getFirst();
+        List<FileDescription.Chunk> chunks = new ArrayList<>();
+        for (int i = 0; i < first.chunks().size(); i++) {
+            List<FileDescription.Replica> replicas = new ArrayList<>();
+            for (UploadState copy : copies) {
+                ChunkState c = copy.chunks().get(i);
+                replicas.add(new FileDescription.Replica(copy.relay(), c.recipientId(), c.retrievalKey()));
+            }
+            chunks.add(new FileDescription.Chunk(i, first.chunks().get(i).digest(), replicas));
+        }
+        return new FileDescription("IU1", first.transferId(), early ? FileDescription.EARLY : FileDescription.COMPLETE,
+                first.fileName(), first.chunkSize(), first.chunks().size(), first.size(), first.digest(), chunks,
+                first.expiresAt());
     }
 
     /**

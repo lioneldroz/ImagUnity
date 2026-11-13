@@ -59,16 +59,9 @@ public final class IuFileDownloader {
             if (done.contains(chunk.index())) {
                 continue;
             }
-            FileDescription.Replica replica = chunk.replicas().getFirst();
-            IuFileClient client = clients.computeIfAbsent(replica.relay(),
-                    relay -> new IuFileClient(URI.create(relay), http, clock));
-            byte[] content = retry.run("Téléchargement du morceau " + chunk.index(), () -> client.download(
-                    replica.recipientId(), replica.privateRetrievalKey(), layout.chunkSize(), WAIT));
-            try {
-                Chunks.write(target, layout, chunk.index(), content, chunk.digest());
-            } catch (ProtocolException e) {
-                throw new TransportException("Paquet " + description.fileName() + " : " + e.getMessage(), e);
-            }
+            Fetched fetched = fetch(description, layout, chunk, target);
+            IuFileClient client = fetched.client();
+            FileDescription.Replica replica = fetched.replica();
             retry.run("Acquittement du morceau " + chunk.index(), () -> {
                 client.ack(replica.recipientId(), replica.privateRetrievalKey());
                 return null;
@@ -80,6 +73,69 @@ public final class IuFileDownloader {
         if (Files.size(target) != layout.size() || !sha256(target).equals(description.digest())) {
             throw new TransportException("Paquet " + description.fileName()
                     + " réassemblé différent de la description (taille ou empreinte)");
+        }
+    }
+
+    private record Fetched(IuFileClient client, FileDescription.Replica replica) {
+    }
+
+    /**
+     * Obtient un morceau et l'écrit à sa place, en basculant d'une réplique à l'autre : chaque tour essaie une fois
+     * chaque réplique encore valable, dans l'ordre de la description ; une réplique refusée définitivement (retirée,
+     * expirée) ou altérée est écartée. Entre deux tours, attente croissante comme {@link Retry}, jusqu'à sa patience.
+     * Avec une seule réplique, le comportement est celui de {@link Retry#run}.
+     */
+    private Fetched fetch(FileDescription description, ChunkLayout layout, FileDescription.Chunk chunk, Path target)
+            throws IOException {
+        java.util.List<FileDescription.Replica> replicas = new java.util.ArrayList<>(chunk.replicas());
+        Duration waited = Duration.ZERO;
+        Duration delay = Duration.ofSeconds(1);
+        RuntimeException refused = null;
+        Exception failure = null;
+        while (true) {
+            for (java.util.Iterator<FileDescription.Replica> it = replicas.iterator(); it.hasNext(); ) {
+                FileDescription.Replica replica = it.next();
+                IuFileClient client = clients.computeIfAbsent(replica.relay(),
+                        relay -> new IuFileClient(URI.create(relay), http, clock));
+                byte[] content;
+                try {
+                    content = client.download(replica.recipientId(), replica.privateRetrievalKey(),
+                            layout.chunkSize(), WAIT);
+                } catch (IOException e) {
+                    failure = e;
+                    continue;
+                } catch (RelayRefusedException e) {
+                    if (e.retryable()) {
+                        failure = e;
+                    } else {
+                        refused = e;
+                        it.remove();
+                    }
+                    continue;
+                }
+                try {
+                    Chunks.write(target, layout, chunk.index(), content, chunk.digest());
+                    return new Fetched(client, replica);
+                } catch (ProtocolException e) {
+                    refused = new TransportException("Paquet " + description.fileName() + " : " + e.getMessage(), e);
+                    it.remove();
+                }
+            }
+            if (replicas.isEmpty()) {
+                throw refused;
+            }
+            if (waited.compareTo(retry.patience()) >= 0) {
+                throw new TransportException("Téléchargement du morceau " + chunk.index() + " impossible : "
+                        + (failure == null ? "aucune réplique" : failure.getMessage()), failure);
+            }
+            try {
+                retry.sleeper().sleep(delay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TransportException("Téléchargement du morceau " + chunk.index() + " interrompu", e);
+            }
+            waited = waited.plus(delay);
+            delay = delay.multipliedBy(2).compareTo(retry.maxDelay()) > 0 ? retry.maxDelay() : delay.multipliedBy(2);
         }
     }
 

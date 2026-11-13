@@ -85,6 +85,10 @@ imagunity:
     # démarre et reçoit les examens, mais leurs transferts passent en échec.
     iu:
       relay: ${IMAGUNITY_IU_RELAY:}
+      # plusieurs relais indépendants, séparés par des virgules (le premier est le principal) ; remplace relay
+      relays: ${IMAGUNITY_IU_RELAYS:}
+      # copies des morceaux de chaque envoi : 0 = une par relais
+      replicas: ${IMAGUNITY_IU_REPLICAS:0}
       state-dir: ${IMAGUNITY_DATA_DIR:./data}/iu
       ttl: ${IMAGUNITY_IU_TTL:72h}
       # Annonce anticipée : le destinataire télécharge pendant le téléversement (false : après).

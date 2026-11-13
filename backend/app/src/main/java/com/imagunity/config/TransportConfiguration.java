@@ -28,7 +28,7 @@ class TransportConfiguration {
     @Bean(destroyMethod = "close")
     TransportPort transport(IuTransportProperties iu, ObjectProvider<BoxIdentity> identity,
                             ObjectProvider<LocalDirectory> directory, Clock clock) {
-        if (iu.relay() == null) {
+        if (iu.allRelays().isEmpty()) {
             LOG.warn("Transport désactivé, aucun relais IU-T configuré (IMAGUNITY_IU_RELAY) : les transferts "
                     + "passeront en échec");
             return new DisabledTransport();
@@ -42,9 +42,11 @@ class TransportConfiguration {
             throw new IllegalStateException("Transport IU-T sans annuaire : l'activer (IMAGUNITY_DIRECTORY_ENABLED=true)"
                     + ", l'appairage, les clés et les adresses de file en viennent");
         }
-        LOG.info("Transport IU-T par le relais {}", iu.relay());
-        return new IuTransport(new IuTransport.Settings(iu.relay(), iu.stateDir(), iu.ttl(), iu.parallel(),
-                iu.keepState(), iu.early(), iu.chunkSizeBytes()), identity.boxId(), identity.keys(), identity.encryption(),
+        IuTransport.Settings settings = new IuTransport.Settings(iu.allRelays(), iu.stateDir(), iu.ttl(),
+                iu.parallel(), iu.keepState(), iu.early(), iu.chunkSizeBytes(), iu.replicas());
+        LOG.info("Transport IU-T par {} : {}", settings.relays().size() == 1 ? "le relais" : "les relais",
+                settings.relays());
+        return new IuTransport(settings, identity.boxId(), identity.keys(), identity.encryption(),
                 IuDirectory.of(directory, clock), HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
                 .build(), clock, Retry.standard());
     }

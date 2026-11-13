@@ -124,7 +124,7 @@ public class DirectoryController {
         String displayName = name == null || name.isBlank() ? box.name() : name;
         Map<String, String> addresses = new HashMap<>();
         try {
-            addresses.put(transport.addressKind(), transport.contactAddress());
+            addresses.putAll(transport.contactAddresses());
         } catch (TransportException e) {
             LOG.log(System.Logger.Level.WARNING, "Demande d''enrôlement sans adresse de contact : {0}", e.getMessage());
         }

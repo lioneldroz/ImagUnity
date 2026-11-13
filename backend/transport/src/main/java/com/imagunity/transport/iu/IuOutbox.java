@@ -7,7 +7,7 @@ import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.HashSet;
-import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -21,6 +21,8 @@ import java.util.function.Function;
  *
  * <ul>
  *   <li>ordre de dépôt conservé pour chaque destinataire ; un destinataire injoignable ne retarde pas les autres ;</li>
+ *   <li>le destinataire a une file par relais : le message est déposé dans chacune (un exemplaire par adresse), et le
+ *       destinataire ne le traite qu'une fois ; un relais injoignable ne retarde pas le dépôt sur les autres ;</li>
  *   <li>l'adresse de la file est relue dans l'annuaire à chaque essai (file renouvelée, entrée réémise) ;</li>
  *   <li>refus définitif du relais (message mal formé ou trop long) : message abandonné et journalisé. Les refus « box
  *       absente ou inactive de l'annuaire du relais » sont réessayés : le relais peut ne pas avoir encore vu une
@@ -36,7 +38,7 @@ final class IuOutbox implements AutoCloseable {
     private final IuMsgClient client;
     private final UUID boxId;
     private final HybridKeyPair identity;
-    private final Function<UUID, Optional<QueueAddress>> addressOf;
+    private final Function<UUID, List<QueueAddress>> addressesOf;
     private final Clock clock;
     private final Duration maxAge;
     private final Semaphore signal = new Semaphore(0);
@@ -44,19 +46,22 @@ final class IuOutbox implements AutoCloseable {
     private volatile boolean running;
 
     IuOutbox(IuStore store, IuMsgClient client, UUID boxId, HybridKeyPair identity,
-             Function<UUID, Optional<QueueAddress>> addressOf, Clock clock, Duration maxAge) {
+             Function<UUID, List<QueueAddress>> addressesOf, Clock clock, Duration maxAge) {
         this.store = store;
         this.client = client;
         this.boxId = boxId;
         this.identity = identity;
-        this.addressOf = addressOf;
+        this.addressesOf = addressesOf;
         this.clock = clock;
         this.maxAge = maxAge;
     }
 
-    /** Enregistre un message pour {@code to} ; il sera déposé dès que possible. */
+    /** Enregistre un message pour {@code to}, un exemplaire par file du destinataire ; déposé dès que possible. */
     void enqueue(UUID to, byte[] envelope) {
-        store.addPending(to, envelope, clock.instant());
+        int slots = Math.max(1, addressesOf.apply(to).size());
+        for (int slot = 0; slot < slots; slot++) {
+            store.addPending(to, slot, envelope, clock.instant());
+        }
         signal.release();
     }
 
@@ -66,9 +71,10 @@ final class IuOutbox implements AutoCloseable {
      * @return vrai si tout a été déposé (ou abandonné), faux s'il en reste pour plus tard
      */
     boolean flush() {
-        Set<UUID> blocked = new HashSet<>();
+        Set<String> blocked = new HashSet<>();
         for (IuStore.Pending pending : store.pending()) {
-            if (blocked.contains(pending.to())) {
+            String file = pending.to() + "#" + pending.slot();
+            if (blocked.contains(file)) {
                 continue;
             }
             if (pending.createdAt().plus(maxAge).isBefore(clock.instant())) {
@@ -77,15 +83,22 @@ final class IuOutbox implements AutoCloseable {
                 store.removePending(pending.seq());
                 continue;
             }
-            Optional<QueueAddress> address = addressOf.apply(pending.to());
-            if (address.isEmpty()) {
+            List<QueueAddress> addresses = addressesOf.apply(pending.to());
+            if (addresses.isEmpty()) {
                 LOG.log(Level.WARNING, "Box {0} sans adresse IU-T active dans l''annuaire : message gardé",
                         pending.to());
-                blocked.add(pending.to());
+                blocked.add(file);
                 continue;
             }
+            if (pending.slot() >= addresses.size()) {
+                LOG.log(Level.INFO, "Box {0} : file n° {1} retirée de l''entrée, exemplaire abandonné", pending.to(),
+                        pending.slot() + 1);
+                store.removePending(pending.seq());
+                continue;
+            }
+            QueueAddress address = addresses.get(pending.slot());
             try {
-                client.deposit(address.get(), boxId, identity, Codec.fromBase64Url(pending.envelope(), "enveloppe"));
+                client.deposit(address, boxId, identity, Codec.fromBase64Url(pending.envelope(), "enveloppe"));
                 store.removePending(pending.seq());
             } catch (RelayRefusedException e) {
                 if (e.status() == 400 || e.status() == 413) {
@@ -94,11 +107,11 @@ final class IuOutbox implements AutoCloseable {
                     store.removePending(pending.seq());
                 } else {
                     LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), e.getMessage());
-                    blocked.add(pending.to());
+                    blocked.add(file);
                 }
             } catch (IOException e) {
                 LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), e.getMessage());
-                blocked.add(pending.to());
+                blocked.add(file);
             }
         }
         return blocked.isEmpty();
