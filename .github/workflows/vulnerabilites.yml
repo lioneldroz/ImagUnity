@@ -41,7 +41,7 @@ jobs:
 
       - name: Nomenclature du backend (CycloneDX)
         working-directory: backend
-        # OSV-Scanner ne sait pas résoudre nos modules internes (0.1.0-SNAPSHOT) depuis les pom.xml :
+        # OSV-Scanner ne sait pas résoudre nos modules internes (version -SNAPSHOT) depuis les pom.xml :
         # Maven donne lui-même la liste exacte des dépendances.
         run: >
           sh ./mvnw -B -ntp
