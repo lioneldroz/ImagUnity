@@ -150,6 +150,7 @@ public final class IuTransport implements TransportPort {
     private final IuMsgClient messages;
     /** Un envoyeur de morceaux par relais. */
     private final java.util.Map<URI, IuFileUploader> uploaders = new java.util.LinkedHashMap<>();
+    private final java.util.Map<URI, Object> queueLocks = new ConcurrentHashMap<>();
     /** Mêmes relais, patience courte : choix des relais d'un envoi. */
     private final java.util.Map<URI, IuFileUploader> quickUploaders = new java.util.LinkedHashMap<>();
     private final IuFileDownloader downloader;
@@ -258,7 +259,14 @@ public final class IuTransport implements TransportPort {
      *
      * @param patient réessayer longuement sur coupure ; sinon un seul essai
      */
-    private synchronized IuMailbox.Queue queue(URI relay, boolean patient) {
+    private IuMailbox.Queue queue(URI relay, boolean patient) {
+        // Un verrou par relais : un relais injoignable au démarrage ne retient pas la création des autres files.
+        synchronized (queueLocks.computeIfAbsent(relay, r -> new Object())) {
+            return queueLocked(relay, patient);
+        }
+    }
+
+    private IuMailbox.Queue queueLocked(URI relay, boolean patient) {
         Optional<IuMailbox.Queue> existing = store.queue(relay);
         if (existing.isPresent()) {
             return existing.get();
@@ -746,8 +754,7 @@ public final class IuTransport implements TransportPort {
         String json = String.join("", fragments);
         FileDescription description;
         try {
-            description = FileDescription.fromJson(json);
-            checkRelay(description);
+            description = knownReplicas(FileDescription.fromJson(json));
         } catch (ProtocolException | TransportException e) {
             LOG.log(Level.WARNING, "Description de fichier de la box {0} écartée : {1}", contact.boxId(),
                     e.getMessage());
@@ -755,23 +762,41 @@ public final class IuTransport implements TransportPort {
             return;
         }
         IuStore.Incoming offered = new IuStore.Incoming(incoming.fileId(), incoming.peerId(), incoming.boxId(),
-                incoming.transferId(), null, json, null, List.of(), IuStore.Status.OFFERED, incoming.createdAt());
+                incoming.transferId(), null, description.toJson(), null, List.of(), IuStore.Status.OFFERED,
+                incoming.createdAt());
         store.save(offered);
         emit(new TransportEvent.FileOffered(new PeerId(contact.peerId()), offered.fileId(), description.fileName(),
                 description.size()));
     }
 
-    /** Les morceaux ne sont téléchargés que depuis les relais de l'organisation, configurés dans cette box. */
-    private void checkRelay(FileDescription description) {
+    /**
+     * Les morceaux ne sont téléchargés que depuis les relais de l'organisation, configurés dans cette box : les
+     * répliques sur un autre relais sont écartées (l'émetteur peut en utiliser que cette box ne connaît pas) ; un
+     * morceau sans réplique sur un relais connu rend la description inutilisable.
+     */
+    private FileDescription knownReplicas(FileDescription description) {
         Set<String> allowed = new java.util.HashSet<>();
         settings.relays().forEach(r -> allowed.add(r.toString()));
+        List<FileDescription.Chunk> chunks = new ArrayList<>();
+        boolean filtered = false;
         for (FileDescription.Chunk chunk : description.chunks()) {
-            for (FileDescription.Replica replica : chunk.replicas()) {
-                if (!allowed.contains(replica.relay().replaceAll("/+$", ""))) {
-                    throw new TransportException("morceau sur un relais hors de l'organisation : " + replica.relay());
-                }
+            List<FileDescription.Replica> replicas = chunk.replicas().stream()
+                    .filter(r -> allowed.contains(r.relay().replaceAll("/+$", ""))).toList();
+            if (replicas.isEmpty()) {
+                throw new TransportException("morceau sur un relais hors de l'organisation : "
+                        + chunk.replicas().getFirst().relay());
             }
+            filtered |= replicas.size() != chunk.replicas().size();
+            chunks.add(new FileDescription.Chunk(chunk.index(), chunk.digest(), replicas));
         }
+        if (!filtered) {
+            return description;
+        }
+        LOG.log(Level.INFO, "Transfert {0} : répliques sur des relais inconnus de cette box écartées",
+                description.transferId());
+        return new FileDescription(description.suite(), description.transferId(), description.mode(),
+                description.fileName(), description.chunkSize(), description.chunkCount(), description.size(),
+                description.digest(), chunks, description.expiresAt());
     }
 
     @Override

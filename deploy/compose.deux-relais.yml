@@ -1,0 +1,61 @@
+# Deux relais IU-T indépendants (redondance, spécification § 6.7) : un second relais et sa base, et les box qui
+# utilisent les deux. Chaque box relève une file sur chaque relais, dépose ses messages sur tous et copie les morceaux
+# de chaque envoi sur tous ; le destinataire bascule d'un relais à l'autre.
+#
+#   docker compose -f docker-compose.yml -f compose.deux-relais.yml up -d
+#
+# Les box publient alors une adresse par relais (iu, iu-2) : télécharger leur nouvelle demande d'enrôlement et faire
+# réémettre leur entrée (deploy/README.md, « Plusieurs relais »).
+
+x-relais: &relais
+  IMAGUNITY_IU_RELAYS: http://relay:8443,http://relay-2:8443
+  # Copies des morceaux de chaque envoi : 0 = une par relais.
+  IMAGUNITY_IU_REPLICAS: ${IMAGUNITY_IU_REPLICAS:-0}
+
+services:
+
+  relay-2-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: relais
+      POSTGRES_USER: relais
+      POSTGRES_PASSWORD: essai-synthetique   # environnement de test uniquement
+    volumes:
+      - relay-2-db-data:/var/lib/postgresql/data
+    networks: [relais]
+
+  relay-2:
+    # Même image que le relais principal (campagne : IMAGUNITY_RELAY_IMAGE=imagunity/relay:campagne).
+    image: ${IMAGUNITY_RELAY_IMAGE:-imagunity-relay}
+    build:
+      context: ../backend
+      dockerfile: ../deploy/relay/Dockerfile
+    environment:
+      IMAGUNITY_RELAY_DB_URL: jdbc:postgresql://relay-2-db:5432/relais
+      IMAGUNITY_RELAY_DB_PASSWORD: essai-synthetique
+      IMAGUNITY_RELAY_STORAGE_DIR: /data/morceaux
+      IMAGUNITY_RELAY_DIRECTORY_URL: http://directory:8090
+      IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_RELAY_ORGANIZATION_CODE: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:?empreinte du responsable, vérifiée hors bande}
+      IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:-5m}
+    volumes:
+      - relay-2-data:/data
+      - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro
+    depends_on: [relay-2-db, directory]
+    networks: [relais]
+    ports:
+      - "8444:8443"
+
+  box-a:
+    environment:
+      <<: *relais
+    depends_on: [net-a, relay, relay-2, directory]
+
+  box-b:
+    environment:
+      <<: *relais
+    depends_on: [net-b, relay, relay-2, directory]
+
+volumes:
+  relay-2-data:
+  relay-2-db-data:

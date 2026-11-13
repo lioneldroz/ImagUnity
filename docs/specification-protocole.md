@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.6, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée, remplissage aléatoire et taille de morceau adaptative faits. Reste l'étape 7 (audit externe). Historique en fin de document.
+> **Statut : v0.7, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée, remplissage aléatoire, taille de morceau adaptative, priorité des séries et redondance entre plusieurs relais faits. Reste l'étape 7 (audit externe). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -234,7 +234,20 @@ La box crée tous les morceaux (requêtes légères), envoie aussitôt la descri
 
 - **Abandon** : un envoi en échec retire ses morceaux du relais ; le destinataire, qui les attendait, reçoit `404` (refus définitif) et le téléchargement échoue aussitôt. Le message `file.cancel` prévu n'est donc pas nécessaire.
 - **Contrepartie** : le relais voit un retrait commencer avant la fin du dépôt, ce qui l'aide à associer dépôt et retrait par leurs horaires. Il les associe déjà par les acquittements, sur un relais unique ; accepté.
-- L'annonce du transfert (message signé de l'orchestrateur) part dès que tous les paquets sont confiés au transport (v0.7, [priorité des séries](priorite-dicom.md)) ; le destinataire restitue chaque paquet dès qu'il l'a reçu et que l'annonce est arrivée, les séries prioritaires d'abord. `FileSent` suit toujours la fin du téléversement.
+- L'annonce du transfert (message signé de l'orchestrateur) part dès que tous les paquets sont confiés au transport ([priorité des séries](priorite-dicom.md)) ; le destinataire restitue chaque paquet dès qu'il l'a reçu et que l'annonce est arrivée, les séries prioritaires d'abord. `FileSent` suit toujours la fin du téléversement (d'une copie complète, avec plusieurs relais : § 6.7).
+
+### 6.7 Plusieurs relais (redondance)
+
+**v0.7** : une box peut utiliser **plusieurs relais indépendants** (`IMAGUNITY_IU_RELAYS`, adresses séparées par des virgules, le premier étant le principal). Les relais ne se connaissent pas et ne partagent rien : c'est la box qui porte la redondance. Un relais en panne ne bloque ni les messages ni les fichiers, tant qu'un autre répond.
+
+- **Files** : la box crée et relève une file de réception sur **chaque** relais. Son entrée d'annuaire publie une adresse par relais (`iu`, `iu-2`, `iu-3`…, § 9).
+- **Messages** : chaque message est déposé dans **toutes** les files du destinataire ; un relais injoignable ne retarde pas le dépôt sur les autres. Le destinataire traite chaque message **une seule fois**, d'après son `messageId` (signé), gardé 8 jours.
+- **Morceaux** : copiés sur `IMAGUNITY_IU_REPLICAS` relais (0, par défaut : tous). Le relais principal est le premier qui répond à la création des morceaux (patience de 30 s par relais quand il y en a plusieurs ; si aucun ne répond, le premier est réessayé avec la patience habituelle). Les copies ont les mêmes morceaux (même découpage, même remplissage, mêmes empreintes) sous d'autres identifiants et clés. Elles se téléversent en parallèle.
+- **Description** : chaque morceau y a une réplique par copie (`replicas`, § 7), dans l'ordre des copies. Le destinataire essaie chaque réplique une fois par tour, dans cet ordre, et **bascule** sur la suivante en cas d'échec ; une réplique refusée définitivement (`404`, `410`) ou altérée est écartée ; entre deux tours, attente croissante, jusqu'à la patience habituelle. L'acquittement va au relais qui a servi le morceau ; les autres copies sont retirées par l'émetteur à la fin du transfert, ou expirent. Le destinataire ne contacte que les relais de sa propre configuration : une réplique sur un autre relais est écartée, et la description n'est refusée que si un morceau n'a aucune réplique sur un relais connu.
+- **Échec d'une copie** : ses morceaux sont retirés de son relais (au mieux) et elle est oubliée ; l'envoi n'échoue que si toutes les copies échouent. `FileSent` part dès qu'une copie est complète (annonce anticipée ; sinon, une fois toutes terminées, la description ne portant que les copies réussies).
+- **Coût** : la bande passante montante de la box est multipliée par le nombre de copies. Sur une liaison lente, `IMAGUNITY_IU_REPLICAS=1` garde une signalisation redondante (une file par relais) sans doubler les morceaux.
+- **Métadonnées** : chaque relais voit les mêmes volumes et horaires que s'il était seul ; la redondance ne lui révèle rien de plus. Des relais opérés par des tiers différents qui mettraient leurs journaux en commun pourraient associer les copies par leurs tailles et leurs horaires.
+- **Plus tard (« forme 2 »)** : un relais sans état derrière un répartiteur de charge (stockage des morceaux partagé, anti-rejeu en base, purge unique), pour la disponibilité d'un même relais sans multiplier les copies.
 
 ---
 
@@ -329,6 +342,7 @@ L'entrée de box signée par le responsable ([annuaire-signe.md § 2.2](annuaire
 ```
 
 - Le relais ne crée de file que pour une box déjà enrôlée et active (§ 6.4) : une box neuve **réserve** donc l'identifiant de dépôt de sa future file (32 octets aléatoires) et sa **demande d'enrôlement** porte l'adresse correspondante ; le responsable la signe dans l'entrée. Une fois l'entrée publiée, la box crée sa file en demandant cet identifiant ; le relais ne l'accepte que s'il est celui de l'adresse publiée dans l'entrée signée de **cette** box (sinon `409`), et pas encore pris : aucune autre box ne peut s'approprier l'adresse. Une substitution d'adresse par un annuaire compromis est détectée par la signature de l'entrée.
+- Avec plusieurs relais (§ 6.7), une adresse par relais : `"iu"` pour le principal, puis `"iu-2"`, `"iu-3"`… L'expéditeur dépose dans toutes ; le relais accepte l'identifiant réservé s'il figure sous l'une de ces clés.
 - Une box enrôlée avant de passer à IU-T (entrée sans adresse) crée sa file avec un identifiant tiré par le relais ; sa demande d'enrôlement suivante porte cette adresse, à faire signer une fois.
 - Avant tout envoi, la box émettrice vérifie l'entrée du destinataire (signature, validité, révocation) et y prend ses clés de chiffrement et l'adresse de sa file.
 - Le **relais** lit le même annuaire pour vérifier les déposants (§ 6.4).
@@ -566,7 +580,7 @@ Une part du gain vient aussi du remplissage : avec 4 Mio, le dernier morceau d'u
 
 Fait ensuite : **priorité aux séries utiles au diagnostic** (priorité 6 du plan), avec annonce du transfert dès les paquets confiés et restitution au fil de l'eau : voir [priorite-dicom.md](priorite-dicom.md). Sur liaison à 20 Mbit/s, une série prioritaire arrivée en dernier est complète chez le destinataire en 13,3 s au lieu de 61,0 s, l'étude entière restant à 61 s.
 
-Reste, à décider : redondance entre plusieurs relais.
+Fait ensuite : **redondance entre plusieurs relais indépendants** (v0.7, § 6.7), portée par les box : files et messages sur tous les relais (traités une fois), morceaux copiés sur tous, bascule par morceau au téléchargement.
 
 ---
 
@@ -579,4 +593,5 @@ Reste, à décider : redondance entre plusieurs relais.
 | 0.3 | 2026-11-12 | Décisions pour l'implémentation : appui sur les briques réalisées (annuaire signé, chiffrement applicatif, messages signés, TPM) ; **pas de seconde couche de chiffrement** des morceaux (paquets déjà chiffrés pour le destinataire, § 5) ; **dépôt authentifié par la signature d'identité de la box**, vérifiée par le relais d'après l'annuaire, au lieu de certificats clients (§ 6.4) ; AES-256-GCM au lieu de ChaCha20-Poly1305 (§ 4.1) ; **annonce anticipée reportée** à l'étape 6 (§ 6.6) ; adresse de la file dans le champ `transport` de l'entrée d'annuaire et appairage par l'annuaire (§ 9) ; JSON signé sur ses octets exacts (§ 7) ; correspondance avec le `TransportPort` (§ 13.2) ; métadonnée « couple émetteur / file » rendue explicite (§ 12, question 5) ; SimpleX gardé en parallèle jusqu'à la bascule. |
 | 0.4 | 2026-11-12 | Étape 4 : identifiant de dépôt **réservé par la box** et publié dans sa demande d'enrôlement, accepté par le relais seulement s'il figure dans l'entrée signée de cette box (§ 8.2, § 9) — la création de file exigeant une box déjà enrôlée, la v0.3 ne permettait pas de publier l'adresse à l'enrôlement ; adaptateur `iu`, boîte d'envoi, description en fragments, reprise et bascule depuis SimpleX (§ 13.4). |
 | 0.5 | 2026-11-12 | Étape 6 (première partie) : **annonce anticipée** par défaut (§ 6.6 : attente jusqu'à l'expiration, abandon par retrait des morceaux, sans message `file.cancel`), **remplissage pseudo-aléatoire** du dernier morceau (§ 5.2), mode de la description (§ 7) ; mesures (§ 13.4). |
+| 0.7 | 2026-11-13 | Étape 6 : annonce du transfert dès les paquets confiés et restitution au fil de l'eau ([priorité des séries](priorite-dicom.md)) ; **plusieurs relais indépendants** (§ 6.7) : une file et une adresse d'annuaire par relais (`iu`, `iu-2`…, § 9), messages déposés sur tous et traités une fois, morceaux copiés sur `IMAGUNITY_IU_REPLICAS` relais, bascule par morceau au téléchargement. |
 | 0.6 | 2026-11-12 | Étape 6 : **taille de morceau adaptée à la liaison** (§ 5.2 : 3 s par morceau au débit mesuré, 512 morceaux au plus par paquet) ; mesures sur liaison à 2 Mbit/s (§ 13.4). |

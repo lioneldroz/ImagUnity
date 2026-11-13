@@ -653,6 +653,100 @@ def scenario_volumineux(go=2):
     return full_transfer(f"volumineux-{go}Go", 4, per_series, side=1024, timeout=3600)
 
 
+# --- Plusieurs relais (compose.deux-relais.yml) -------------------------------------
+
+def uploaded(transfer):
+    """Vrai quand tous les paquets du transfert sont téléversés (FileSent)."""
+    t = transfer.box_transfer()
+    if not t:
+        return False
+    parts = http("GET", f"{BOX_A}/api/v1/transfers/{t['id']}")["parts"]
+    return bool(parts) and all(p["uploaded"] for p in parts)
+
+
+def relay_chunks(service):
+    """Nombre de morceaux stockés sur un relais (fichiers du volume des morceaux)."""
+    out = run("docker", "exec", container(service), "sh", "-c", "find /data/morceaux -type f | wc -l", check=False)
+    return int(out or 0)
+
+
+def scenario_deux_relais():
+    """Deux relais, nominal : les morceaux sont copiés sur les deux, le message d'annonce traité une fois."""
+    events = {}
+
+    def watch(transfer):
+        transfer.wait_for(lambda s: s == "ANNOUNCED", 600, "annonce")
+        wait(lambda: uploaded(transfer), 600, 0.5, "téléversement")
+        events["morceaux"] = {"relay": relay_chunks("relay"), "relay-2": relay_chunks("relay-2")}
+
+    log("[deux-relais] box B arrêtée pendant le dépôt (morceaux comptés sur chaque relais)")
+    compose("stop", "box-b")
+    try:
+        def during(transfer):
+            watch(transfer)
+            compose("start", "box-b")
+        result = full_transfer("deux-relais", 2, 50, during=during)
+    finally:
+        compose("start", "box-b")
+    result.update(events)
+    return result
+
+
+def scenario_relais_arrete_avant():
+    """Relais principal arrêté avant l'envoi : l'envoi passe par le second relais seul."""
+    log("[relais-arrete-avant] arrêt du relais principal")
+    compose("stop", "relay")
+    try:
+        result = full_transfer("relais-arrete-avant", 2, 50)
+    finally:
+        compose("start", "relay")
+    return result
+
+
+def scenario_relais_arrete_apres_depot():
+    """Relais principal arrêté après le dépôt, avant le retrait : la box B bascule sur le second relais."""
+    events = {}
+
+    def during(transfer):
+        transfer.wait_for(lambda s: s == "ANNOUNCED", 600, "annonce")
+        wait(lambda: uploaded(transfer), 600, 0.5, "téléversement")
+        events["depotTermine_s"] = transfer.elapsed()
+        compose("stop", "relay")
+        log("[relais-arrete-apres-depot] relais principal arrêté ; box B rallumée")
+        events["rallumage_s"] = transfer.elapsed()
+        compose("start", "box-b")
+
+    compose("stop", "box-b")
+    try:
+        result = full_transfer("relais-arrete-apres-depot", 2, 50, during=during)
+    finally:
+        compose("start", "box-b")
+        compose("start", "relay")
+    result.update(events)
+    if "restored" in result["chronologie_s"]:
+        result["restitutionApresRallumage_s"] = round(result["chronologie_s"]["restored"] - events["rallumage_s"], 2)
+    return result
+
+
+def scenario_relais_coupe_pendant():
+    """Relais principal arrêté au milieu du dépôt (300 Mo) : la copie sur le second relais porte le transfert."""
+    events = {}
+
+    def during(transfer):
+        transfer.wait_for(lambda s: s in ("PACKAGED", "ANNOUNCED"), 600, "empaquetage")
+        time.sleep(3)  # dépôt commencé
+        events["arret_s"] = transfer.elapsed()
+        compose("stop", "relay")
+        log("[relais-coupe-pendant] relais principal arrêté pendant le dépôt")
+
+    try:
+        result = full_transfer("relais-coupe-pendant", 4, 150, during=during)
+    finally:
+        compose("start", "relay")
+    result.update(events)
+    return result
+
+
 SCENARIOS = {
     "nominal": scenario_nominal,
     "pare-feu": scenario_pare_feu,
@@ -663,7 +757,13 @@ SCENARIOS = {
     "liaison-lente": scenario_liaison_lente,
     "coupure-liaison-lente": scenario_coupure_lente,
     "priorite": scenario_priorite,
+    "deux-relais": scenario_deux_relais,
+    "relais-arrete-avant": scenario_relais_arrete_avant,
+    "relais-arrete-apres-depot": scenario_relais_arrete_apres_depot,
+    "relais-coupe-pendant": scenario_relais_coupe_pendant,
 }
+
+DEUX_RELAIS = {"deux-relais", "relais-arrete-avant", "relais-arrete-apres-depot", "relais-coupe-pendant"}
 
 
 def main():
@@ -671,7 +771,8 @@ def main():
     parser.add_argument("scenarios", nargs="+", choices=[*SCENARIOS, "tout"])
     parser.add_argument("--sortie", type=Path, default=HERE / "resultats")
     args = parser.parse_args()
-    names = list(SCENARIOS) if "tout" in args.scenarios else args.scenarios
+    # « tout » : la pile à un relais ; les scénarios à deux relais demandent compose.deux-relais.yml.
+    names = [n for n in SCENARIOS if n not in DEUX_RELAIS] if "tout" in args.scenarios else args.scenarios
 
     ensure_paired()
     results = {"date": datetime.now(timezone.utc).isoformat(timespec="seconds"),

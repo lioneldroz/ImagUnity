@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
@@ -34,6 +35,7 @@ public record IuTransportProperties(
         List<URI> relays,
         @DefaultValue("0") int replicas) {
 
+    @ConstructorBinding
     public IuTransportProperties {
         relays = relays == null ? List.of() : relays.stream().filter(java.util.Objects::nonNull)
                 .filter(r -> !r.toString().isBlank()).toList();
