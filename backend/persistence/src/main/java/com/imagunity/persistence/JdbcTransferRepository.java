@@ -59,13 +59,13 @@ public final class JdbcTransferRepository implements TransferRepository {
     }
 
     @Override
-    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
+    public List<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
         return jdbc.sql("SELECT " + COLUMNS + " FROM transfer WHERE study_uid = ? AND called_aet = ? "
                         + "AND destination = ? AND state NOT IN (" + placeholders(TERMINAL.size())
                         + ") ORDER BY created_at DESC")
                 .params(studyInstanceUid, calledAet, destination)
                 .params(TERMINAL.stream().map(Enum::name).toList())
-                .query(JdbcTransferRepository::transfer).list().stream().findFirst();
+                .query(JdbcTransferRepository::transfer).list();
     }
 
     @Override
@@ -129,6 +129,21 @@ public final class JdbcTransferRepository implements TransferRepository {
     public Optional<TransferPart> findPartByTransportFileId(long transportFileId) {
         return jdbc.sql("SELECT * FROM transfer_part WHERE transport_file_id = ?").param(transportFileId)
                 .query(JdbcTransferRepository::part).optional();
+    }
+
+    @Override
+    public void saveInstances(UUID transferId, Set<String> sopInstanceUids) {
+        jdbc.sql("DELETE FROM transfer_instance WHERE transfer_id = ?").param(transferId).update();
+        for (String uid : sopInstanceUids) {
+            jdbc.sql("INSERT INTO transfer_instance (transfer_id, sop_instance_uid) VALUES (?, ?)")
+                    .params(transferId, uid).update();
+        }
+    }
+
+    @Override
+    public Set<String> instances(UUID transferId) {
+        return Set.copyOf(jdbc.sql("SELECT sop_instance_uid FROM transfer_instance WHERE transfer_id = ?")
+                .param(transferId).query(String.class).list());
     }
 
     private static Transfer transfer(ResultSet rs, int row) throws SQLException {

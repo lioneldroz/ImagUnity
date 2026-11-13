@@ -45,10 +45,22 @@ final class MemoryRepositories {
         }
 
         @Override
-        public Optional<Transfer> findActive(String study, String calledAet, String destination) {
+        public List<Transfer> findActive(String study, String calledAet, String destination) {
             return transfers.values().stream().filter(t -> t.studyInstanceUid().equals(study)
                     && t.calledAet().equals(calledAet) && t.destination().equals(destination)
-                    && !t.state().isTerminal()).findFirst();
+                    && !t.state().isTerminal()).toList();
+        }
+
+        private final Map<UUID, Set<String>> instances = new java.util.HashMap<>();
+
+        @Override
+        public void saveInstances(UUID transferId, Set<String> sopInstanceUids) {
+            instances.put(transferId, Set.copyOf(sopInstanceUids));
+        }
+
+        @Override
+        public Set<String> instances(UUID transferId) {
+            return instances.getOrDefault(transferId, Set.of());
         }
 
         @Override

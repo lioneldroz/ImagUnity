@@ -90,6 +90,23 @@ class JdbcTransferRepositoryTest {
     }
 
     @Test
+    void keepsThePackagedInstancesOfATransfer() {
+        Transfer transfer = received("2.25.1");
+        repository.create(transfer);
+        assertThat(repository.instances(transfer.id())).as("transfert d'une version antérieure").isEmpty();
+
+        repository.saveInstances(transfer.id(), java.util.Set.of("2.25.1.1.1", "2.25.1.1.2"));
+        assertThat(repository.instances(transfer.id())).containsExactlyInAnyOrder("2.25.1.1.1", "2.25.1.1.2");
+        repository.saveInstances(transfer.id(), java.util.Set.of("2.25.1.1.3"));
+        assertThat(repository.instances(transfer.id())).containsExactly("2.25.1.1.3");
+
+        Transfer late = received("2.25.1");
+        repository.create(late);
+        assertThat(repository.findActive("2.25.1", "IU_TO_B", "box-b")).map(Transfer::id)
+                .containsExactlyInAnyOrder(transfer.id(), late.id());
+    }
+
+    @Test
     void findsByStates() {
         Transfer a = received("2.25.1");
         Transfer b = received("2.25.2").packaged("g", 1, now);

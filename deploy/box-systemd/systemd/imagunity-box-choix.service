@@ -4,6 +4,8 @@ Documentation=https://github.com/lioneldroz/ImagUnity/blob/main/docs/guides/inst
 Wants=network-online.target
 After=network-online.target time-sync.target
 # Lancée par imagunity-box.service (Requires=) à chacun de ses démarrages.
+# Son échec empêche la box de démarrer sans que celle-ci passe en échec (« dependency ») : l'alerte part d'ici.
+OnFailure=imagunity-alerte@%n.service
 
 [Service]
 Type=oneshot
@@ -19,6 +21,8 @@ RuntimeDirectory=imagunity-choix
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 ExecStart=/opt/imagunity/bin/choisir.sh
+# Vérification des versions déjà sur le disque, sans téléchargement : quelques secondes.
+TimeoutStartSec=5min
 UMask=0022
 NoNewPrivileges=yes
 ProtectSystem=strict

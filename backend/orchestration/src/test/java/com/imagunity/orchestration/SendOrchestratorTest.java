@@ -224,6 +224,36 @@ class SendOrchestratorTest {
     }
 
     @Test
+    void seriesArrivingAfterPackagingLeaveInANewTransfer() throws IOException {
+        orchestrator.handleStudy(study("box-b", 1, 2));
+        Transfer first = transfers.only();
+        assertThat(transfers.instances(first.id())).containsExactlyInAnyOrder(STUDY + ".1.1", STUDY + ".1.2");
+
+        // Le PACS envoie ensuite une seconde série, après l'empaquetage ; une instance de la première est revenue.
+        ReceivedStudy later = study("box-b", 2, 2);
+        List<ReceivedInstance> lateOnly = later.instances().stream()
+                .filter(i -> i.seriesInstanceUid().equals(STUDY + ".2") || i.sopInstanceUid().equals(STUDY + ".1.1"))
+                .toList();
+        later.instances().stream().filter(i -> !lateOnly.contains(i)).forEach(i -> i.file().toFile().delete());
+        orchestrator.handleStudy(new ReceivedStudy(STUDY, "IU_TO_B", "box-b", Set.of("ORTHANC_A"), lateOnly,
+                clock.instant(), clock.instant()));
+
+        assertThat(transfers.transfers).hasSize(2);
+        Transfer second = transfers.transfers.values().stream().filter(t -> !t.id().equals(first.id()))
+                .findFirst().orElseThrow();
+        assertThat(second.state()).isEqualTo(TransferState.ANNOUNCED);
+        assertThat(transfers.instances(second.id())).as("seule la série en retard repart")
+                .containsExactlyInAnyOrder(STUDY + ".2.1", STUDY + ".2.2");
+        assertThat(transport.files).hasSize(2);
+        assertThat(lateOnly).allSatisfy(i -> assertThat(i.file()).doesNotExist());
+
+        // Les mêmes instances signalées encore : rien de plus n'est envoyé.
+        orchestrator.handleStudy(study("box-b", 2, 2));
+        assertThat(transfers.transfers).hasSize(2);
+        assertThat(transport.files).hasSize(2);
+    }
+
+    @Test
     void sameStudyRoutedToTwoPartnersGivesTwoTransfers() throws IOException {
         peers.save(new Peer("box-c", 6, "box-c", clock.instant()));
 
@@ -326,7 +356,7 @@ class SendOrchestratorTest {
     void failingStepDoesNotStopTheOrchestrator() throws IOException {
         InMemoryRepositories.Transfers broken = new InMemoryRepositories.Transfers() {
             @Override
-            public java.util.Optional<Transfer> findActive(String study, String calledAet, String destination) {
+            public List<Transfer> findActive(String study, String calledAet, String destination) {
                 throw new IllegalStateException("base indisponible");
             }
         };

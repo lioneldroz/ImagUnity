@@ -348,12 +348,9 @@ class DirectoryConfiguration {
                 scheduler = Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform().name("annuaire").daemon().factory());
                 CentralRules rules = central.getIfAvailable();
-                scheduler.scheduleWithFixedDelay(() -> {
-                    synchronize(directory, client, handshake, orchestrationExecutor);
-                    if (rules != null) {
-                        rules.synchronizeWith(client, identity.keys());
-                    }
-                }, 0, properties.syncInterval().toMillis(), TimeUnit.MILLISECONDS);
+                scheduler.scheduleWithFixedDelay(() -> synchronizeAll(directory, client, handshake,
+                        orchestrationExecutor, rules, identity), 0, properties.syncInterval().toMillis(),
+                        TimeUnit.MILLISECONDS);
             }
 
             @Override
@@ -372,6 +369,27 @@ class DirectoryConfiguration {
                 return PHASE;
             }
         };
+    }
+
+    /**
+     * Une lecture périodique de l'annuaire, puis de la configuration centrale. Une erreur imprévue est journalisée
+     * sans sortir de la tâche : une exception non rattrapée arrêterait définitivement la planification (plus de
+     * révocations ni de configurations reçues jusqu'au redémarrage de la box).
+     */
+    static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
+                               java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity) {
+        try {
+            synchronize(directory, client, handshake, executor);
+        } catch (RuntimeException e) {
+            LOG.error("Lecture de l'annuaire en échec, nouvel essai au prochain intervalle", e);
+        }
+        if (rules != null) {
+            try {
+                rules.synchronizeWith(client, identity.keys());
+            } catch (RuntimeException e) {
+                LOG.error("Lecture de la configuration centrale en échec, nouvel essai au prochain intervalle", e);
+            }
+        }
     }
 
     static void synchronize(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,

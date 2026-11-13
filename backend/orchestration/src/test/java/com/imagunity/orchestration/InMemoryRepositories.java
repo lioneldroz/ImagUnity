@@ -43,12 +43,25 @@ final class InMemoryRepositories {
         }
 
         @Override
-        public Optional<Transfer> findActive(String study, String calledAet, String destination) {
+        public List<Transfer> findActive(String study, String calledAet, String destination) {
             return transfers.values().stream()
                     .filter(t -> t.studyInstanceUid().equals(study) && t.calledAet().equals(calledAet)
                             && t.destination().equals(destination))
                     .filter(t -> !t.state().isTerminal())
-                    .findFirst();
+                    .sorted(java.util.Comparator.comparing(Transfer::createdAt).reversed())
+                    .toList();
+        }
+
+        public final Map<UUID, Set<String>> instances = new java.util.concurrent.ConcurrentHashMap<>();
+
+        @Override
+        public void saveInstances(UUID transferId, Set<String> sopInstanceUids) {
+            instances.put(transferId, Set.copyOf(sopInstanceUids));
+        }
+
+        @Override
+        public Set<String> instances(UUID transferId) {
+            return instances.getOrDefault(transferId, Set.of());
         }
 
         @Override

@@ -189,6 +189,10 @@ class QueueApiTest {
                 .statusCode()).isEqualTo(400);
         assertThat(send(deposit("/iu/v1/queues", RelayFixture.ACTIVE, RelayFixture.ACTIVE_KEYS,
                 "{\"inconnu\":1}".getBytes(StandardCharsets.UTF_8), "application/json")).statusCode()).isEqualTo(400);
+        // Corps démesuré : refusé sans être lu en entier, avant l'authentification.
+        assertThat(send(deposit("/iu/v1/queues", RelayFixture.ACTIVE, RelayFixture.ACTIVE_KEYS,
+                ("{\"x\":\"" + "a".repeat(QueueController.MAX_CREATE) + "\"}").getBytes(StandardCharsets.UTF_8),
+                "application/json")).statusCode()).isEqualTo(413);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> queues.create(RelayFixture.ACTIVE,
                 new QueueService.CreateRequest("IU1", "AAAA"))).hasMessageContaining("Clé publique");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> queues.create(RelayFixture.ACTIVE, null))

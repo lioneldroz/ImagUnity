@@ -6,6 +6,8 @@
 set -eu
 JAVA=${IMAGUNITY_JAVA:-java}
 # shellcheck disable=SC2086 # options de la JVM (magasin de certificats d'une autorité interne…)
-CHOIX=$("$JAVA" ${IMAGUNITY_JAVA_OPTS:-} -jar /opt/imagunity/imagunity-release.jar choisir)
+# Rien n'est téléchargé ici (IMAGUNITY_UPDATE_URL vidé) : le démarrage de la box ne dépend pas du réseau ni de la
+# durée d'un téléchargement. C'est la mise à jour de la nuit (imagunity-box-maj) qui télécharge, puis redémarre.
+CHOIX=$(IMAGUNITY_UPDATE_URL='' "$JAVA" ${IMAGUNITY_JAVA_OPTS:-} -jar /opt/imagunity/imagunity-release.jar choisir)
 printf '%s\n' "$CHOIX" > "$RUNTIME_DIRECTORY/choix.nouveau"
 mv "$RUNTIME_DIRECTORY/choix.nouveau" "$RUNTIME_DIRECTORY/choix"

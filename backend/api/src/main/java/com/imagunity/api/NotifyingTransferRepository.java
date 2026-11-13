@@ -55,7 +55,7 @@ public final class NotifyingTransferRepository implements TransferRepository {
     }
 
     @Override
-    public Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
+    public List<Transfer> findActive(String studyInstanceUid, String calledAet, String destination) {
         return delegate.findActive(studyInstanceUid, calledAet, destination);
     }
 
@@ -87,5 +87,15 @@ public final class NotifyingTransferRepository implements TransferRepository {
     @Override
     public Optional<TransferPart> findPartByTransportFileId(long transportFileId) {
         return delegate.findPartByTransportFileId(transportFileId);
+    }
+
+    @Override
+    public void saveInstances(UUID transferId, Set<String> sopInstanceUids) {
+        delegate.saveInstances(transferId, sopInstanceUids);
+    }
+
+    @Override
+    public Set<String> instances(UUID transferId) {
+        return delegate.instances(transferId);
     }
 }

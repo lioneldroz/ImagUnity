@@ -27,7 +27,7 @@ Aucune connexion n'entre depuis Internet : la box ne fait que des connexions sor
 | Compte | Rôle | Unités systemd |
 |---|---|---|
 | `imagunity` | Exécute la box : DICOM, transferts, API | `imagunity-box.service` |
-| `imagunity-maj` | Vérifie la signature de l'éditeur avant chaque démarrage et choisit la version ; chaque nuit, télécharge les mises à jour et redémarre la box | `imagunity-box-choix.service` (lancé par la box à chaque démarrage), `imagunity-box-maj.service` et son timer |
+| `imagunity-maj` | Vérifie la signature de l'éditeur avant chaque démarrage et choisit parmi les versions déjà téléchargées, sans attendre le réseau ; chaque nuit, télécharge les mises à jour et redémarre la box | `imagunity-box-choix.service` (lancé par la box à chaque démarrage), `imagunity-box-maj.service` et son timer |
 
 `imagunity-maj` ne peut redémarrer que la box, et rien d'autre. Ce droit lui est accordé par une règle polkit (`/etc/polkit-1/rules.d/50-imagunity-maj.rules`).
 
@@ -299,7 +299,7 @@ Chaque nuit, `imagunity-box-maj.service`, sous le compte `imagunity-maj`, télé
 | Box sans accès au serveur | Copier `<jar>` et `<jar>.manifeste.json` dans `/var/lib/imagunity-maj/depot/`, puis lancer la vérification immédiate. Une pièce refusée part dans `depot/refusees/` |
 | Version installée | `curl -s $U http://192.168.1.78:8080/api/v1/box` |
 
-**Alertes.** En cas d'échec de la box ou d'une mise à jour, par exemple si la box ne répond plus après une mise à jour, systemd lance `/etc/imagunity/alerte <nom du service>` sous le compte `imagunity-maj`, s'il existe et est exécutable :
+**Alertes.** En cas d'échec de la box, du choix de la version au démarrage ou d'une mise à jour, par exemple si la box ne répond plus après une mise à jour, systemd lance `/etc/imagunity/alerte <nom du service>` sous le compte `imagunity-maj`, s'il existe et est exécutable :
 
 ```bash
 cat > /etc/imagunity/alerte <<'EOF'

@@ -45,7 +45,7 @@ public final class DirectoryClient {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode());
         }
         EntriesResponse body = Json.read(response.body(), EntriesResponse.class, "Réponse de l'annuaire");
-        return body.entries() == null ? List.of() : body.entries();
+        return withoutNulls(body.entries());
     }
 
     /**
@@ -63,7 +63,7 @@ public final class DirectoryClient {
         }
         ConfigurationsResponse body = Json.read(response.body(), ConfigurationsResponse.class,
                 "Réponse de l'annuaire (configurations)");
-        return body.configurations() == null ? List.of() : body.configurations();
+        return withoutNulls(body.configurations());
     }
 
     /**
@@ -113,5 +113,10 @@ public final class DirectoryClient {
             Thread.currentThread().interrupt();
             throw new DirectoryException(what + " interrompu(e)", e);
         }
+    }
+
+    /** Documents publiés, sans les éléments vides d'une réponse mal formée (écartés comme invalides). */
+    private static List<SignedDocument> withoutNulls(List<SignedDocument> documents) {
+        return documents == null ? List.of() : documents.stream().filter(java.util.Objects::nonNull).toList();
     }
 }
