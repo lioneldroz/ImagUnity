@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Règles de priorité des séries en vigueur, en lecture seule (les règles se modifient dans la configuration de la box ;
- * plus tard depuis le serveur central, voir {@code docs/configuration-centralisee.md}).
+ * plus tard depuis le serveur central, voir {@code docs/reference/configuration-centralisee.md}).
  *
  * <pre>
  * GET /api/v1/priority → {"source", "loadedAt", "error", "defaultPriority", "rules": [{"name", "priority", "and", "or"}]}

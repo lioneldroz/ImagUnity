@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Configuration centralisée appliquée par cette box (docs/configuration-centralisee.md).
+ * Configuration centralisée appliquée par cette box (docs/reference/configuration-centralisee.md).
  *
  * <ul>
  *   <li>À chaque lecture de l'annuaire, les documents publiés sont vérifiés avec la clé épinglée du responsable ; la

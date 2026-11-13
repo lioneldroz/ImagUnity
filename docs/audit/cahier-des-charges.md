@@ -1,6 +1,6 @@
 # Cahier des charges — audit de sécurité externe d'ImagUnity
 
-> Étape 7 de la [spécification IU-T](../specification-protocole.md) : prérequis à la mise en production avec des données de patients.
+> Étape 7 de la [spécification IU-T](../reference/specification-protocole.md) : prérequis à la mise en production avec des données de patients.
 > Document à remettre aux prestataires consultés, avec le [dossier d'audit](dossier-audit.md).
 
 ## 1. Contexte

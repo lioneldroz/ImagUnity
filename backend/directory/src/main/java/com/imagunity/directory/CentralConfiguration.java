@@ -13,7 +13,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Document de configuration centralisée (docs/configuration-centralisee.md) : règles de priorité et de routage des
+ * Document de configuration centralisée (docs/reference/configuration-centralisee.md) : règles de priorité et de routage des
  * box, signées par le responsable de l'organisation, publiées par le service d'annuaire et appliquées par chaque box
  * visée, sans redémarrage.
  *

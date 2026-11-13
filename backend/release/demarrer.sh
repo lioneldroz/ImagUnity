@@ -1,5 +1,5 @@
 #!/bin/sh
-# Démarre la box sur la version signée valide la plus récente (voir docs/mises-a-jour-signees.md) :
+# Démarre la box sur la version signée valide la plus récente (voir docs/reference/mises-a-jour-signees.md) :
 # le lanceur vérifie les versions (image, dépôt, serveur de mises à jour) et refuse les retours en arrière.
 set -eu
 CHOIX=$(java -jar /app/imagunity-release.jar choisir) || exit 1

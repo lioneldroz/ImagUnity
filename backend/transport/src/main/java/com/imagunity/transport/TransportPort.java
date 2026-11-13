@@ -7,7 +7,7 @@ import java.util.function.Consumer;
  * Transport entre box, indépendant de son implémentation.
  *
  * <p>Le cœur métier ne connaît que cette interface. Implémentation : {@code IuTransport}, qui parle directement au
- * relais IU-T de l'organisation (spécification {@code docs/specification-protocole.md}) ; {@link DisabledTransport}
+ * relais IU-T de l'organisation (spécification {@code docs/reference/specification-protocole.md}) ; {@link DisabledTransport}
  * sans relais configuré.
  *
  * <p>Les méthodes sont bloquantes (prévues pour des threads virtuels). Les arrivées

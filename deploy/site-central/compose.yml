@@ -1,5 +1,5 @@
 # Site central ImagUnity : relais IU-T, annuaire de l'organisation, PostgreSQL, et Caddy pour le TLS et le serveur
-# de mises à jour. Voir docs/installation-site-central-rocky10.md.
+# de mises à jour. Voir docs/guides/installation-site-central-rocky10.md.
 #
 #   cp exemple.env .env    # puis le compléter (noms d'hôte, mots de passe, empreinte du responsable)
 #   docker compose up -d --build

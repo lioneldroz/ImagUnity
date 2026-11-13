@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: docker compose -f deploy/docker-compose.yml config --quiet
+      - run: docker compose -f deploy/banc-essai/docker-compose.yml config --quiet
         env:
           # Empreinte du responsable : exigée par le Compose (vérifiée hors bande en vrai), factice ici.
           IMAGUNITY_DIRECTORY_ORGANIZATION_CODE: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX

@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Configuration centralisée appliquée par la box, en lecture seule (docs/configuration-centralisee.md) : version en
+ * Configuration centralisée appliquée par la box, en lecture seule (docs/reference/configuration-centralisee.md) : version en
  * vigueur, provenance, dernier refus. Les règles elles-mêmes sont visibles sur {@code /api/v1/priority} (priorité) ;
  * le routage central figure ici par le nom de ses règles.
  *

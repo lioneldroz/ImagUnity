@@ -1,0 +1,23 @@
+# Mises à jour signées (docs/reference/mises-a-jour-signees.md) : les box ne démarrent que sur une version signée par la clé
+# hors ligne de l'éditeur, et jamais sur une version plus ancienne que la dernière exécutée.
+#
+#   mises-a-jour/editeur.pub.json : clé publique de l'éditeur (non versionnée ici)
+#   IMAGUNITY_RELEASE_CODE        : son empreinte courte, vérifiée hors bande avec l'éditeur
+#   IMAGUNITY_UPDATE_URL          : serveur de mises à jour (facultatif ; sinon, dépôt dans /data/mises-a-jour/depot)
+#
+#   docker compose -f docker-compose.yml -f compose.mises-a-jour.yml up -d
+
+x-mises-a-jour: &mises-a-jour
+  IMAGUNITY_RELEASE_KEY: /config/editeur.pub.json
+  IMAGUNITY_RELEASE_CODE: ${IMAGUNITY_RELEASE_CODE:?empreinte de l'éditeur, vérifiée hors bande}
+  IMAGUNITY_UPDATE_URL: ${IMAGUNITY_UPDATE_URL:-}
+
+services:
+  box-a:
+    environment: *mises-a-jour
+    volumes:
+      - ./mises-a-jour/editeur.pub.json:/config/editeur.pub.json:ro
+  box-b:
+    environment: *mises-a-jour
+    volumes:
+      - ./mises-a-jour/editeur.pub.json:/config/editeur.pub.json:ro

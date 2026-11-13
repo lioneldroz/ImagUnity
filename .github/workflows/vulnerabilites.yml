@@ -4,7 +4,7 @@ name: Vulnérabilités (CVE)
 #   - backend : nomenclature CycloneDX produite par Maven (versions réellement résolues, transitives comprises,
 #     hors dépendances de test) ;
 #   - frontend : package-lock.json ;
-#   - campagne de tests : deploy/campagne/requirements.txt.
+#   - campagne de tests : deploy/banc-essai/campagne/requirements.txt.
 # Bloquant dès qu'une vulnérabilité est trouvée. Exceptions justifiées et datées : osv-scanner.toml.
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
           ./osv-scanner scan source --config osv-scanner.toml --format markdown --output-file resultat.md \
             -L backend/target/sbom.cdx.json \
             -L frontend/package-lock.json \
-            -L deploy/campagne/requirements.txt || code=$?
+            -L deploy/banc-essai/campagne/requirements.txt || code=$?
           cat resultat.md
           { echo "## Vulnérabilités connues des dépendances"; echo; cat resultat.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $code

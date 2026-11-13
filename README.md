@@ -20,7 +20,7 @@ L'émetteur dépose l'examen chiffré sur un relais, et le destinataire vient le
 | Relais IU-T | Aveugle : morceaux chiffrés du contenu (IU-FILE) et files de messages chiffrés de signalisation (IU-MSG) ; dépôts réservés aux box enrôlées |
 | Annuaire | Propre à l'organisation, signé par son responsable : clés des box et adresses de leurs files de réception |
 
-Le transport est propre à ImagUnity : **IU-T** ([spécification](docs/specification-protocole.md)), inspiré de SMP et XFTP de l'écosystème [SimpleX](https://simplex.chat), utilisés jusqu'à la phase 8 puis remplacés.
+Le transport est propre à ImagUnity : **IU-T** ([spécification](docs/reference/specification-protocole.md)), inspiré de SMP et XFTP de l'écosystème [SimpleX](https://simplex.chat), utilisés jusqu'à la phase 8 puis remplacés.
 
 ### Déroulé d'un envoi
 
@@ -36,27 +36,32 @@ Le transport est propre à ImagUnity : **IU-T** ([spécification](docs/specifica
 
 ```
 backend/     Java 25, Spring Boot 4, Maven multi-modules
-  domain/       modèle métier, machine à états des transferts
-  dicom/        adaptateur DICOM (dcm4che)
-  packaging/    manifeste, compression zstd, découpage par série
-  transport/    port de transport et adaptateur IU-T
-  protocol/     formats IU-T partagés par la box et le relais
-  relay/        relais IU-T (Spring Boot, PostgreSQL)
-  persistence/  état des transferts et partenaires (H2 + Flyway)
-  orchestration/ orchestrateur des transferts, appairage
-  api/          API REST (+ SSE) pour la console
-  app/          assemblage Spring Boot de la box
+  domain/          modèle métier, machine à états des transferts
+  directory/       annuaire signé : identités, entrées, clés protégées (phrase de passe, TPM)
+  rules/           moteur de règles DICOM : conditions, priorité, routage
+  dicom/           adaptateur DICOM (dcm4che) : C-STORE, STOW-RS, restitution
+  configuration/   règles en vigueur : configuration centralisée, priorité locale rechargée à chaud
+  packaging/       manifeste, compression zstd, découpage par série
+  protocol/        formats IU-T partagés par la box et le relais
+  transport/       port de transport et adaptateur IU-T
+  relay/           relais IU-T (Spring Boot, PostgreSQL)
+  directory-server/ service d'annuaire de l'organisation (PostgreSQL)
+  release/         lanceur et outil de l'éditeur (versions signées)
+  persistence/     état des transferts et partenaires (H2 + Flyway)
+  orchestration/   orchestrateur des transferts, appairage
+  api/             API REST (+ SSE) pour la console
+  app/             assemblage Spring Boot de la box, console comprise
 frontend/    console React + TypeScript (Vite)
-deploy/      installation (site central, box systemd) et banc d'essai Docker Compose
-docs/        note d'architecture et plan de réalisation
+deploy/      installation (site central, box systemd), livraison, banc d'essai (banc-essai/)
+docs/        guides, référence, historique, audit : voir l'index docs/README.md
 ```
 
 ## Installation
 
 Sous Rocky Linux 10, en deux parties :
 
-- **site central** : relais IU-T, annuaire de l'organisation et serveur de mises à jour, sous Docker : [installation du site central](docs/installation-site-central-rocky10.md) ;
-- **box** de chaque établissement, sous systemd, sans root, avec mises à jour automatiques signées : [installation d'une box](docs/installation-box-rocky10.md).
+- **site central** : relais IU-T, annuaire de l'organisation et serveur de mises à jour, sous Docker : [installation du site central](docs/guides/installation-site-central-rocky10.md) ;
+- **box** de chaque établissement, sous systemd, sans root, avec mises à jour automatiques signées : [installation d'une box](docs/guides/installation-box-rocky10.md).
 
 ## Développement
 
@@ -77,7 +82,7 @@ java -jar app/target/imagunity-box.jar
 Le workflow **Vulnérabilités (CVE)** (`.github/workflows/vulnerabilites.yml`) passe les dépendances au crible de la base [OSV](https://osv.dev) avec OSV-Scanner :
 - **backend** : nomenclature CycloneDX produite par Maven, avec les versions réellement résolues, transitives comprises (hors dépendances de test) ;
 - **frontend** : `frontend/package-lock.json` ;
-- **campagne de tests** : `deploy/campagne/requirements.txt`.
+- **campagne de tests** : `deploy/banc-essai/campagne/requirements.txt`.
 
 Il tourne à chaque push sur `main`, sur chaque pull request, **chaque lundi** (un avis publié après coup est vu sans attendre un push) et à la demande (onglet *Actions*). Il **échoue dès qu'une vulnérabilité connue est trouvée** ; le rapport s'affiche dans le résumé de l'exécution.
 
@@ -86,7 +91,7 @@ Exceptions : `osv-scanner.toml`, chacune avec sa justification et une **date d'e
 ```bash
 (cd backend && ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json -DoutputName=sbom.cdx)
 osv-scanner scan source --config osv-scanner.toml -L backend/target/sbom.cdx.json \
-    -L frontend/package-lock.json -L deploy/campagne/requirements.txt
+    -L frontend/package-lock.json -L deploy/banc-essai/campagne/requirements.txt
 ```
 
 Frontend (http://localhost:5173, les appels `/api` sont relayés vers le backend) :
@@ -97,36 +102,20 @@ npm install
 npm run dev
 ```
 
-Banc d'essai complet sur une machine (relais, deux box, deux Orthanc), pour la campagne de tests : voir [deploy/README.md](deploy/README.md).
+Banc d'essai complet sur une machine (relais, deux box, deux Orthanc), pour la campagne de tests : voir [deploy/banc-essai/README.md](deploy/banc-essai/README.md).
 
 ## Documentation
 
-- [Note d'architecture](docs/ImagUnity%20—%20Note%20d'architecture.docx)
-- [Plan de réalisation](docs/plan-de-realisation.md)
-- [Analyse de la structure et plan d'amélioration](docs/plan-amelioration-structure.md)
-- [Livrer une version](docs/livraison.md)
-- [Notes de version](docs/notes-de-version.md)
-- [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
-- [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
-- [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
-- [Phase 4 — Orchestrateur](docs/phase4-orchestrateur.md)
-- [Phase 5 — Réception et restitution](docs/phase5-reception.md)
-- [Phase 6 — Accusé de bout en bout](docs/phase6-accuse.md)
-- [Phase 7 — API et console React](docs/phase7-console.md)
-- [Phase 8 — Campagne de tests](docs/phase8-campagne.md)
-- [Présentation : le voyage d’un examen](docs/presentation/README.md)
-- [Annuaire signé (pilote)](docs/annuaire-signe.md)
-- [Chiffrement applicatif des paquets (pilote)](docs/chiffrement-applicatif.md)
-- [Mises à jour signées (pilote)](docs/mises-a-jour-signees.md)
-- [Clés de la box protégées par le TPM (pilote)](docs/cles-tpm.md)
-- [Routage par champ DICOM (pilote)](docs/routage-dicom.md)
-- [Réception DICOMweb STOW-RS (pilote)](docs/stow-rs.md)
-- [Priorité des séries utiles au diagnostic (pilote)](docs/priorite-dicom.md)
-- [Configuration centralisée des box (plan, plus tard)](docs/configuration-centralisee.md)
-- [Spécification du protocole de transport IU-T](docs/specification-protocole.md) (v0.6 ; étapes 1 à 5 faites, 6 en cours)
+Index complet : [docs/README.md](docs/README.md).
+
+- **Installer et livrer** : [site central](docs/guides/installation-site-central-rocky10.md), [box](docs/guides/installation-box-rocky10.md), [livrer une version](docs/guides/livraison.md), [notes de version](docs/guides/notes-de-version.md).
+- **Comprendre** : [spécification du protocole IU-T](docs/reference/specification-protocole.md), [annuaire signé](docs/reference/annuaire-signe.md), [chiffrement applicatif](docs/reference/chiffrement-applicatif.md), [configuration centralisée](docs/reference/configuration-centralisee.md), [mises à jour signées](docs/reference/mises-a-jour-signees.md).
+- **Auditer** : [dossier d'audit](docs/audit/dossier-audit.md), [cahier des charges](docs/audit/cahier-des-charges.md), [pré-audit interne](docs/audit/pre-audit.md).
+- **Présenter** : [le voyage d'un examen](docs/presentation/README.md).
+- **Historique** : [note d'architecture](docs/historique/note-architecture.md), [plan de réalisation](docs/historique/plan-de-realisation.md), phases 1 à 8, [plan d'amélioration de la structure](docs/historique/plan-amelioration-structure.md).
 
 ## Statut
 
-Preuve de concept terminée (phases 0 à 8) : la chaîne PACS A → box A → relais → box B → PACS B fonctionne. Depuis l'étape 5 de la [spécification](docs/specification-protocole.md), elle passe par le transport propre IU-T, sans SimpleX ; la campagne de tests y a été rejouée avec des résultats au moins équivalents, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ; voir le [rapport](docs/phase8-campagne.md).
-
-Pilote, en cours : annuaire signé des box (enrôlement, révocation, annonces et accusés signés, clés protégées par phrase de passe) chiffrement applicatif des paquets pour la box destinataire (X25519 + ML-KEM-768) et mises à jour signées (lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière) clés de la box protégées par un secret scellé dans son TPM, routage des examens par champ DICOM et réception DICOMweb STOW-RS, tous vérifiés sur la pile Docker.
+- **Preuve de concept terminée** (phases 1 à 8) : la chaîne PACS A → box A → relais → box B → PACS B fonctionne sur le transport propre IU-T, avec accusé de bout en bout et suivi en direct dans la console. La campagne de tests (pare-feu, liaison bridée, coupure, destinataire éteint, 2 Go) est passée en réel, toutes instances identiques à l'arrivée ([rapport](docs/historique/phase8-campagne.md)).
+- **Fonctions du pilote faites et vérifiées sur le banc d'essai** : annuaire signé, chiffrement applicatif des paquets (X25519 + ML-KEM-768), mises à jour signées, clés protégées par le TPM, routage par champ DICOM, réception STOW-RS, priorité des séries, plusieurs relais et relais réparti, configuration centralisée.
+- **Préparation du pilote** : pré-audit interne fait et ses constats corrigés ; installations sous Rocky Linux 10 (site central sous Docker, box sous systemd sans root) vérifiées en CI ; chaîne de livraison en place (version 0.15.0). Reste l'audit externe ([cahier des charges](docs/audit/cahier-des-charges.md)) et le déploiement sur site.

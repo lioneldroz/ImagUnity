@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Relais IU-T (spécification {@code docs/specification-protocole.md}) : stockage temporaire de morceaux chiffrés
+ * Relais IU-T (spécification {@code docs/reference/specification-protocole.md}) : stockage temporaire de morceaux chiffrés
  * (IU-FILE) et files de messages chiffrés (IU-MSG). Aveugle : il ne détient aucune clé de contenu ; il vérifie
  * seulement des signatures.
  */

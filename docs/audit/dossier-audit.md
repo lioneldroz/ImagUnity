@@ -1,6 +1,6 @@
 # Dossier d'audit de sécurité — ImagUnity
 
-> Destinataire : le prestataire d'audit externe (étape 7 de la [spécification IU-T](../specification-protocole.md)).
+> Destinataire : le prestataire d'audit externe (étape 7 de la [spécification IU-T](../reference/specification-protocole.md)).
 > Objet : tout le nécessaire pour auditer le système sans perdre de temps à le reconstituer : périmètre, architecture, modèle de menace, inventaire cryptographique, surface d'attaque, mise en œuvre d'une pile d'essai, limites connues et constats du pré-audit interne.
 > Version du code : branche `main` du dépôt, à la date de la commande (référence du commit à fixer au lancement).
 
@@ -26,14 +26,14 @@ Documents de référence (tous dans `docs/`) :
 
 | Sujet | Document |
 |---|---|
-| Protocole de transport IU-T (relais, morceaux, files, plusieurs relais, relais réparti) | [specification-protocole.md](../specification-protocole.md) |
-| Annuaire signé, enrôlement, révocation, annonces et accusés signés, protection des clés | [annuaire-signe.md](../annuaire-signe.md) |
-| Chiffrement applicatif des paquets | [chiffrement-applicatif.md](../chiffrement-applicatif.md) |
-| Clés scellées par le TPM | [cles-tpm.md](../cles-tpm.md) |
-| Mises à jour signées | [mises-a-jour-signees.md](../mises-a-jour-signees.md) |
-| Configuration centralisée, groupes de box | [configuration-centralisee.md](../configuration-centralisee.md) |
-| Entrée DICOM, routage, STOW-RS, console | [phase2-dicom.md](../phase2-dicom.md), [routage-dicom.md](../routage-dicom.md), [stow-rs.md](../stow-rs.md), [phase7-console.md](../phase7-console.md) |
-| Campagne d'essais (scénarios réels, résultats bruts) | [phase8-campagne.md](../phase8-campagne.md), `deploy/campagne/` |
+| Protocole de transport IU-T (relais, morceaux, files, plusieurs relais, relais réparti) | [specification-protocole.md](../reference/specification-protocole.md) |
+| Annuaire signé, enrôlement, révocation, annonces et accusés signés, protection des clés | [annuaire-signe.md](../reference/annuaire-signe.md) |
+| Chiffrement applicatif des paquets | [chiffrement-applicatif.md](../reference/chiffrement-applicatif.md) |
+| Clés scellées par le TPM | [cles-tpm.md](../reference/cles-tpm.md) |
+| Mises à jour signées | [mises-a-jour-signees.md](../reference/mises-a-jour-signees.md) |
+| Configuration centralisée, groupes de box | [configuration-centralisee.md](../reference/configuration-centralisee.md) |
+| Entrée DICOM, routage, STOW-RS, console | [phase2-dicom.md](../historique/phase2-dicom.md), [routage-dicom.md](../reference/routage-dicom.md), [stow-rs.md](../reference/stow-rs.md), [phase7-console.md](../historique/phase7-console.md) |
+| Campagne d'essais (scénarios réels, résultats bruts) | [phase8-campagne.md](../historique/phase8-campagne.md), `deploy/banc-essai/campagne/` |
 
 ## 2. Périmètre de l'audit
 
@@ -59,7 +59,7 @@ Hors périmètre : le PACS et les postes des sites, l'hébergement physique, les
 
 ## 4. Modèle de menace
 
-Détail : [spécification § 3.3](../specification-protocole.md).
+Détail : [spécification § 3.3](../reference/specification-protocole.md).
 
 | Adversaire | Capacités supposées | Ce qu'il ne doit pas obtenir |
 |---|---|---|
@@ -110,7 +110,7 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 | Relais — IU-FILE | `POST/PUT/GET/DELETE /iu/v1/chunks…` | dépôt : identité de la box enrôlée ; accès : capacité Ed25519 | `relay/ChunkController`, `RequestAuthenticator` |
 | Relais — IU-MSG | `/iu/v1/queues…` | dépôt : identité ; relève : capacité de la file | `relay/QueueController` |
 | Relais — sondes | `/actuator/health/**` | aucune ; non routées par l'entrée K3s (seul `/iu/` l'est) | `relay` |
-| Répartiteur (Traefik) | port 8443 (HTTP derrière un proxy TLS) | — | `deploy/relais-reparti`, `deploy/k3s` |
+| Répartiteur (Traefik) | port 8443 (HTTP derrière un proxy TLS) | — | `deploy/banc-essai/relais-reparti`, `deploy/banc-essai/k3s` |
 | Annuaire — lecture | `GET /directory/v1/**` | aucune (documents signés) | `directory-server` |
 | Annuaire — dépôt | `POST /directory/v1/entries`, `/configurations` | compte du responsable (HTTP Basic) ; le service revérifie les signatures | `directory-server` |
 | Annuaire — comptes rendus des box | `POST /directory/v1/configurations/reports` | signature de la box | `directory-server` |
@@ -118,12 +118,12 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 
 ## 7. Mise en œuvre d'une pile d'essai
 
-Pile Docker complète (deux sites avec Orthanc, deux box, relais, annuaire), décrite dans [deploy/README.md](../../deploy/README.md) ; variantes : deux relais indépendants (`compose.deux-relais.yml`), relais réparti avec Traefik et S3 (`compose.relais-reparti.yml`), TPM logiciel (`campagne/compose.tpm-logiciel.yml`), mises à jour signées (`compose.mises-a-jour.yml`). Manifestes K3s : [deploy/k3s/README.md](../../deploy/k3s/README.md).
+Pile Docker complète (deux sites avec Orthanc, deux box, relais, annuaire), décrite dans [deploy/banc-essai/README.md](../../deploy/banc-essai/README.md) ; variantes : deux relais indépendants (`compose.deux-relais.yml`), relais réparti avec Traefik et S3 (`compose.relais-reparti.yml`), TPM logiciel (`campagne/compose.tpm-logiciel.yml`), mises à jour signées (`compose.mises-a-jour.yml`). Manifestes K3s : [deploy/banc-essai/k3s/README.md](../../deploy/banc-essai/k3s/README.md).
 
 - **Données exclusivement synthétiques** (générateur de la campagne : patient « SYNTHETIQUE^CAMPAGNE », pixels aléatoires). Aucune donnée réelle de patient n'est fournie ni ne doit être utilisée.
 - Comptes de test de la pile : opérateur `operateur` / `essai-synthetique`, responsable `responsable` / `essai-synthetique` (à changer pour tout autre usage).
 - Clés de test : à générer par l'auditeur avec l'outil du responsable (`DirectoryAdmin organisation-creer`, `enroler`…) pour disposer de ses propres clés d'organisation et de box.
-- Campagne de scénarios rejouable (`deploy/campagne/campagne.py`) : coupures, pare-feu, liaisons dégradées, relais arrêtés, volume, inspection en clair du stockage du relais.
+- Campagne de scénarios rejouable (`deploy/banc-essai/campagne/campagne.py`) : coupures, pare-feu, liaisons dégradées, relais arrêtés, volume, inspection en clair du stockage du relais.
 - Construction : `cd backend && ./mvnw verify` (tests et couverture), `cd frontend && npm ci && npm run build`.
 
 ## 8. Mesures déjà en place (à vérifier par l'auditeur)
@@ -146,7 +146,7 @@ Pile Docker complète (deux sites avec Orthanc, deux box, relais, annuaire), dé
 
 À examiner, sans les découvrir : elles sont documentées.
 
-- **Métadonnées visibles du relais** : quelle box dépose dans quelle file (dépôt authentifié par l'identité), volumes et horaires, taille approximative des paquets (nombre de morceaux). Pistes futures : jetons de dépôt anonymes ([spécification § 12](../specification-protocole.md)).
+- **Métadonnées visibles du relais** : quelle box dépose dans quelle file (dépôt authentifié par l'identité), volumes et horaires, taille approximative des paquets (nombre de morceaux). Pistes futures : jetons de dépôt anonymes ([spécification § 12](../reference/specification-protocole.md)).
 - **Annonce anticipée** : le relais voit un retrait commencer avant la fin du dépôt (association par les horaires).
 - **Relais réparti** : PostgreSQL et le stockage S3 deviennent les points critiques du site relais ; leur redondance relève de l'exploitation.
 - **Interface d'administration** : HTTP Basic du compte du responsable ; pas encore de comptes distincts ni de rôles.

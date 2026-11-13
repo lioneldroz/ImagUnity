@@ -2,7 +2,7 @@
 # Prépare l'archive d'installation d'une box (éditeur), à partir d'une version livrée et signée :
 #   sh deploy/box-systemd/construire-archive.sh <dossier>
 # <dossier> contient imagunity-box.jar, son manifeste signé (imagunity-box.jar.manifeste.json) et
-# imagunity-release.jar : en général le dossier « box » de la livraison (docs/livraison.md), après signature.
+# imagunity-release.jar : en général le dossier « box » de la livraison (docs/guides/livraison.md), après signature.
 # Sans argument : les jars construits dans backend/*/target. La version est lue dans le manifeste signé.
 set -eu
 ICI=$(cd "$(dirname "$0")" && pwd)

@@ -16,7 +16,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Priorité des séries ({@code imagunity.priority.*}) : règles par champ DICOM, lues dans l'ordre.
  *
  * <p>Deux sources : un <b>fichier JSON</b> ({@code file}), au format du document de configuration centralisée prévu
- * ({@code docs/configuration-centralisee.md}) et rechargé dès qu'il change ; ou ces propriétés (variables
+ * ({@code docs/reference/configuration-centralisee.md}) et rechargé dès qu'il change ; ou ces propriétés (variables
  * d'environnement {@code IMAGUNITY_PRIORITY_…}), fixées au démarrage. Le fichier l'emporte s'il est indiqué.
  *
  * @param defaultPriority priorité des séries qu'aucune règle ne couvre (1 à 9)
