@@ -1,6 +1,6 @@
 [Unit]
 Description=ImagUnity : vérification des versions signées avant le démarrage de la box
-Documentation=https://github.com/lioneldroz/ImagUnity/blob/main/docs/installation-box-rocky10.md
+Documentation=https://github.com/lioneldroz/ImagUnity/blob/main/docs/guides/installation-box-rocky10.md
 Wants=network-online.target
 After=network-online.target time-sync.target
 # Lancée par imagunity-box.service (Requires=) à chacun de ses démarrages.

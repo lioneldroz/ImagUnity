@@ -488,7 +488,7 @@ Précisions apportées par l'implémentation : la chaîne canonique sépare ses 
 
 **Étape 2 — relais IU-FILE et son client (fait).**
 
-*Relais* (`backend/relay`, application Spring Boot ; image `deploy/relay/Dockerfile`, Compose `deploy/compose.iu.yml`, intégré depuis au Compose de base) :
+*Relais* (`backend/relay`, application Spring Boot ; image `deploy/relay/Dockerfile`, Compose d'essai `compose.iu.yml`, intégré depuis au Compose de base du banc, `deploy/banc-essai/docker-compose.yml`) :
 - API du § 6.2 : création (dépôt), téléversement, téléchargement avec `Range` et attente longue (`wait`, réponse `425 Too Early` + `Retry-After`), acquittement, suppression, état ;
 - **dépôt réservé aux box enrôlées et actives** : le relais épingle la clé du responsable (empreinte confirmée, sinon refus de démarrer), lit l'annuaire comme une box (vue locale en base, synchronisation périodique) et vérifie la double signature de la box ;
 - capacités Ed25519 par morceau, anti-rejeu (§ 6.3) ;

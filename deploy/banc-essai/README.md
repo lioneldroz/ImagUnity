@@ -65,8 +65,8 @@ Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors e
 Les box démarrent par un lanceur qui vérifie la signature de l'éditeur et refuse les retours en arrière ([mises à jour signées](../../docs/reference/mises-a-jour-signees.md)). Pour l'activer, placer la clé publique de l'éditeur dans `mises-a-jour/editeur.pub.json`, signer le jar de la box avant `prepare.sh`, puis ajouter `compose.mises-a-jour.yml` avec l'empreinte vérifiée hors bande :
 
 ```bash
-java -jar ../backend/release/target/imagunity-release.jar signer --cles editeur.json \
-    --artefact ../backend/app/target/imagunity-box.jar --version 0.1.0 --sequence 1
+java -jar ../../backend/release/target/imagunity-release.jar signer --cles editeur.json \
+    --artefact ../../backend/app/target/imagunity-box.jar --version 0.1.0 --sequence 1
 export IMAGUNITY_RELEASE_CODE=<empreinte de l'éditeur>
 docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f compose.mises-a-jour.yml up -d --build
 ```

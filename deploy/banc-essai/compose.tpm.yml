@@ -1,11 +1,11 @@
 # Clés des box protégées par le TPM de l'hôte (docs/reference/cles-tpm.md) : un secret tiré par la box, scellé dans le TPM,
-# chiffre ses fichiers de clés ; copiés ailleurs, ils sont inutilisables. À ajouter après compose.annuaire.yml :
+# chiffre ses fichiers de clés ; copiés ailleurs, ils sont inutilisables. À ajouter au Compose de base :
 # au premier démarrage, la phrase de passe (secret Docker) sert une dernière fois, puis ne sert plus.
 #
 #   IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS : registres PCR auxquels lier le secret (par exemple sha256:0,7 :
 #                                           micrologiciel et démarrage sécurisé) ; vide : aucun
 #
-#   docker compose -f docker-compose.yml -f compose.annuaire.yml -f compose.tpm.yml --profile annuaire up -d
+#   docker compose -f docker-compose.yml -f compose.tpm.yml up -d
 
 x-tpm: &tpm
   IMAGUNITY_DIRECTORY_IDENTITY_TPM: "true"

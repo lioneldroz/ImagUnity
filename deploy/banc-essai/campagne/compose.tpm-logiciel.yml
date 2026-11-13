@@ -1,8 +1,8 @@
 # Essais sans TPM matériel : chaque box reçoit un TPM logiciel (swtpm) dans son espace réseau, joignable en
 # 127.0.0.1:2321, et une image avec les outils TPM. À ajouter à la place de compose.tpm.yml.
 #
-#   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f compose.annuaire.yml \
-#       -f campagne/compose.tpm-logiciel.yml --profile annuaire up -d --build
+#   docker compose -f docker-compose.yml -f campagne/compose.campagne.yml -f campagne/compose.tpm-logiciel.yml \
+#       up -d --build
 
 x-tpm: &tpm
   IMAGUNITY_DIRECTORY_IDENTITY_TPM: "true"
