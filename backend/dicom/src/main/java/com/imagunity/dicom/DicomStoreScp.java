@@ -70,6 +70,40 @@ public final class DicomStoreScp implements AutoCloseable {
         this(config, listener, Clock.systemUTC());
     }
 
+    /**
+     * Limites de l'entrée DICOM, face à un poste du réseau local malveillant ou défaillant.
+     *
+     * @param maxInstanceSize     plus grande instance acceptée, en octets (C-STORE et STOW-RS)
+     * @param maxAssociations     associations DICOM ouvertes en même temps, au plus
+     * @param idleTimeout         association sans échange au-delà de ce délai : fermée
+     * @param requestTimeout      délai pour recevoir la demande d'association après la connexion
+     * @param allowedSources      adresses ou réseaux (CIDR) admis à se connecter ; vide : toutes (l'AET appelant
+     *                            reste contrôlé)
+     */
+    public record Limits(long maxInstanceSize, int maxAssociations, Duration idleTimeout, Duration requestTimeout,
+                         java.util.Set<String> allowedSources) {
+
+        public Limits {
+            if (maxInstanceSize < 1 || maxAssociations < 1) {
+                throw new IllegalArgumentException("Limites DICOM invalides");
+            }
+            allowedSources = allowedSources == null ? java.util.Set.of() : java.util.Set.copyOf(allowedSources);
+            allowedSources.forEach(SourceFilter::parse);
+        }
+
+        public static Limits defaults() {
+            return new Limits(4L * 1024 * 1024 * 1024, 32, Duration.ofMinutes(2), Duration.ofSeconds(10),
+                    java.util.Set.of());
+        }
+    }
+
+    private volatile Limits limits = Limits.defaults();
+
+    /** Fixe les limites ; à appeler avant {@link #start()}. */
+    public void limits(Limits limits) {
+        this.limits = java.util.Objects.requireNonNull(limits);
+    }
+
     /** Règles de routage de la configuration centralisée, si elle en fixe ; sinon celles de la configuration. */
     private volatile java.util.function.Supplier<Optional<List<RoutingRule>>> centralRouting = Optional::empty;
 
@@ -117,12 +151,17 @@ public final class DicomStoreScp implements AutoCloseable {
         if (config.bindAddress() != null && !config.bindAddress().isBlank()) {
             connection.setBindAddress(config.bindAddress());
         }
+        // Un poste qui ouvre des connexions sans rien envoyer, ou des associations sans fin, ne bloque pas l'entrée.
+        connection.setRequestTimeout((int) limits.requestTimeout().toMillis());
+        connection.setIdleTimeout((int) limits.idleTimeout().toMillis());
+        connection.setReleaseTimeout(10_000);
         ApplicationEntity ae = new ApplicationEntity("*");
         ae.setAssociationAcceptor(true);
         ae.addConnection(connection);
         ae.addTransferCapability(new TransferCapability(null, "*", TransferCapability.Role.SCP, "*"));
         device.addConnection(connection);
         device.addApplicationEntity(ae);
+        device.setLimitOpenAssociations(limits.maxAssociations());
 
         DicomServiceRegistry services = new DicomServiceRegistry();
         services.addDicomService(new BasicCEchoSCP());
@@ -179,15 +218,22 @@ public final class DicomStoreScp implements AutoCloseable {
         @Override
         protected AAssociateAC makeAAssociateAC(Association as, AAssociateRQ rq, UserIdentityAC userIdentity)
                 throws IOException {
+            java.net.InetAddress from = as.getSocket().getInetAddress();
+            if (!SourceFilter.allows(limits.allowedSources(), from)) {
+                LOG.log(Level.WARNING, "Association refusée : adresse {0} hors des sources admises",
+                        from.getHostAddress());
+                throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
+                        AAssociateRJ.REASON_NO_REASON_GIVEN);
+            }
             if (!config.isCallingAetAllowed(rq.getCallingAET())) {
                 LOG.log(Level.WARNING, "Association refusée : émetteur {0} non autorisé (depuis {1})",
-                        rq.getCallingAET(), as.getSocket().getInetAddress().getHostAddress());
+                        printable(rq.getCallingAET()), from.getHostAddress());
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
                         AAssociateRJ.REASON_CALLING_AET_NOT_RECOGNIZED);
             }
             if (!config.isKnownCalledAet(rq.getCalledAET())) {
                 LOG.log(Level.WARNING, "Association refusée : destination {0} inconnue (émetteur {1})",
-                        rq.getCalledAET(), rq.getCallingAET());
+                        printable(rq.getCalledAET()), printable(rq.getCallingAET()));
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
                         AAssociateRJ.REASON_CALLED_AET_NOT_RECOGNIZED);
             }
@@ -221,7 +267,7 @@ public final class DicomStoreScp implements AutoCloseable {
                 try (OutputStream os = new BufferedOutputStream(Files.newOutputStream(temp));
                      DicomOutputStream out = new DicomOutputStream(os, UID.ExplicitVRLittleEndian)) {
                     out.writeFileMetaInformation(as.createFileMetaInformation(iuid, cuid, tsuid));
-                    data.copyTo(out);
+                    data.copyTo(new LimitedOutput(out, limits.maxInstanceSize()));
                 }
             } catch (IOException | RuntimeException e) {
                 Files.deleteIfExists(temp);
@@ -255,7 +301,9 @@ public final class DicomStoreScp implements AutoCloseable {
         Path temp = store.newTempFile();
         Attributes fmi;
         try {
-            Files.copy(part10, temp);
+            try (OutputStream out = Files.newOutputStream(temp)) {
+                part10.transferTo(new LimitedOutput(out, limits.maxInstanceSize()));
+            }
             try (DicomInputStream in = new DicomInputStream(temp.toFile())) {
                 fmi = in.readFileMetaInformation();
             }
@@ -315,6 +363,40 @@ public final class DicomStoreScp implements AutoCloseable {
      * @param destinations   partenaires destinataires
      */
     public record Accepted(String sopClassUid, String sopInstanceUid, String studyUid, List<String> destinations) {
+    }
+
+    /** Flux de sortie qui refuse plus de {@code limit} octets : une instance démesurée ne remplit pas le disque. */
+    private static final class LimitedOutput extends java.io.FilterOutputStream {
+        private final long limit;
+        private long written;
+
+        LimitedOutput(OutputStream out, long limit) {
+            super(out);
+            this.limit = limit;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] bytes, int offset, int length) throws IOException {
+            written += length;
+            if (written > limit) {
+                throw new IOException("Instance trop grande (plus de " + limit + " octets)");
+            }
+            out.write(bytes, offset, length);
+        }
+    }
+
+    /** AET venu du réseau, rendu sûr pour les journaux (pas de retour à la ligne ni de caractère de contrôle). */
+    static String printable(String aet) {
+        if (aet == null) {
+            return null;
+        }
+        String cleaned = aet.replaceAll("[^\\x20-\\x7E]", "?");
+        return cleaned.length() > 64 ? cleaned.substring(0, 64) + "…" : cleaned;
     }
 
     private void requireFreeSpace() throws IOException {

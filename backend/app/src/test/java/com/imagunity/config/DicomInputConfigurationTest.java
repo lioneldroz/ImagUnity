@@ -22,6 +22,11 @@ import org.springframework.util.unit.DataSize;
 /** Câblage de l'entrée DICOM, sans contexte Spring. */
 class DicomInputConfigurationTest {
 
+    private static final DicomLimitsProperties LIMITS = new DicomLimitsProperties(
+            org.springframework.util.unit.DataSize.ofGigabytes(4), 32, java.time.Duration.ofMinutes(2),
+            java.time.Duration.ofSeconds(10), java.util.Set.of("127.0.0.1"));
+
+
     @TempDir
     Path storage;
 
@@ -84,7 +89,7 @@ class DicomInputConfigurationTest {
     void lifecycleStartsAndStopsTheScp() throws IOException {
         DicomStoreScp scp = configuration.dicomStoreScp(
                 properties(freePort(), List.of(new DicomProperties.Route("IU_TO_B", "box-b"))),
-                study -> { });
+                LIMITS, study -> { });
         SmartLifecycle lifecycle = configuration.dicomInputLifecycle(scp);
 
         lifecycle.start();
@@ -99,7 +104,7 @@ class DicomInputConfigurationTest {
         try (ServerSocket taken = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
             DicomStoreScp scp = configuration.dicomStoreScp(
                     properties(taken.getLocalPort(), List.of(new DicomProperties.Route("IU_TO_B", "box-b"))),
-                    study -> { });
+                    LIMITS, study -> { });
             SmartLifecycle lifecycle = configuration.dicomInputLifecycle(scp);
 
             assertThatThrownBy(lifecycle::start)

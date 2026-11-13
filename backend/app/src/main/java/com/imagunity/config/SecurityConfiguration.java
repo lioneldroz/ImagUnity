@@ -5,6 +5,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Set;
@@ -91,12 +96,37 @@ class SecurityConfiguration {
         String password = properties.password();
         if (password == null || password.isBlank()) {
             password = generatedPassword();
+            Path file = properties.generatedPasswordFile();
+            writeOwnerOnly(file, password);
             LOG.warn("Aucun mot de passe de console configuré (IMAGUNITY_CONSOLE_PASSWORD) : mot de passe généré "
-                    + "pour ce démarrage, compte « {} » : {}", properties.user(), password);
+                    + "pour ce démarrage, compte « {} », écrit dans {} (lisible du seul compte de la box)",
+                    properties.user(), file.toAbsolutePath());
         }
         String stored = password.startsWith("{") ? password : encoder.encode(password);
         return new InMemoryUserDetailsManager(User.withUsername(properties.user()).password(stored)
                 .roles(ROLE_OPERATOR).build());
+    }
+
+    /** Écrit le mot de passe dans un fichier lisible du seul propriétaire (créé ainsi, jamais élargi ensuite). */
+    static void writeOwnerOnly(Path file, String password) {
+        try {
+            Path parent = file.toAbsolutePath().getParent();
+            Files.createDirectories(parent);
+            Path temp = Files.createTempFile(parent, ".mot-de-passe", ".tmp", ownerOnly(parent));
+            Files.writeString(temp, password + System.lineSeparator(), StandardCharsets.UTF_8);
+            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Mot de passe de console généré : écriture de " + file + " impossible",
+                    e);
+        }
+    }
+
+    private static java.nio.file.attribute.FileAttribute<?>[] ownerOnly(Path directory) {
+        if (directory.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            return new java.nio.file.attribute.FileAttribute<?>[] {java.nio.file.attribute.PosixFilePermissions
+                    .asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))};
+        }
+        return new java.nio.file.attribute.FileAttribute<?>[0];
     }
 
     static String generatedPassword() {
