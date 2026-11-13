@@ -158,8 +158,22 @@ class QueueApiTest {
         JsonNode ids = Codec.json().readTree(created.body());
         assertThat(ids.get("sendId").asString()).isEqualTo(RelayFixture.ACTIVE_SEND_ID);
         assertThat(ids.get("recvId").asString()).isNotEqualTo(RelayFixture.ACTIVE_SEND_ID).hasSize(43);
-        assertThat(createWith(RelayFixture.ACTIVE_SEND_ID).statusCode()).as("déjà créée").isEqualTo(409);
         assertThat(post(RelayFixture.ACTIVE_SEND_ID, "bonjour").statusCode()).isEqualTo(202);
+
+        // Demande répétée par la même box (réponse perdue) : même file, messages gardés, nouvelle clé de relève.
+        KeyPair previous = queueKey;
+        queueKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        HttpResponse<byte[]> again = createWith(RelayFixture.ACTIVE_SEND_ID);
+        assertThat(again.statusCode()).isEqualTo(201);
+        JsonNode same = Codec.json().readTree(again.body());
+        assertThat(same.get("recvId").asString()).isEqualTo(ids.get("recvId").asString());
+        String recvId = same.get("recvId").asString();
+        assertThat(send(capability("GET", "/iu/v1/queues/" + recvId + "/messages", recvId, previous.getPrivate()))
+                .statusCode()).as("ancienne clé").isEqualTo(401);
+        HttpResponse<byte[]> pending = send(capability("GET", "/iu/v1/queues/" + recvId + "/messages", recvId,
+                queueKey.getPrivate()));
+        assertThat(pending.statusCode()).isEqualTo(200);
+        assertThat(new String(pending.body(), StandardCharsets.UTF_8)).as("message gardé").contains("messageId");
     }
 
     @Test

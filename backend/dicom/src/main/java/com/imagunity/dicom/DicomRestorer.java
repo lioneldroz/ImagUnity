@@ -57,8 +57,31 @@ public final class DicomRestorer implements StudyRestorer {
 
     private final RestoreConfig config;
 
+    /**
+     * Délais d'attente du PACS. Sans eux (0 par défaut dans dcm4che : attente sans fin), un PACS qui accepte la
+     * connexion mais ne répond plus bloquerait l'orchestrateur, et avec lui tous les envois et réceptions de la box.
+     *
+     * @param connect  connexion TCP
+     * @param accept   réponse à la demande d'association
+     * @param response réponse à chaque C-STORE (une instance volumineuse peut être longue à enregistrer)
+     * @param release  fin de l'association
+     */
+    record Timeouts(java.time.Duration connect, java.time.Duration accept, java.time.Duration response,
+                    java.time.Duration release) {
+
+        static final Timeouts DEFAULT = new Timeouts(java.time.Duration.ofSeconds(30),
+                java.time.Duration.ofSeconds(30), java.time.Duration.ofMinutes(5), java.time.Duration.ofSeconds(30));
+    }
+
+    private final Timeouts timeouts;
+
     public DicomRestorer(RestoreConfig config) {
+        this(config, Timeouts.DEFAULT);
+    }
+
+    DicomRestorer(RestoreConfig config, Timeouts timeouts) {
         this.config = Objects.requireNonNull(config, "config");
+        this.timeouts = Objects.requireNonNull(timeouts, "timeouts");
     }
 
     @Override
@@ -126,6 +149,10 @@ public final class DicomRestorer implements StudyRestorer {
 
         Device device = new Device("imagunity-restore");
         Connection local = new Connection();
+        local.setConnectTimeout(Math.toIntExact(timeouts.connect().toMillis()));
+        local.setAcceptTimeout(Math.toIntExact(timeouts.accept().toMillis()));
+        local.setResponseTimeout(Math.toIntExact(timeouts.response().toMillis()));
+        local.setReleaseTimeout(Math.toIntExact(timeouts.release().toMillis()));
         ApplicationEntity ae = new ApplicationEntity(config.callingAet());
         device.addConnection(local);
         device.addApplicationEntity(ae);

@@ -89,12 +89,45 @@ public final class TpmSeal {
         this(base, pcrs, TpmSeal::exec);
     }
 
-    public boolean exists() {
+    public boolean exists() throws IOException {
+        finishSwitch();
         return Files.exists(publicPart) && Files.exists(privatePart);
     }
 
-    /** Scelle ce secret (le secret scellé précédent est remplacé d'un coup). */
+    /** Nouvelle version d'une partie du secret scellé, en attente du remplacement. */
+    private static Path pending(Path part) {
+        return Path.of(part + ".nouveau");
+    }
+
+    /** Marqueur posé une fois les deux nouvelles parties complètes : le remplacement peut alors être terminé. */
+    private Path ready() {
+        return Path.of(publicPart + ".pret");
+    }
+
+    /**
+     * Les deux parties du secret scellé doivent aller ensemble. Elles sont remplacées en trois temps : nouvelles
+     * parties écrites à côté, marqueur, puis renommages. Après un arrêt (coupure de courant) entre deux renommages,
+     * le remplacement est terminé ici ; avant le marqueur, la nouvelle paire incomplète est abandonnée et l'ancienne
+     * reste en place. Jamais une partie d'une paire avec une partie de l'autre.
+     */
+    private void finishSwitch() throws IOException {
+        if (Files.exists(ready())) {
+            for (Path part : List.of(publicPart, privatePart)) {
+                if (Files.exists(pending(part))) {
+                    Files.move(pending(part), part, StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
+                }
+            }
+            Files.delete(ready());
+        } else {
+            Files.deleteIfExists(pending(publicPart));
+            Files.deleteIfExists(pending(privatePart));
+        }
+    }
+
+    /** Scelle ce secret ; le secret scellé précédent est remplacé d'un coup, même en cas d'arrêt. */
     public void seal(byte[] secret) throws IOException {
+        finishSwitch();
         Path work = workDir();
         try {
             Path primary = work.resolve("primaire.ctx");
@@ -121,8 +154,10 @@ public final class TpmSeal {
                     Files.setPosixFilePermissions(part, PosixFilePermissions.fromString("rw-------"));
                 }
             }
-            Files.move(work.resolve("scelle.pub"), publicPart, StandardCopyOption.REPLACE_EXISTING);
-            Files.move(work.resolve("scelle.priv"), privatePart, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(work.resolve("scelle.pub"), pending(publicPart), StandardCopyOption.REPLACE_EXISTING);
+            Files.move(work.resolve("scelle.priv"), pending(privatePart), StandardCopyOption.REPLACE_EXISTING);
+            Files.write(ready(), new byte[0]);
+            finishSwitch();
         } finally {
             deleteRecursively(work);
         }
@@ -134,6 +169,7 @@ public final class TpmSeal {
      * @throws IOException si le TPM refuse (autre TPM, état de démarrage différent) ou ne répond pas
      */
     public byte[] unseal() throws IOException {
+        finishSwitch();
         IOException current;
         try {
             return unseal(false);
