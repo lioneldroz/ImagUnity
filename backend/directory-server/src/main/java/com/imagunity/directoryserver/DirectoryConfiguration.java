@@ -106,6 +106,26 @@ class DirectoryConfiguration {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
+    /** Écrit le mot de passe dans un fichier lisible du seul propriétaire. */
+    static void writeOwnerOnly(java.nio.file.Path file, String password) {
+        try {
+            java.nio.file.Path parent = file.toAbsolutePath().getParent();
+            java.nio.file.Files.createDirectories(parent);
+            java.nio.file.attribute.FileAttribute<?>[] attributes = parent.getFileSystem().supportedFileAttributeViews()
+                    .contains("posix") ? new java.nio.file.attribute.FileAttribute<?>[] {
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))}
+                    : new java.nio.file.attribute.FileAttribute<?>[0];
+            java.nio.file.Path temp = java.nio.file.Files.createTempFile(parent, ".mot-de-passe", ".tmp", attributes);
+            java.nio.file.Files.writeString(temp, password + System.lineSeparator());
+            java.nio.file.Files.move(temp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException("Mot de passe de dépôt généré : écriture de " + file
+                    + " impossible", e);
+        }
+    }
+
     @Bean
     UserDetailsService publisher(DirectoryServerProperties properties, PasswordEncoder encoder) {
         String password = properties.publisherPassword();
@@ -113,8 +133,11 @@ class DirectoryConfiguration {
             byte[] bytes = new byte[18];
             new SecureRandom().nextBytes(bytes);
             password = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+            java.nio.file.Path file = properties.generatedPasswordFile();
+            writeOwnerOnly(file, password);
             LOG.warn("Aucun mot de passe de dépôt configuré (IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD) : mot de passe "
-                    + "généré pour ce démarrage, compte « {} » : {}", properties.publisherUser(), password);
+                    + "généré pour ce démarrage, compte « {} », écrit dans {} (lisible du seul compte du service)",
+                    properties.publisherUser(), file.toAbsolutePath());
         }
         String stored = password.startsWith("{") ? password : encoder.encode(password);
         return new InMemoryUserDetailsManager(User.withUsername(properties.publisherUser()).password(stored)
