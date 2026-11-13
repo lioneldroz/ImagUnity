@@ -47,9 +47,16 @@ backend/     Java 25, Spring Boot 4, Maven multi-modules
   api/          API REST (+ SSE) pour la console
   app/          assemblage Spring Boot de la box
 frontend/    console React + TypeScript (Vite)
-deploy/      environnement Docker Compose de la preuve de concept
+deploy/      installation (site central, box systemd) et banc d'essai Docker Compose
 docs/        note d'architecture et plan de réalisation
 ```
+
+## Installation
+
+Sous Rocky Linux 10, en deux parties :
+
+- **site central** : relais IU-T, annuaire de l'organisation et serveur de mises à jour, sous Docker : [installation du site central](docs/installation-site-central-rocky10.md) ;
+- **box** de chaque établissement, sous systemd, sans root, avec mises à jour automatiques signées : [installation d'une box](docs/installation-box-rocky10.md).
 
 ## Développement
 
@@ -90,7 +97,7 @@ npm install
 npm run dev
 ```
 
-Environnement complet (relais, deux box, deux Orthanc) : voir [deploy/README.md](deploy/README.md).
+Banc d'essai complet sur une machine (relais, deux box, deux Orthanc), pour la campagne de tests : voir [deploy/README.md](deploy/README.md).
 
 ## Documentation
 
