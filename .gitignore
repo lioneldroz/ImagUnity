@@ -54,3 +54,6 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Scripts de la box sous systemd (versionnés, malgré la règle bin/ ci-dessus)
+!deploy/box-systemd/bin/
