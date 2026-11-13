@@ -165,6 +165,37 @@ class IuFileReplicasTest {
     }
 
     @Test
+    void aChunkIsKeptWhenItsAcknowledgementFails() throws Exception {
+        Path packet = packet("paquet.iu1", 6);
+        byte[] firstChunk = java.util.Arrays.copyOf(Files.readAllBytes(packet), 256 * ChunkLayout.KIB);
+        // Relais qui sert le premier morceau puis tombe avant l'acquittement (503).
+        com.sun.net.httpserver.HttpServer flaky = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        flaky.createContext("/iu/v1/chunks", exchange -> {
+            if (exchange.getRequestMethod().equals("GET")) {
+                exchange.sendResponseHeaders(200, firstChunk.length);
+                exchange.getResponseBody().write(firstChunk);
+            } else {
+                exchange.sendResponseHeaders(503, -1);
+            }
+            exchange.close();
+        });
+        flaky.start();
+        try {
+            IuFileUploader uploader = uploader();
+            IuFileUploader.UploadState first = uploader.upload(packet,
+                    uploader.prepare(packet, 256 * ChunkLayout.KIB, Duration.ofHours(1)), s -> { }, n -> { });
+            URI flakyUrl = URI.create("http://127.0.0.1:" + flaky.getAddress().getPort());
+            // Morceau 0 servi par le relais défaillant (acquittement refusé, morceau gardé) ; morceau 1 : contenu
+            // faux sur ce relais, servi par le suivant.
+            assertThat(Files.mismatch(packet, download(List.of(elsewhere(first, flakyUrl), first)))).isEqualTo(-1);
+            uploader.delete(first);
+        } finally {
+            flaky.stop(0);
+        }
+    }
+
+    @Test
     void theDownloadFailsOnceNoReplicaIsLeftOrPatienceRunsOut() throws Exception {
         Path packet = packet("paquet.iu1", 4);
         IuFileUploader uploader = uploader();

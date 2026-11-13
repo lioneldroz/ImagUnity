@@ -31,6 +31,7 @@ public final class IuFileDownloader {
 
     /** Attente longue demandée au relais pour un morceau pas encore téléversé. */
     static final Duration WAIT = Duration.ofSeconds(30);
+    private static final System.Logger LOG = System.getLogger(IuFileDownloader.class.getName());
 
     private final HttpClient http;
     private final Clock clock;
@@ -65,10 +66,15 @@ public final class IuFileDownloader {
             Fetched fetched = fetch(description, layout, chunk, target);
             IuFileClient client = fetched.client();
             FileDescription.Replica replica = fetched.replica();
-            retry.run("Acquittement du morceau " + chunk.index(), () -> {
+            // Au mieux, un seul essai : l'acquittement ne fait que libérer le relais plus tôt (l'émetteur retire ses
+            // copies à la fin du transfert, et elles expirent). Un relais tombé juste après avoir servi le morceau ne
+            // doit pas bloquer la réception.
+            try {
                 client.ack(replica.recipientId(), replica.privateRetrievalKey());
-                return null;
-            });
+            } catch (IOException | RelayRefusedException e) {
+                LOG.log(System.Logger.Level.INFO, "Acquittement du morceau {0} sur {1} impossible : {2}",
+                        chunk.index(), replica.relay(), Retry.reason(e));
+            }
             onChunk.accept(chunk.index());
             received += layout.payload(chunk.index());
             progress.accept(received);
