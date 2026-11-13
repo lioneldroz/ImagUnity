@@ -1,6 +1,8 @@
 # Banc d'essai (Docker Compose)
 
 > Ce dossier n'est **pas une installation** : pour installer ImagUnity, voir le [dossier `deploy/`](../README.md).
+>
+> Sur une station Windows, sans Docker : [`windows/`](windows/README.md) lance l'annuaire, le relais et une ou deux box.
 
 C'est le banc d'essai de la campagne de tests ([phase 8](../../docs/historique/phase8-campagne.md)) et de l'audit. Il rassemble sur une seule machine deux établissements, deux box, le relais IU-T et l'annuaire de l'organisation, sans aucun chemin réseau direct entre les sites. Ses mots de passe sont des mots de passe d'essai et ses liaisons sont en HTTP : données synthétiques uniquement.
 
