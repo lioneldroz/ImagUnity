@@ -6,6 +6,8 @@
 > - deux PACS Orthanc, A et B.
 >
 > Ce guide sert à une démonstration ou un essai, avec des **données exclusivement synthétiques**. Il ne décrit pas une installation de production : mots de passe d'essai, HTTP sans TLS, tout sur une machine.
+>
+> Pour des machines séparées, en pré-production sous Rocky Linux 10, voir les guides du [site central](installation-site-central-rocky10.md) et de la [box](installation-box-rocky10.md).
 
 ```
  site A (réseau Docker)        « Internet » (réseau Docker)        site B (réseau Docker)

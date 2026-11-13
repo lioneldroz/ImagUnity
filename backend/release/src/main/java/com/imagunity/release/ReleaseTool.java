@@ -32,6 +32,10 @@ import java.util.Set;
  *
  * Box (au démarrage, avant le logiciel) :
  *   choisir    écrit sur la sortie standard « jar TAB version TAB n° » de la version à exécuter
+ *
+ * Box (mise à jour automatique, logiciel en marche) :
+ *   telecharger  installe une version plus récente (dépôt, serveur) sans la démarrer ; écrit « nouvelle TAB n° »
+ *                si une version plus récente que celle en marche est prête (redémarrer la box), sinon « a-jour TAB n° »
  * </pre>
  *
  * La phrase de passe de la clé de l'éditeur vient de {@code IMAGUNITY_PHRASE_EDITEUR}, sinon elle est demandée au
@@ -102,6 +106,7 @@ public final class ReleaseTool {
                 case "signer" -> sign(o);
                 case "verifier" -> verify(o);
                 case "choisir" -> choose();
+                case "telecharger" -> download();
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -192,12 +197,45 @@ public final class ReleaseTool {
             out.println(bundled + "\tnon-verifiee\t0");
             return 0;
         }
+        ReleaseStore store = store(keyFile);
+        if (store == null) {
+            return 1;
+        }
+        ReleaseStore.Choice choice = store.choose(bundled);
+        out.println(choice.jar() + "\t" + choice.manifest().version() + "\t" + choice.manifest().sequence());
+        return 0;
+    }
+
+    /**
+     * Mise à jour automatique, la box en marche : importe le dépôt et interroge le serveur, sans rien démarrer ni
+     * changer la version retenue comme exécutée. Le planificateur redémarre la box si une version plus récente est
+     * prête ; c'est {@code choisir}, au démarrage, qui la revérifie et la retient.
+     */
+    private int download() throws IOException {
+        String keyFile = environment.get("IMAGUNITY_RELEASE_KEY");
+        if (keyFile == null || keyFile.isBlank()) {
+            err.println("Erreur : vérification des mises à jour désactivée (IMAGUNITY_RELEASE_KEY absent) : "
+                    + "pas de mise à jour automatique");
+            return 1;
+        }
+        ReleaseStore store = store(keyFile);
+        if (store == null) {
+            return 1;
+        }
+        long running = store.installed().map(ReleaseStore.Installed::sequence).orElse(0L);
+        long ready = store.highestInstalled();
+        out.println(ready > running ? "nouvelle\t" + ready : "a-jour\t" + running);
+        return 0;
+    }
+
+    /** Dépôt des versions, après vérification de l'empreinte de l'éditeur ; {@code null} si elle ne correspond pas. */
+    private ReleaseStore store(String keyFile) throws IOException {
         PublisherKey key = PublisherKey.read(Path.of(keyFile));
         String actual = key.key().shortCode();
         if (!normalize(actual).equals(normalize(environment.get("IMAGUNITY_RELEASE_CODE")))) {
             err.println("Erreur : empreinte de l'éditeur non confirmée : la clé installée a l'empreinte " + actual
                     + " ; après l'avoir vérifiée hors bande, la recopier dans IMAGUNITY_RELEASE_CODE");
-            return 1;
+            return null;
         }
         ReleaseStore store = new ReleaseStore(Path.of(environment.getOrDefault("IMAGUNITY_RELEASE_DIR",
                 "/data/mises-a-jour")), new ReleaseVerifier(key.key(), ReleaseManifest.BOX), clock,
@@ -207,9 +245,7 @@ public final class ReleaseTool {
         if (url != null && !url.isBlank()) {
             store.fetch(URI.create(url), http, store.installed().map(ReleaseStore.Installed::sequence).orElse(0L));
         }
-        ReleaseStore.Choice choice = store.choose(bundled);
-        out.println(choice.jar() + "\t" + choice.manifest().version() + "\t" + choice.manifest().sequence());
-        return 0;
+        return store;
     }
 
     static String normalize(String code) {
@@ -268,7 +304,8 @@ public final class ReleaseTool {
                   empreinte  --cle-publique <fichier>
                   signer     --cles <fichier> --artefact <jar> --version <v> --sequence <n> [--sortie <manifeste>]
                   verifier   --cle-publique <fichier> --manifeste <fichier> --artefact <jar>
-                  choisir    (box : configuration par IMAGUNITY_RELEASE_*)""");
+                  choisir    (box : configuration par IMAGUNITY_RELEASE_*)
+                  telecharger (box en marche : installe une version plus récente, sans la démarrer)""");
         return 2;
     }
 

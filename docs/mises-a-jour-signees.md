@@ -77,6 +77,12 @@ Une version est installée d'un coup : copiée, revérifiée, puis son dossier `
 - aucune version valide : la box refuse aussi de démarrer ;
 - les versions installées plus anciennes que la version choisie sont supprimées.
 
+**Mise à jour automatique, la box en marche** (box sous systemd, [installation d'une box](installation-box-rocky10.md)). La commande `telecharger` du lanceur importe le dépôt et interroge le serveur, comme `choisir`, mais n'exécute rien et ne change pas la version retenue comme exécutée. Elle écrit :
+- `nouvelle TAB n°` si une version plus récente que celle en marche est installée et prête ;
+- `a-jour TAB n°` sinon.
+
+Chaque nuit, le timer `imagunity-box-maj` la lance. Si une version est prête, il redémarre la box : `choisir` la revérifie alors et la retient. Le timer attend ensuite que la box réponde. Côté serveur, deux canaux (`pilote`, `general`) permettent de déployer progressivement ([site central, § 9](installation-site-central-rocky10.md)).
+
 **Console.** L'en-tête affiche la version et son numéro, par exemple « box-b · version 0.2.0 (signée, n° 2) », ou « (non vérifiée) ».
 
 **Images.** `deploy/campagne/box.Dockerfile` construit l'image à partir du jar signé et de son manifeste : la version livrée est vérifiable. `deploy/box/Dockerfile` construit depuis les sources, donc sans signature. Avec la clé de l'éditeur configurée, une telle image ne démarre que sur une version signée déposée ou téléchargée.

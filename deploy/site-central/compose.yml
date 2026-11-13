@@ -1,0 +1,107 @@
+# Site central ImagUnity : relais IU-T, annuaire de l'organisation, PostgreSQL, et Caddy pour le TLS et le serveur
+# de mises à jour. Voir docs/installation-site-central-rocky10.md.
+#
+#   cp exemple.env .env    # puis le compléter (noms d'hôte, mots de passe, empreinte du responsable)
+#   docker compose up -d --build
+name: imagunity-central
+
+services:
+  relay-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: relais
+      POSTGRES_USER: relais
+      POSTGRES_PASSWORD: ${RELAIS_DB_MOT_DE_PASSE:?mot de passe de la base du relais}
+    volumes:
+      - relay-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relais -d relais"]
+      interval: 10s
+      retries: 12
+    networks: [interne]
+
+  relay:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/relay/Dockerfile
+    image: imagunity/relay:${IMAGUNITY_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      IMAGUNITY_RELAY_DB_URL: jdbc:postgresql://relay-db:5432/relais
+      IMAGUNITY_RELAY_DB_PASSWORD: ${RELAIS_DB_MOT_DE_PASSE}
+      IMAGUNITY_RELAY_STORAGE_DIR: /data/morceaux
+      IMAGUNITY_RELAY_DIRECTORY_URL: http://directory:8090
+      IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_RELAY_ORGANIZATION_CODE: ${EMPREINTE_RESPONSABLE:?empreinte du responsable, vérifiée hors bande}
+      IMAGUNITY_RELAY_QUOTA_PER_BOX: ${RELAIS_QUOTA_PAR_BOX:-100GB}
+    volumes:
+      - relay-data:/data
+      - ./config/organisation.pub.json:/config/organisation.pub.json:ro
+    depends_on:
+      relay-db: {condition: service_healthy}
+      directory: {condition: service_started}
+    networks: [interne]
+
+  directory-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: annuaire
+      POSTGRES_USER: annuaire
+      POSTGRES_PASSWORD: ${ANNUAIRE_DB_MOT_DE_PASSE:?mot de passe de la base de l'annuaire}
+    volumes:
+      - directory-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U annuaire -d annuaire"]
+      interval: 10s
+      retries: 12
+    networks: [interne]
+
+  directory:
+    build:
+      context: ../../backend
+      dockerfile: ../deploy/directory/Dockerfile
+    image: imagunity/directory:${IMAGUNITY_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      IMAGUNITY_DIRECTORY_DB_URL: jdbc:postgresql://directory-db:5432/annuaire
+      IMAGUNITY_DIRECTORY_DB_PASSWORD: ${ANNUAIRE_DB_MOT_DE_PASSE}
+      IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_DIRECTORY_PUBLISHER_USER: ${ANNUAIRE_COMPTE:-responsable}
+      IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD: ${ANNUAIRE_MOT_DE_PASSE:?mot de passe du compte de dépôt du responsable}
+    volumes:
+      - ./config/organisation.pub.json:/config/organisation.pub.json:ro
+    depends_on:
+      directory-db: {condition: service_healthy}
+    networks: [interne]
+
+  # Seul service joignable de l'extérieur : TLS, routage, filtrage de l'administration, serveur de mises à jour.
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    environment:
+      RELAIS_HOTE: ${RELAIS_HOTE:?nom d'hôte du relais}
+      ANNUAIRE_HOTE: ${ANNUAIRE_HOTE:?nom d'hôte de l'annuaire}
+      RESEAU_ADMIN: ${RESEAU_ADMIN:?adresses autorisées pour l'administration}
+      TLS_INTERNE: ${TLS_INTERNE:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./mises-a-jour:/srv/mises-a-jour:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [relay, directory]
+    networks: [interne]
+
+networks:
+  interne: {}
+
+volumes:
+  relay-db-data:
+  relay-data:
+  directory-db-data:
+  caddy-data:
+  caddy-config:
