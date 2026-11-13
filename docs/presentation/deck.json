@@ -3,13 +3,14 @@
   "createdOnFiles": {"v": 1, "at": "2026-11-12T09:00:00Z"},
   "lists": "css",
   "title": "ImagUnity — le voyage d’un examen",
-  "order": ["cover", "probleme", "idee", "acteurs", "appairage", "flux", "etape1", "etape2", "etape3", "etape4", "etape5", "etats", "incidents", "preuves"],
+  "order": ["cover", "probleme", "idee", "acteurs", "appairage", "flux", "etape1", "etape2", "etape3", "etape4", "etape5", "etats", "incidents", "priorite", "routage", "centrale", "relais", "preuves", "audit"],
   "sections": {
     "s1": {"description": "Le problème à résoudre et l’idée de la boîte aux lettres aveugle.", "start": "cover"},
     "s2": {"description": "Les acteurs de la chaîne et l’appairage des box.", "start": "acteurs"},
     "s3": {"description": "Le voyage d’un examen, du PACS source au PACS destinataire.", "start": "flux"},
     "s4": {"description": "Suivi, relance et reprise après incident.", "start": "etats"},
-    "s5": {"description": "Ce que la campagne de tests a montré, et la suite.", "start": "preuves"}
+    "s6": {"description": "Piloter le réseau : priorité des séries, routage, configuration centralisée et redondance des relais.", "start": "priorite"},
+    "s5": {"description": "Ce que la campagne de tests a montré, et la suite : l’audit de sécurité.", "start": "preuves"}
   },
   "faces": {
     "space-grotesk": {"family": "Space Grotesk", "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&display=swap"},
