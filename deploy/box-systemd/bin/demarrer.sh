@@ -1,7 +1,8 @@
 #!/bin/sh
-# Lancé par systemd sous le compte imagunity : démarre la version choisie et vérifiée par choisir.sh.
+# Lancé par systemd sous le compte imagunity : démarre la version choisie et vérifiée par choisir.sh
+# (imagunity-box-choix.service, sous le compte imagunity-maj, juste avant).
 set -eu
-CHOIX=$(cat "$RUNTIME_DIRECTORY/choix")
+CHOIX=$(cat "${IMAGUNITY_CHOIX:-/run/imagunity-choix/choix}")
 JAR=$(printf '%s\n' "$CHOIX" | cut -f1)
 VERSION=$(printf '%s\n' "$CHOIX" | cut -f2)
 NUMERO=$(printf '%s\n' "$CHOIX" | cut -f3)

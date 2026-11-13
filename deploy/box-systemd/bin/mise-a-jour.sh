@@ -1,7 +1,8 @@
 #!/bin/sh
-# Mise à jour automatique, lancée en root par imagunity-box-maj.timer : télécharge et vérifie une version plus
-# récente (serveur IMAGUNITY_UPDATE_URL, ou dépôt manuel), sans l'exécuter. S'il y en a une, redémarre la box,
-# qui la revérifie au démarrage (choisir.sh), puis attend qu'elle réponde. Un transfert en cours reprend après le
+# Mise à jour automatique, lancée par imagunity-box-maj.timer sous le compte imagunity-maj (aucun root) : télécharge
+# et vérifie une version plus récente (serveur IMAGUNITY_UPDATE_URL, ou dépôt manuel), sans l'exécuter. S'il y en a
+# une, redémarre la box (droit accordé par la règle polkit 50-imagunity-maj.rules, pour ce seul service), qui la
+# revérifie au démarrage (choisir.sh), puis attend qu'elle réponde. Un transfert en cours reprend après le
 # redémarrage, au morceau près.
 set -eu
 JAVA=${IMAGUNITY_JAVA:-java}
@@ -11,11 +12,14 @@ case "$RESULTAT" in
     nouvelle*)
         NUMERO=$(printf '%s\n' "$RESULTAT" | cut -f2)
         echo "Version n° $NUMERO prête : redémarrage de la box"
-        systemctl restart imagunity-box.service
+        systemctl --no-ask-password restart imagunity-box.service
         SANTE="http://${SERVER_ADDRESS:-127.0.0.1}:${IMAGUNITY_HTTP_PORT:-8080}/actuator/health"
         ATTENTE=${IMAGUNITY_MAJ_ATTENTE:-300}
+        CHOIX=${IMAGUNITY_CHOIX:-/run/imagunity-choix/choix}
         while [ "$ATTENTE" -gt 0 ]; do
-            if curl -sf --max-time 5 "$SANTE" | grep -q '"UP"'; then
+            # Version retenue par le lanceur au redémarrage, puis box en bonne santé.
+            if [ "$(cut -f3 "$CHOIX" 2>/dev/null)" = "$NUMERO" ] \
+                    && curl -sf --max-time 5 "$SANTE" | grep -q '"UP"'; then
                 echo "Box redémarrée sur la version n° $NUMERO, en bonne santé"
                 exit 0
             fi

@@ -18,7 +18,7 @@ NOM="imagunity-box-$VERSION"
 TRAVAIL=$(mktemp -d)
 mkdir -p "$TRAVAIL/$NOM"
 cp "$BOX" "$BOX.manifeste.json" "$RACINE/backend/release/target/imagunity-release.jar" "$TRAVAIL/$NOM/"
-cp -r "$ICI/bin" "$ICI/systemd" "$ICI/installer.sh" "$ICI/box.env.exemple" "$TRAVAIL/$NOM/"
+cp -r "$ICI/bin" "$ICI/systemd" "$ICI/polkit" "$ICI/installer.sh" "$ICI/box.env.exemple" "$TRAVAIL/$NOM/"
 tar -C "$TRAVAIL" -czf "$RACINE/$NOM.tar.gz" "$NOM"
 rm -r "$TRAVAIL"
 echo "Archive : $RACINE/$NOM.tar.gz"
