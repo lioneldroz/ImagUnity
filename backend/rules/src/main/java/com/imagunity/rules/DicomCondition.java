@@ -1,4 +1,4 @@
-package com.imagunity.dicom;
+package com.imagunity.rules;
 
 import java.util.ArrayList;
 import java.util.Collections;

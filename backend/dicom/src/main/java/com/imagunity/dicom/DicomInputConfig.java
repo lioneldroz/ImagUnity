@@ -1,5 +1,6 @@
 package com.imagunity.dicom;
 
+import com.imagunity.rules.RoutingRule;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -39,8 +40,6 @@ public record DicomInputConfig(
      * d'où un jeu de caractères plus strict que la norme DICOM.
      */
     private static final Pattern SAFE_AET = Pattern.compile("[A-Za-z0-9_\\-]{1,16}");
-    /** Nom de partenaire (comme les contacts appairés) : sert aussi de nom de dossier. */
-    private static final Pattern DESTINATION = Pattern.compile("[A-Za-z0-9_\\-]{1,64}");
 
     public DicomInputConfig {
         if (port < 1 || port > 65535) {
@@ -61,7 +60,7 @@ public record DicomInputConfig(
             if (destination == null || destination.isBlank()) {
                 throw new IllegalArgumentException("Destination DICOM " + calledAet + " sans partenaire");
             }
-            requireDestination(destination, "Destination DICOM " + calledAet);
+            RoutingRule.requireDestination(destination, "Destination DICOM " + calledAet);
         });
         rules = rules == null ? List.of() : List.copyOf(rules);
         routingAet = routingAet == null || routingAet.isBlank() ? null : routingAet.strip();
@@ -106,13 +105,6 @@ public record DicomInputConfig(
      */
     public Optional<RoutingRule> ruleFor(org.dcm4che3.data.Attributes dataset) {
         return rules.stream().filter(rule -> rule.matches(dataset)).findFirst();
-    }
-
-    static void requireDestination(String destination, String what) {
-        if (destination == null || !DESTINATION.matcher(destination).matches()) {
-            throw new IllegalArgumentException(what + " : partenaire invalide « " + destination
-                    + " » (1 à 64 caractères parmi A-Z, a-z, 0-9, _ et -)");
-        }
     }
 
     /** Vrai si l'émetteur local est autorisé à pousser vers la box. */

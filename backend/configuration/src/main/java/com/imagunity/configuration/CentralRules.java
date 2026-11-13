@@ -1,10 +1,11 @@
-package com.imagunity.config;
+package com.imagunity.configuration;
 
-import com.imagunity.dicom.PrioritySource;
-import com.imagunity.dicom.RoutingRule;
-import com.imagunity.dicom.RuleSet;
+import com.imagunity.rules.PrioritySource;
+import com.imagunity.rules.RoutingRule;
+import com.imagunity.rules.RuleSet;
 import com.imagunity.directory.CentralConfiguration;
 import com.imagunity.directory.ConfigurationReport;
+import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.DirectoryException;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.HybridPublicKey;
@@ -39,7 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
  *       laisse les règles locales en vigueur.</li>
  * </ul>
  */
-public final class CentralRules implements com.imagunity.api.CentralConfigurationController.Status {
+public final class CentralRules implements CentralConfigurationStatus {
 
     private static final Logger LOG = LoggerFactory.getLogger(CentralRules.class);
     private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -325,6 +326,28 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         return new View(true, s.sequence(), s.issuedAt(), s.author(), s.comment(), s.appliedAt(), s.priority(),
                 s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error(),
                 List.copyOf(groups.get()));
+    }
+
+    /**
+     * Lit les documents de configuration publiés, applique le plus récent qui vise la box, puis rend compte à
+     * l'annuaire si c'est dû. Une erreur de lecture est gardée pour la console ; les règles en vigueur restent.
+     */
+    public void synchronizeWith(DirectoryClient client, HybridKeyPair boxKeys) {
+        try {
+            synchronize(client.fetchConfigurations());
+        } catch (DirectoryException e) {
+            failed(e.getMessage());
+            LOG.debug("Configuration centrale non lue : {}", e.getMessage());
+            return;
+        }
+        reportIfDue(boxKeys).ifPresent(report -> {
+            try {
+                client.report(report);
+                reported(report);
+            } catch (DirectoryException e) {
+                LOG.debug("Compte rendu de configuration non remis : {}", e.getMessage());
+            }
+        });
     }
 
     /**

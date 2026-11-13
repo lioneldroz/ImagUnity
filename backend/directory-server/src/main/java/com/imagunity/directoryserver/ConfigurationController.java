@@ -1,6 +1,6 @@
 package com.imagunity.directoryserver;
 
-import com.imagunity.dicom.RuleSet;
+import com.imagunity.rules.RuleSet;
 import com.imagunity.directory.CentralConfiguration;
 import com.imagunity.directory.SignedDocument;
 import java.util.List;

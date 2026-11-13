@@ -40,7 +40,7 @@ Documents de référence (tous dans `docs/`) :
 **Tout le système** :
 
 1. **Conception cryptographique** : suite `IU1`, construction hybride post-quantique, documents signés, anti-rejeu, anti-retour en arrière, chiffrement applicatif, protection des clés (phrase de passe, TPM), mises à jour signées.
-2. **Revue de code ciblée** (Java 25, Spring Boot 4) : modules `protocol`, `directory`, `packaging`, `transport`, `relay`, `orchestration`, `dicom`, `api`, `app`, `directory-server`, `release` ; console React (`frontend/`).
+2. **Revue de code ciblée** (Java 25, Spring Boot 4) : modules `protocol`, `directory`, `packaging`, `transport`, `relay`, `orchestration`, `rules`, `dicom`, `configuration`, `api`, `app`, `directory-server`, `release` ; console React (`frontend/`).
 3. **Tests d'intrusion boîte grise** sur une pile déployée (§ 7) : box (console, API, DICOM, STOW-RS), relais (IU-FILE, IU-MSG, répartiteur), service d'annuaire (API, interface d'administration).
 4. **Déploiement** : images, Compose, manifestes K3s, chaîne d'intégration (GitHub Actions).
 
@@ -83,10 +83,10 @@ Toutes les primitives viennent du **JDK 25** (aucune bibliothèque cryptographiq
 | Chiffrement | AES-256-GCM ; paquets : blocs de 1 Mio, nonce = rang du bloc, données associées = empreinte de l'en-tête + indicateur de dernier bloc | `packaging` |
 | Remplissage du dernier morceau | flux AES-256-CTR d'une clé aléatoire par envoi (masque la taille exacte ; pas un rôle de confidentialité) | `protocol/Chunks` |
 | Empreintes | SHA-256 (morceaux, paquets, corps des requêtes signées) | partout |
-| Protection des clés au repos | PBKDF2-HMAC-SHA256 600 000 itérations, sel 16 octets ; AES-256-GCM nonce aléatoire 12 octets ; ou secret scellé par le TPM 2.0 (lié aux PCR en option) | `directory/KeyFiles`, `KeyProtection`, `SealedFiles` ; `app/config/Tpm*` |
+| Protection des clés au repos | PBKDF2-HMAC-SHA256 600 000 itérations, sel 16 octets ; AES-256-GCM nonce aléatoire 12 octets ; ou secret scellé par le TPM 2.0 (lié aux PCR en option) | `directory/KeyFiles`, `KeyProtection`, `SealedFiles`, `TpmSeal` |
 | Mises à jour | Manifeste signé par la clé de l'éditeur (Ed25519 + ML-DSA-65), numéro de version croissant, empreinte de l'artefact | `release` |
 | Anti-rejeu des requêtes au relais | horodatage ± 5 min, identifiant de requête unique dans la fenêtre, en base partagée par les instances | `protocol/ReplayGuard`, `relay/ReplayStore` |
-| Anti-retour en arrière | numéros d'émission des entrées, numéros de version des configurations (plancher gardé par la box), numéros de version du logiciel | `directory/EntryVerifier`, `app/config/CentralRules`, `release` |
+| Anti-retour en arrière | numéros d'émission des entrées, numéros de version des configurations (plancher gardé par la box), numéros de version du logiciel | `directory/EntryVerifier`, `configuration/CentralRules`, `release` |
 | Transport | TLS 1.3 vers le relais et l'annuaire (terminaison au proxy en production) ; la confidentialité de bout en bout n'en dépend pas | déploiement |
 
 Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
@@ -105,7 +105,7 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 | Box — STOW-RS | `POST /dicomweb/{aet}/studies[/{study}]` | compte d'opérateur | `api`, `dicom/StowService` |
 | Box — console et API | `/api/v1/**`, fichiers de la console | compte d'opérateur (HTTP Basic), en-tête anti-CSRF `X-ImagUnity-Console` | `api`, `app/config` |
 | Box — données reçues | messages IU-MSG (enveloppes chiffrées et signées), descriptions de fichiers, morceaux, paquets | signature de la box émettrice d'après l'annuaire ; chiffrement pour la box | `transport/iu`, `orchestration`, `packaging` |
-| Box — annuaire et configuration | `GET` des entrées et des configurations | signature du responsable (clé épinglée, empreinte vérifiée hors bande) | `directory/LocalDirectory`, `app/config/CentralRules` |
+| Box — annuaire et configuration | `GET` des entrées et des configurations | signature du responsable (clé épinglée, empreinte vérifiée hors bande) | `directory/LocalDirectory`, `configuration/CentralRules` |
 | Box — mises à jour | manifeste et artefact | signature de l'éditeur | `release` |
 | Relais — IU-FILE | `POST/PUT/GET/DELETE /iu/v1/chunks…` | dépôt : identité de la box enrôlée ; accès : capacité Ed25519 | `relay/ChunkController`, `RequestAuthenticator` |
 | Relais — IU-MSG | `/iu/v1/queues…` | dépôt : identité ; relève : capacité de la file | `relay/QueueController` |

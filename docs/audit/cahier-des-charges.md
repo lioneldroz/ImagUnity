@@ -21,7 +21,7 @@ Tout le système, détaillé au [dossier d'audit § 2 et § 6](dossier-audit.md)
 | Lot | Contenu | Livrable |
 |---|---|---|
 | 1. Conception cryptographique | Suite `IU1`, construction hybride, documents signés, anti-rejeu, anti-retour en arrière, chiffrement applicatif, protection des clés (phrase de passe, TPM), mises à jour signées ; spécifications fournies | Avis motivé, constats |
-| 2. Revue de code source | Modules sensibles en priorité : `protocol`, `directory`, `packaging`, `transport`, `relay`, `release` ; puis `orchestration`, `dicom`, `api`, `app`, `directory-server`, console | Constats avec emplacement dans le code |
+| 2. Revue de code source | Modules sensibles en priorité : `protocol`, `directory`, `packaging`, `transport`, `relay`, `release` ; puis `orchestration`, `rules`, `dicom`, `configuration`, `api`, `app`, `directory-server`, console | Constats avec emplacement dans le code |
 | 3. Tests d'intrusion boîte grise | Pile d'essai fournie (box, relais simple et réparti, annuaire, interface d'administration) ; scénarios : relais compromis, annuaire compromis, box compromise, attaquant sur le réseau du site, attaquant Internet | Constats, preuves de concept |
 | 4. Configuration et déploiement | Images, Compose, manifestes K3s, chaîne d'intégration continue | Constats, recommandations de durcissement |
 

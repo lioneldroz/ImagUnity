@@ -1,5 +1,6 @@
 package com.imagunity.config;
 
+import com.imagunity.configuration.ReloadablePriority;
 import com.imagunity.api.ConsoleEvents;
 import com.imagunity.api.ConsoleProperties;
 import com.imagunity.api.NotifyingInboundRepository;
@@ -68,7 +69,7 @@ class OrchestrationConfiguration {
     /** Priorité des séries : règles des propriétés ou d'un fichier JSON rechargé à chaud. */
     @Bean
     ReloadablePriority seriesPriority(PriorityProperties properties, Clock clock) {
-        return ReloadablePriority.of(properties, clock);
+        return properties.priority(clock);
     }
 
     @Bean

@@ -25,7 +25,9 @@
         <module>release</module>
         <module>protocol</module>
         <module>relay</module>
+        <module>rules</module>
         <module>dicom</module>
+        <module>configuration</module>
         <module>packaging</module>
         <module>transport</module>
         <module>persistence</module>
@@ -76,6 +78,16 @@
             </dependency>
             <dependency>
                 <groupId>com.imagunity</groupId>
+                <artifactId>imagunity-rules</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.imagunity</groupId>
+                <artifactId>imagunity-configuration</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-dicom</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -103,6 +115,11 @@
                 <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-orchestration</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.dcm4che</groupId>
+                <artifactId>dcm4che-core</artifactId>
+                <version>${dcm4che.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.dcm4che</groupId>

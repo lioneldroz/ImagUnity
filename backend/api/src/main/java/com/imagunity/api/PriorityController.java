@@ -1,8 +1,8 @@
 package com.imagunity.api;
 
-import com.imagunity.dicom.DicomCondition;
-import com.imagunity.dicom.PriorityRule;
-import com.imagunity.dicom.PrioritySource;
+import com.imagunity.rules.DicomCondition;
+import com.imagunity.rules.PriorityRule;
+import com.imagunity.rules.PrioritySource;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

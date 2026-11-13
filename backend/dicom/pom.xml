@@ -20,6 +20,10 @@
             <artifactId>imagunity-domain</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-rules</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.dcm4che</groupId>
             <artifactId>dcm4che-net</artifactId>
         </dependency>

@@ -2,6 +2,7 @@ package com.imagunity.dicom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.imagunity.rules.RoutingRule;
 import com.imagunity.domain.exam.ReceivedStudy;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
