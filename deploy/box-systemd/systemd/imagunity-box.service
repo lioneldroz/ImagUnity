@@ -12,6 +12,8 @@ OnFailure=imagunity-alerte@%n.service
 Type=exec
 User=imagunity
 Group=imagunity
+# Messages accentués lisibles dans le journal, quelle que soit la langue du système.
+Environment=LANG=C.UTF-8
 EnvironmentFile=/etc/imagunity/box.env
 LoadCredential=phrase-box:/etc/imagunity/phrase-box
 StateDirectory=imagunity-box

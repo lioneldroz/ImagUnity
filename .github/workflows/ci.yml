@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]    # Lance le workflow à chaque push sur main
   pull_request:         # ...et sur toute pull request (quelle que soit la branche cible)
+  workflow_dispatch:    # ...et à la main, sur n'importe quelle branche (onglet Actions)
 
 # Le GITHUB_TOKEN n'a que les droits de lecture sur le dépôt
 permissions:
@@ -69,3 +70,41 @@ jobs:
           IMAGUNITY_DIRECTORY_ORGANIZATION_CODE: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
         # Valide la syntaxe du fichier compose (et l'interpolation des variables)
         # --quiet : n'affiche rien, ne renvoie qu'un code d'erreur si c'est invalide
+  installations:
+    name: Installations (site central, box sur Rocky Linux 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Scripts shell (shellcheck)
+        run: >
+          shellcheck deploy/box-systemd/*.sh deploy/box-systemd/bin/*.sh deploy/box-systemd/tests/*.sh
+          deploy/site-central/*.sh deploy/livraison/*.sh
+
+      - name: Site central (Compose et Caddy)
+        working-directory: deploy/site-central
+        run: |
+          docker compose --env-file exemple.env -f compose.yml config --quiet
+          for TLS in "" local_certs; do
+            docker run --rm -e RELAIS_HOTE=relais.exemple.org -e ANNUAIRE_HOTE=annuaire.exemple.org \
+              -e "RESEAU_ADMIN=192.168.1.0/24 10.0.0.5/32" -e TLS_INTERNE=$TLS \
+              -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10 \
+              caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
+
+      - name: Unités systemd de la box
+        run: sudo sh deploy/box-systemd/tests/verifier-unites.sh
+
+      - name: Box et lanceur (sans console)
+        working-directory: backend
+        run: sh ./mvnw -B -ntp -DskipTests -Djacoco.skip=true -Dconsole.skip=true -pl app,release -am package
+
+      - name: Installation de la box sur Rocky Linux 10
+        run: |
+          sh deploy/box-systemd/tests/preparer-essai.sh "$RUNNER_TEMP/essai"
+          docker run --rm -v "$RUNNER_TEMP/essai:/essai:ro" rockylinux/rockylinux:10 sh /essai/installation-rocky.sh

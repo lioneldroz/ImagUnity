@@ -53,10 +53,14 @@ chown root:root /etc/imagunity/phrase-box
 chmod 0600 /etc/imagunity/phrase-box
 
 # Services systemd.
+install -d -m 0755 /etc/systemd/system
 install -m 0644 -o root -g root "$ICI"/systemd/*.service "$ICI"/systemd/*.timer /etc/systemd/system/
 install -m 0644 -o root -g root "$ICI/systemd/imagunity-box-tpm.conf" /opt/imagunity/
 install -d -m 0755 /etc/polkit-1/rules.d
 install -m 0644 -o root -g root "$ICI/polkit/50-imagunity-maj.rules" /etc/polkit-1/rules.d/
-systemctl daemon-reload
+# Rechargement de systemd, s'il gère la machine (pas dans un conteneur d'essai).
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+fi
 echo "Installé : lanceur et version livrée dans /opt/imagunity, services dans /etc/systemd/system"
 echo "Suite : compléter /etc/imagunity/box.env, puis « systemctl enable --now imagunity-box imagunity-box-maj.timer »"
