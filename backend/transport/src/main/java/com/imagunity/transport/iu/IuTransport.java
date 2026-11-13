@@ -64,6 +64,12 @@ public final class IuTransport implements TransportPort {
     /** Taille d'un fragment de description : un message signé et chiffré reste sous 64 Kio. */
     static final int FRAGMENT = 20_000;
     static final int MAX_FRAGMENTS = 2_000;
+    /** Taille maximale des données d'un fragment (les box en envoient de {@link #FRAGMENT} caractères). */
+    static final int MAX_FRAGMENT_DATA = 64 * 1024;
+    /** Descriptions incomplètes admises en même temps pour un pair, et leur durée de vie. */
+    static final int MAX_COLLECTING = 64;
+    static final Duration COLLECTING_FOR = Duration.ofHours(1);
+    private static final java.util.regex.Pattern TRANSFER_ID = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{22}");
     /** Avec plusieurs relais : patience pour créer les morceaux sur l'un d'eux avant de l'écarter de l'envoi. */
     static final Duration PICK_PATIENCE = Duration.ofSeconds(5);
     /** Relais écarté d'un envoi : essayé une seule fois par envoi pendant cette durée. */
@@ -164,6 +170,8 @@ public final class IuTransport implements TransportPort {
     private final IuOutbox outbox;
     private final List<Consumer<TransportEvent>> listeners = new CopyOnWriteArrayList<>();
     private final Semaphore transfers;
+    /** Réceptions simultanées : séparées des envois, un pair qui fait attendre ne bloque pas les envois de la box. */
+    private final Semaphore receptions;
     private final Set<Thread> workers = ConcurrentHashMap.newKeySet();
     private final Set<Long> running = ConcurrentHashMap.newKeySet();
     private final List<IuMailbox> mailboxes = new CopyOnWriteArrayList<>();
@@ -202,6 +210,7 @@ public final class IuTransport implements TransportPort {
                 settings.keepState());
         // Équitable : les paquets partent dans l'ordre où ils sont confiés (les prioritaires d'abord).
         this.transfers = new Semaphore(settings.parallel(), true);
+        this.receptions = new Semaphore(settings.parallel(), true);
     }
 
     /**
@@ -762,12 +771,28 @@ public final class IuTransport implements TransportPort {
             LOG.log(Level.WARNING, "Fragment de description mal formé de la box {0} : écarté", contact.boxId());
             return;
         }
-        if (fragment.transferId() == null || fragment.data() == null || fragment.parts() < 1
+        if (fragment.transferId() == null || !TRANSFER_ID.matcher(fragment.transferId()).matches()
+                || fragment.data() == null || fragment.data().length() > MAX_FRAGMENT_DATA || fragment.parts() < 1
                 || fragment.parts() > MAX_FRAGMENTS || fragment.part() < 0 || fragment.part() >= fragment.parts()) {
             LOG.log(Level.WARNING, "Fragment de description invalide de la box {0} : écarté", contact.boxId());
             return;
         }
-        IuStore.Incoming incoming = store.incoming(contact.boxId(), fragment.transferId()).orElseGet(() ->
+        Optional<IuStore.Incoming> known = store.incoming(contact.boxId(), fragment.transferId());
+        if (known.isEmpty()) {
+            // Descriptions incomplètes d'un même pair : oubliées après un délai, et en nombre limité.
+            List<IuStore.Incoming> collecting = store.incoming().stream()
+                    .filter(i -> i.boxId().equals(contact.boxId()) && i.status() == IuStore.Status.COLLECTING)
+                    .toList();
+            Instant stale = clock.instant().minus(COLLECTING_FOR);
+            collecting.stream().filter(i -> i.createdAt().isBefore(stale))
+                    .forEach(i -> store.deleteIncoming(i.fileId()));
+            if (collecting.stream().filter(i -> !i.createdAt().isBefore(stale)).count() >= MAX_COLLECTING) {
+                LOG.log(Level.WARNING, "Box {0} : trop de descriptions de fichier incomplètes, fragment écarté",
+                        contact.boxId());
+                return;
+            }
+        }
+        IuStore.Incoming incoming = known.orElseGet(() ->
                 new IuStore.Incoming(store.nextId(), contact.peerId(), contact.boxId(), fragment.transferId(),
                         Collections.nCopies(fragment.parts(), null), null, null, List.of(),
                         IuStore.Status.COLLECTING, clock.instant()));
@@ -790,6 +815,9 @@ public final class IuTransport implements TransportPort {
         FileDescription description;
         try {
             description = knownReplicas(FileDescription.fromJson(json));
+            if (!description.transferId().equals(incoming.transferId())) {
+                throw new ProtocolException("identifiant de transfert différent de celui des fragments");
+            }
         } catch (ProtocolException | TransportException e) {
             LOG.log(Level.WARNING, "Description de fichier de la box {0} écartée : {1}", contact.boxId(),
                     e.getMessage());
@@ -857,7 +885,7 @@ public final class IuTransport implements TransportPort {
         Set<Integer> done = ConcurrentHashMap.newKeySet();
         done.addAll(start.done());
         try {
-            transfers.acquire();
+            receptions.acquire();
             try {
                 Files.createDirectories(target.toAbsolutePath().getParent());
                 (description.early() ? patientDownloader : downloader).download(description, target,
@@ -867,7 +895,7 @@ public final class IuTransport implements TransportPort {
                 }, bytes -> emit(new TransportEvent.FileProgress(start.fileId(), TransportEvent.Direction.RECEIVING,
                         bytes, description.size())));
             } finally {
-                transfers.release();
+                receptions.release();
             }
             store.save(withDone(start, done).with(IuStore.Status.RECEIVED));
             emit(new TransportEvent.FileReceived(new PeerId(start.peerId()), start.fileId(), target));

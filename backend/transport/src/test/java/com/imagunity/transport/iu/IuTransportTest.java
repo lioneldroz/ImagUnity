@@ -324,27 +324,27 @@ class IuTransportTest {
         deposit(client, toB, "inconnu", "x");
         deposit(client, toB, IuTransport.FILE, "pas du JSON");
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t1", 3, 2, "x")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt1", 3, 2, "x")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t2", 0, 1, "{\"pas\":\"une description\"}")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt2", 0, 1, "{\"pas\":\"une description\"}")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t3", 0, 2, "{")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt3", 0, 2, "{")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t3", 1, 3, "}")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt3", 1, 3, "}")));
         FileDescription elsewhere = new FileDescription("IU1", "AAAAAAAAAAAAAAAAAAAAAA", FileDescription.COMPLETE,
                 "paquet.tar.zst.iu1", 256 * 1024, 1, 10, "0".repeat(64), List.of(new FileDescription.Chunk(0,
                 "0".repeat(64), List.of(new FileDescription.Replica("https://ailleurs.example", "r".repeat(43),
                 Codec.base64Url(java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
                         .getPrivate().getEncoded()))))), Instant.now().plus(Duration.ofHours(1)));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t4", 0, 1, elsewhere.toJson())));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt4", 0, 1, elsewhere.toJson())));
         deposit(client, toB, IuTransport.TEXT, "fin");
         assertThat(b.await(TransportEvent.MessageReceived.class, m -> m.text().equals("fin"))).isNotNull();
         assertThat(b.all(TransportEvent.MessageReceived.class)).extracting(TransportEvent.MessageReceived::text)
                 .doesNotContain("d'une box révoquée", "d'une box inconnue");
         assertThat(b.all(TransportEvent.FileOffered.class)).isEmpty();
         assertThat(b.transport().store().incoming()).as("seule t3 attend sa suite")
-                .extracting(IuStore.Incoming::transferId).containsExactly("t3");
+                .extracting(IuStore.Incoming::transferId).containsExactly("TTTTTTTTTTTTTTTTTTTTt3");
     }
 
     private static void deposit(IuMsgClient client, QueueAddress to, String type, String body) throws Exception {

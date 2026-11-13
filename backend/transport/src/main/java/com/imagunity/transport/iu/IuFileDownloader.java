@@ -102,6 +102,12 @@ public final class IuFileDownloader {
         replicas.sort(java.util.Comparator.comparing(r -> failing.getOrDefault(r.relay(), java.time.Instant.MIN)
                 .isAfter(now)));
         Duration waited = Duration.ZERO;
+        // Temps réel écoulé (attentes longues comprises) : la patience ne se prolonge pas indéfiniment, et rien n'est
+        // attendu au-delà de l'expiration annoncée des morceaux.
+        java.time.Instant giveUp = clock.instant().plus(retry.patience());
+        if (description.expiresAt().isBefore(giveUp)) {
+            giveUp = description.expiresAt();
+        }
         Duration delay = Duration.ofSeconds(1);
         RuntimeException refused = null;
         Exception failure = null;
@@ -142,7 +148,7 @@ public final class IuFileDownloader {
             if (replicas.isEmpty()) {
                 throw refused;
             }
-            if (waited.compareTo(retry.patience()) >= 0) {
+            if (waited.compareTo(retry.patience()) >= 0 || !clock.instant().isBefore(giveUp)) {
                 throw new TransportException("Téléchargement du morceau " + chunk.index() + " impossible : "
                         + (failure == null ? "aucune réplique" : Retry.reason(failure)), failure);
             }
