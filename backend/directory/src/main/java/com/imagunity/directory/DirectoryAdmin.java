@@ -181,10 +181,12 @@ public final class DirectoryAdmin {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
         long days = Long.parseLong(o.getOrDefault("validite-jours", "365"));
         long serial = Long.parseLong(o.getOrDefault("serie", "1"));
-        SignedDocument entry = organization.enroll(request, clock.instant(), Duration.ofDays(days), serial);
+        java.util.List<String> groups = o.containsKey("groupes") ? java.util.Arrays.stream(o.get("groupes")
+                .split(",")).map(String::strip).filter(g -> !g.isEmpty()).toList() : java.util.List.of();
+        SignedDocument entry = organization.enroll(request, clock.instant(), Duration.ofDays(days), serial, groups);
         write(Path.of(require(o, "sortie")), entry);
         out.println("Box « " + r.displayName() + " » (" + r.boxId() + ") enrôlée pour " + days + " jours, n° "
-                + serial);
+                + serial + (groups.isEmpty() ? "" : ", groupes " + BoxEntry.groups(groups)));
         out.println("Vérifiez hors bande l'empreinte de la box avec son installateur : "
                 + HybridPublicKey.decode(r.signingKeys()).shortCode());
         if (r.encryptionKeys() == null) {
@@ -238,8 +240,7 @@ public final class DirectoryAdmin {
         CentralConfiguration draft = CentralConfiguration.fromJson(Files.readString(
                 Path.of(require(o, "brouillon")), StandardCharsets.UTF_8));
         out.println("Configuration de « " + draft.organization() + " », " + draft.describe());
-        out.println("Box visées : " + (draft.target().all() ? "toute l'organisation"
-                : draft.target().boxes().size() + " box (" + draft.target().boxes() + ")"));
+        out.println("Box visées : " + draft.target().describe());
         if (draft.priority() != null) {
             out.println("Priorité : par défaut " + (draft.priority().defaultPriority() == null ? "5"
                     : draft.priority().defaultPriority()) + " ; règles "
@@ -385,7 +386,8 @@ public final class DirectoryAdmin {
                   organisation-creer --organisation <id> --cles <fichier>
                   empreinte          --cle-publique <fichier>
                   box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--iu <adresse>] --sortie <fichier>
-                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>
+                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1]
+                                     [--groupes imagerie-nord,urgences] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
                   verifier           --cle-publique <fichier> --entree <fichier>
                   publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]

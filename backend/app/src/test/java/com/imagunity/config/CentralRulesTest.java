@@ -211,4 +211,36 @@ class CentralRulesTest {
         assertThat(rules.snapshot().error()).contains("injoignable");
         assertThat(rules.snapshot().sequence()).isEqualTo(6);
     }
+
+    @Test
+    void groupsTargetTheBoxAndLeavingAGroupRestoresTheLocalRules() {
+        java.util.concurrent.atomic.AtomicReference<java.util.Collection<String>> groups =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of("imagerie-nord"));
+        Path file = dir.resolve("groupes.json");
+        CentralRules rules = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), file, clock, groups::get);
+        SignedDocument nord = document(5, CentralConfiguration.Target.groups(List.of("imagerie-nord")), "Modality",
+                false);
+        SignedDocument sud = document(6, CentralConfiguration.Target.groups(List.of("imagerie-sud")), "Modality",
+                false);
+        assertThat(rules.synchronize(List.of(nord, sud))).isTrue();
+        assertThat(rules.snapshot().sequence()).as("seul le groupe de la box").isEqualTo(5);
+        assertThat(rules.status().groups()).containsExactly("imagerie-nord");
+
+        // Le responsable retire la box du groupe : retour à la configuration locale.
+        groups.set(List.of());
+        assertThat(rules.synchronize(List.of(nord, sud))).isFalse();
+        assertThat(rules.snapshot().sequence()).isZero();
+        assertThat(rules.priority()).isEmpty();
+        // Rejointe plus tard : la n° 5, déjà appliquée, n'est pas réappliquée (jamais de retour en arrière), même après
+        // un redémarrage.
+        CentralRules restarted = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), file, clock, groups::get);
+        restarted.load();
+        groups.set(List.of("imagerie-nord"));
+        assertThat(restarted.synchronize(List.of(nord))).isFalse();
+        assertThat(restarted.snapshot().sequence()).isZero();
+        SignedDocument nord7 = document(7, CentralConfiguration.Target.groups(List.of("imagerie-nord")), "Modality",
+                false);
+        assertThat(restarted.synchronize(List.of(nord, nord7))).isTrue();
+        assertThat(restarted.snapshot().sequence()).isEqualTo(7);
+    }
 }

@@ -24,13 +24,42 @@ import java.util.UUID;
  * @param revoked          vrai si la box est révoquée
  * @param revokedAt        date de la révocation
  * @param revocationReason motif de la révocation
+ * @param groups           groupes de la box (configuration centralisée), fixés par le responsable ; absents de
+ *                         l'entrée signée quand il n'y en a pas, ce qui laisse identiques les entrées antérieures
  */
 public record BoxEntry(String suite, String organization, UUID boxId, String displayName,
                        HybridPublicKey.Encoded signingKeys,
                        @JsonInclude(JsonInclude.Include.NON_NULL) HybridKemPublicKey.Encoded encryptionKeys,
                        Map<String, String> transport, long serial,
                        Instant validFrom, Instant validUntil, boolean revoked, Instant revokedAt,
-                       String revocationReason) {
+                       String revocationReason,
+                       @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> groups) {
+
+    /** Nom de groupe : minuscules, chiffres et tirets. */
+    private static final java.util.regex.Pattern GROUP = java.util.regex.Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
+    /** Groupes au plus par box. */
+    static final int MAX_GROUPS = 16;
+
+    /** Vérifie et ordonne des noms de groupes. */
+    public static java.util.List<String> groups(java.util.Collection<String> groups) {
+        if (groups == null) {
+            return java.util.List.of();
+        }
+        java.util.TreeSet<String> sorted = new java.util.TreeSet<>();
+        for (String group : groups) {
+            if (group == null || !GROUP.matcher(group).matches()) {
+                throw new IllegalArgumentException("Nom de groupe invalide « " + group
+                        + " » (minuscules, chiffres et tirets, 64 caractères au plus)");
+            }
+            if (!sorted.add(group)) {
+                throw new IllegalArgumentException("Groupe en double : " + group);
+            }
+        }
+        if (sorted.size() > MAX_GROUPS) {
+            throw new IllegalArgumentException("Trop de groupes (" + sorted.size() + ", " + MAX_GROUPS + " au plus)");
+        }
+        return java.util.List.copyOf(sorted);
+    }
 
     public BoxEntry {
         Objects.requireNonNull(organization, "organization");
@@ -40,12 +69,22 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
         Objects.requireNonNull(validFrom, "validFrom");
         Objects.requireNonNull(validUntil, "validUntil");
         transport = transport == null ? Map.of() : Map.copyOf(transport);
+        groups = groups(groups);
         if (serial < 1) {
             throw new IllegalArgumentException("Le numéro d'émission commence à 1");
         }
         if (!validUntil.isAfter(validFrom)) {
             throw new IllegalArgumentException("Fin de validité antérieure au début");
         }
+    }
+
+    /** Entrée sans groupe. */
+    public BoxEntry(String suite, String organization, UUID boxId, String displayName,
+                    HybridPublicKey.Encoded signingKeys, HybridKemPublicKey.Encoded encryptionKeys,
+                    Map<String, String> transport, long serial, Instant validFrom, Instant validUntil,
+                    boolean revoked, Instant revokedAt, String revocationReason) {
+        this(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial, validFrom,
+                validUntil, revoked, revokedAt, revocationReason, java.util.List.of());
     }
 
     /** Entrée sans clés de chiffrement. */
@@ -82,7 +121,7 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
     BoxEntry revoke(Instant at, String reason) {
         return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
                 validFrom,
-                validUntil, true, at, reason);
+                validUntil, true, at, reason, groups);
     }
 
     /** État d'une entrée pour les échanges. */

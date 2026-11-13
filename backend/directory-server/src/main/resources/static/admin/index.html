@@ -21,10 +21,10 @@
 
   <section>
     <h2>Box de l'annuaire</h2>
-    <p class="aide">Version appliquée : remontée par chaque box après lecture de l'annuaire (compte rendu signé par la box).</p>
+    <p class="aide">Version appliquée : remontée par chaque box après lecture de l'annuaire (compte rendu signé par la box). Groupes : fixés par le responsable dans l'entrée d'annuaire de chaque box (<code>enroler --groupes</code>).</p>
     <div class="tableau">
       <table>
-        <thead><tr><th>Box</th><th>Statut</th><th>Version appliquée</th><th>Dernier refus</th><th>Compte rendu</th></tr></thead>
+        <thead><tr><th>Box</th><th>Groupes</th><th>Statut</th><th>Version appliquée</th><th>Dernier refus</th><th>Compte rendu</th></tr></thead>
         <tbody id="box"></tbody>
       </table>
     </div>
@@ -37,7 +37,8 @@
       <fieldset>
         <legend>Box visées</legend>
         <label><input type="radio" name="cible" value="toutes" checked> Toute l'organisation</label>
-        <label><input type="radio" name="cible" value="liste"> Box choisies :</label>
+        <label><input type="radio" name="cible" value="liste"> Groupes et box choisis :</label>
+        <div id="choix-groupes" class="choix"></div>
         <div id="choix-box" class="choix"></div>
       </fieldset>
       <fieldset>

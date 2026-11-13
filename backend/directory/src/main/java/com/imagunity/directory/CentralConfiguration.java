@@ -49,36 +49,73 @@ public record CentralConfiguration(String type, String suite, String organizatio
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
 
     /**
-     * Box visées : toute l'organisation, ou une liste de box.
+     * Box visées : toute l'organisation, ou des box et des groupes de box. L'appartenance d'une box à un groupe est
+     * fixée par le responsable dans son entrée d'annuaire signée ; une box ajoutée plus tard à un groupe reçoit la
+     * configuration de ce groupe.
      *
-     * @param all   toutes les box de l'organisation
-     * @param boxes box visées (si {@code all} est faux)
+     * @param all    toutes les box de l'organisation
+     * @param boxes  box visées (si {@code all} est faux)
+     * @param groups groupes visés (si {@code all} est faux)
      */
-    public record Target(boolean all, @JsonInclude(JsonInclude.Include.NON_EMPTY) List<UUID> boxes) {
+    public record Target(boolean all, @JsonInclude(JsonInclude.Include.NON_EMPTY) List<UUID> boxes,
+                         @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> groups) {
 
         public Target {
             boxes = boxes == null ? List.of() : List.copyOf(boxes);
-            if (!all && boxes.isEmpty()) {
-                throw new DirectoryException("Configuration : aucune box visée (« all » ou une liste de box)");
+            try {
+                groups = groups == null ? List.of() : BoxEntry.groups(groups);
+            } catch (IllegalArgumentException e) {
+                throw new DirectoryException("Configuration : " + e.getMessage());
             }
-            if (all && !boxes.isEmpty()) {
-                throw new DirectoryException("Configuration : « all » et une liste de box à la fois");
+            if (!all && boxes.isEmpty() && groups.isEmpty()) {
+                throw new DirectoryException("Configuration : aucune box visée (« all », des box ou des groupes)");
+            }
+            if (all && (!boxes.isEmpty() || !groups.isEmpty())) {
+                throw new DirectoryException("Configuration : « all » et une liste de box ou de groupes à la fois");
             }
             if (Set.copyOf(boxes).size() != boxes.size()) {
                 throw new DirectoryException("Configuration : box en double dans la liste");
             }
         }
 
+        public Target(boolean all, List<UUID> boxes) {
+            this(all, boxes, List.of());
+        }
+
         public static Target everyone() {
-            return new Target(true, List.of());
+            return new Target(true, List.of(), List.of());
         }
 
         public static Target of(List<UUID> boxes) {
-            return new Target(false, boxes);
+            return new Target(false, boxes, List.of());
+        }
+
+        public static Target groups(List<String> groups) {
+            return new Target(false, List.of(), groups);
+        }
+
+        /** Vrai si la box, membre de ces groupes (d'après son entrée d'annuaire), est visée. */
+        public boolean includes(UUID boxId, java.util.Collection<String> boxGroups) {
+            return all || boxes.contains(boxId) || groups.stream().anyMatch(boxGroups::contains);
         }
 
         public boolean includes(UUID boxId) {
-            return all || boxes.contains(boxId);
+            return includes(boxId, List.of());
+        }
+
+        /** Résumé lisible : « toute l'organisation », « 2 box, groupes imagerie-nord ». */
+        public String describe() {
+            if (all) {
+                return "toute l'organisation";
+            }
+            List<String> parts = new java.util.ArrayList<>();
+            if (!boxes.isEmpty()) {
+                parts.add(boxes.size() + " box (" + boxes + ")");
+            }
+            if (!groups.isEmpty()) {
+                parts.add("groupes " + String.join(", ", groups));
+            }
+            return String.join(", ", parts);
         }
     }
 

@@ -308,11 +308,12 @@ class DirectoryConfiguration {
     @Bean
     @ConditionalOnProperty(name = "imagunity.central-configuration.enabled", havingValue = "true",
             matchIfMissing = true)
-    CentralRules centralRules(BoxIdentity identity, KeyFiles.OrganizationPublicKey key,
+    CentralRules centralRules(BoxIdentity identity, KeyFiles.OrganizationPublicKey key, LocalDirectory directory,
                               CentralConfigurationProperties properties, Clock clock, ReloadablePriority priority,
                               org.springframework.beans.factory.ObjectProvider<com.imagunity.dicom.DicomStoreScp> scp) {
         CentralRules rules = new CentralRules(identity.boxId(), key.organization(), key.key(), properties.file(),
-                clock);
+                clock, () -> directory.entry(identity.boxId()).map(com.imagunity.directory.BoxEntry::groups)
+                .<java.util.Collection<String>>map(g -> g).orElse(java.util.List.of()));
         rules.load();
         priority.central(rules::priority);
         scp.ifAvailable(s -> s.centralRouting(rules::routing));

@@ -47,7 +47,14 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
     static final Duration REPORT_EVERY = Duration.ofHours(1);
 
     /** Document appliqué, tel que gardé sur disque. */
-    record Stored(String document, Instant appliedAt) {
+    /**
+     * État gardé sur disque.
+     *
+     * @param document  document appliqué, ou {@code null} (configuration locale)
+     * @param appliedAt date d'application
+     * @param floor     plus haute version déjà appliquée : aucun document de numéro inférieur ou égal ne sera appliqué
+     */
+    record Stored(String document, Instant appliedAt, Long floor) {
     }
 
     /** Version appliquée. */
@@ -87,7 +94,21 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
     private Instant reportedAt;
     private String reportedState;
 
+    /** Groupes de cette box, d'après son entrée d'annuaire vérifiée. */
+    private final java.util.function.Supplier<java.util.Collection<String>> groups;
+    /** Plus haute version déjà appliquée. */
+    private volatile long floor;
+
     public CentralRules(UUID boxId, String organization, HybridPublicKey organizationKey, Path file, Clock clock) {
+        this(boxId, organization, organizationKey, file, clock, List::of);
+    }
+
+    /**
+     * @param groups groupes de cette box, lus dans son entrée d'annuaire à chaque examen des documents
+     */
+    public CentralRules(UUID boxId, String organization, HybridPublicKey organizationKey, Path file, Clock clock,
+                        java.util.function.Supplier<java.util.Collection<String>> groups) {
+        this.groups = groups;
         this.boxId = boxId;
         this.organization = organization;
         this.organizationKey = organizationKey;
@@ -102,10 +123,15 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         }
         try {
             Stored stored = JSON.readValue(Files.readString(file, StandardCharsets.UTF_8), Stored.class);
+            floor = stored.floor() == null ? 0 : stored.floor();
+            if (stored.document() == null) {
+                return;
+            }
             SignedDocument document = SignedDocument.fromJson(stored.document());
             CentralConfiguration configuration = CentralConfiguration.verify(document, organization, organizationKey,
                     clock);
             applied = new Applied(configuration, compile(configuration), stored.appliedAt());
+            floor = Math.max(floor, configuration.sequence());
             LOG.info("Configuration centrale {} en vigueur (appliquée le {})", configuration.describe(),
                     stored.appliedAt());
         } catch (IOException | RuntimeException e) {
@@ -122,9 +148,19 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
     public synchronized boolean synchronize(List<SignedDocument> documents) {
         checkedAt = clock.instant();
         error = null;
-        long current = applied == null ? 0 : applied.configuration().sequence();
+        java.util.Collection<String> boxGroups = groups.get();
+        Applied current0 = applied;
+        if (current0 != null && !current0.configuration().target().includes(boxId, boxGroups)) {
+            // Box retirée du groupe visé (entrée réémise par le responsable) : retour à la configuration locale, sans
+            // jamais revenir à un document plus ancien.
+            LOG.info("Configuration centrale n° {} : cette box n'est plus visée (groupes {}), configuration locale "
+                    + "en vigueur", current0.configuration().sequence(), boxGroups);
+            applied = null;
+            save(null, clock.instant());
+        }
+        long current = floor;
         List<Candidate> candidates = documents.stream().map(this::verified).flatMap(Optional::stream)
-                .filter(c -> c.configuration().target().includes(boxId))
+                .filter(c -> c.configuration().target().includes(boxId, boxGroups))
                 .filter(c -> c.configuration().sequence() > current)
                 .sorted(Comparator.comparingLong((Candidate c) -> c.configuration().sequence()).reversed()).toList();
         for (Candidate found : candidates) {
@@ -143,6 +179,7 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
             }
             Instant now = clock.instant();
             applied = new Applied(candidate, rules, now);
+            floor = candidate.sequence();
             save(found.document(), now);
             LOG.info("Configuration centrale {} appliquée{}", candidate.describe(), candidate.author() == null ? ""
                     : " (par " + candidate.author() + (candidate.comment() == null ? "" : " : " + candidate.comment())
@@ -185,7 +222,8 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temp, JSON.writeValueAsString(new Stored(document.toJson(), at)), StandardCharsets.UTF_8);
+            Files.writeString(temp, JSON.writeValueAsString(new Stored(document == null ? null : document.toJson(), at,
+                    floor)), StandardCharsets.UTF_8);
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             LOG.warn("Configuration centrale non enregistrée ({}) : elle sera relue à la prochaine lecture de "
@@ -224,7 +262,8 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         List<String> routingRules = routing().map(rules -> rules.stream().map(r -> r.name() + " → "
                 + String.join(", ", r.destinations())).toList()).orElse(List.of());
         return new View(true, s.sequence(), s.issuedAt(), s.author(), s.comment(), s.appliedAt(), s.priority(),
-                s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error());
+                s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error(),
+                List.copyOf(groups.get()));
     }
 
     /**

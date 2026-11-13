@@ -189,4 +189,59 @@ class CentralConfigurationTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void groupsAreSignedInTheEntryAndTargeted() {
+        Organization organization = new Organization("chu-exemple", ORG);
+        SignedDocument request = EnrollmentRequest.create(HybridKeyPair.generate(), BOX, "B", Map.of(), NOW);
+        SignedDocument plain = organization.enroll(request, NOW, Duration.ofDays(1), 1);
+        assertThat(plain.payload()).as("entrée sans groupe inchangée").doesNotContain("groups");
+        SignedDocument grouped = organization.enroll(request, NOW, Duration.ofDays(1), 2,
+                List.of("urgences", "imagerie-nord"));
+        BoxEntry entry = Json.read(grouped.payload(), BoxEntry.class, "Entrée");
+        assertThat(entry.groups()).containsExactly("imagerie-nord", "urgences");
+        assertThat(Json.read(organization.revoke(grouped, NOW, "essai").payload(), BoxEntry.class, "Entrée")
+                .groups()).as("gardés à la révocation").containsExactly("imagerie-nord", "urgences");
+        assertThatThrownBy(() -> organization.enroll(request, NOW, Duration.ofDays(1), 3, List.of("Majuscules")))
+                .hasMessageContaining("invalide");
+        assertThatThrownBy(() -> BoxEntry.groups(List.of("a", "a"))).hasMessageContaining("double");
+        assertThatThrownBy(() -> BoxEntry.groups(java.util.stream.IntStream.range(0, 17).mapToObj(i -> "g" + i)
+                .toList())).hasMessageContaining("Trop");
+
+        CentralConfiguration.Target target = CentralConfiguration.Target.groups(List.of("imagerie-nord"));
+        assertThat(target.includes(BOX, entry.groups())).isTrue();
+        assertThat(target.includes(BOX, List.of("urgences-sud"))).isFalse();
+        assertThat(target.includes(BOX)).isFalse();
+        assertThat(target.describe()).isEqualTo("groupes imagerie-nord");
+        CentralConfiguration.Target both = new CentralConfiguration.Target(false, List.of(BOX), List.of("urgences"));
+        assertThat(both.describe()).contains("1 box").contains("groupes urgences");
+        assertThat(CentralConfiguration.Target.everyone().describe()).isEqualTo("toute l'organisation");
+        assertThatThrownBy(() -> new CentralConfiguration.Target(true, List.of(), List.of("urgences")))
+                .hasMessageContaining("à la fois");
+        assertThatThrownBy(() -> CentralConfiguration.Target.groups(List.of("Pas Valide")))
+                .isInstanceOf(DirectoryException.class).hasMessageContaining("groupe");
+        CentralConfiguration grouped2 = CentralConfiguration.draft("chu-exemple", target, 4, NOW, null, null,
+                priority(), null);
+        assertThat(CentralConfiguration.fromJson(grouped2.toJson()).target().groups()).containsExactly("imagerie-nord");
+    }
+
+    @Test
+    void theAdminToolEnrollsIntoGroups() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        DirectoryAdmin admin = new DirectoryAdmin(new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8), CLOCK,
+                Map.of(DirectoryAdmin.ORGANIZATION_PASSPHRASE, "phrase du responsable",
+                        DirectoryAdmin.BOX_PASSPHRASE, "phrase de la box de test"));
+        String keys = dir.resolve("org.json").toString();
+        assertThat(admin.run(new String[] {"organisation-creer", "--organisation", "chu-exemple", "--cles", keys}))
+                .isZero();
+        assertThat(admin.run(new String[] {"box-demande", "--cles", dir.resolve("box.json").toString(), "--box-id",
+                BOX.toString(), "--nom", "B", "--sortie", dir.resolve("d.json").toString()})).isZero();
+        assertThat(admin.run(new String[] {"enroler", "--cles", keys, "--demande", dir.resolve("d.json").toString(),
+                "--groupes", "urgences, imagerie-nord,", "--sortie", dir.resolve("e.json").toString()})).isZero();
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("groupes [imagerie-nord, urgences]");
+        assertThat(Files.readString(dir.resolve("e.json"))).contains("imagerie-nord");
+        assertThat(admin.run(new String[] {"enroler", "--cles", keys, "--demande", dir.resolve("d.json").toString(),
+                "--groupes", "Mauvais Nom", "--sortie", dir.resolve("f.json").toString()})).isEqualTo(1);
+    }
 }

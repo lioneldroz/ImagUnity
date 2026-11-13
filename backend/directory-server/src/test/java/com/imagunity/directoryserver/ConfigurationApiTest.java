@@ -124,7 +124,7 @@ class ConfigurationApiTest {
         UUID box = UUID.randomUUID();
         Instant now = Instant.now();
         SignedDocument entry = ORGANIZATION.enroll(EnrollmentRequest.create(boxKeys, box, "Site B", Map.of(), now),
-                now.minusSeconds(60), Duration.ofDays(30), 1);
+                now.minusSeconds(60), Duration.ofDays(30), 1, List.of("imagerie-nord"));
         assertThat(send("POST", "/directory/v1/entries", entry.toJson(), ACCOUNT, false).statusCode()).isEqualTo(201);
 
         String reports = "/directory/v1/configurations/reports";
@@ -151,6 +151,15 @@ class ConfigurationApiTest {
         assertThat(boxView.get("applied").asLong()).isEqualTo(3);
         assertThat(boxView.get("refusal").asString()).isEqualTo("règle invalide");
         assertThat(boxView.get("status").asString()).isEqualTo("ACTIVE");
+        assertThat(boxView.get("groups").get(0).asString()).isEqualTo("imagerie-nord");
+        assertThat(JSON.readTree(state.body()).get("groups").toString()).contains("imagerie-nord");
+
+        String byGroup = "{\"target\": {\"all\": false, \"groups\": [\"imagerie-nord\"]}, "
+                + "\"routing\": {\"rules\": [{\"name\": \"chu\", \"and\": {\"Modality\": \"CT\"}, "
+                + "\"to\": [\"box-b\"]}]}}";
+        HttpResponse<String> draft = send("POST", "/admin/api/draft", byGroup, ACCOUNT, true);
+        assertThat(draft.statusCode()).isEqualTo(200);
+        assertThat(CentralConfiguration.fromJson(draft.body()).target().groups()).containsExactly("imagerie-nord");
     }
 
     @Test
