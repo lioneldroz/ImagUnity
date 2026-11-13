@@ -58,11 +58,16 @@ C'est la réponse au constat D3 du [pré-audit](audit/pre-audit.md). De son côt
 
 L'environnement d'essai n'avait pas systemd comme premier processus. Son enchaînement a été reproduit à l'identique, y compris le redémarrage demandé par `imagunity-maj`, et les fichiers de service ont été validés par `systemd-analyze verify`.
 
-Restent à essayer sur une vraie machine Rocky Linux 10 :
-- systemd lui-même, avec ses protections (`ProtectSystem`, `LoadCredential`…) ;
+La **CI** vérifie en outre, à chaque modification :
+- l'installation dans un conteneur Rocky Linux 10, avec Java 25 et polkit issus des dépôts de Rocky ;
+- les comptes et les droits, et la réinstallation sans perte de configuration ;
+- le lanceur sous `imagunity-maj`, puis le démarrage de la box sous `imagunity` ;
+- les unités systemd (`systemd-analyze verify`, complément TPM compris) et les scripts (`shellcheck`).
+
+Restent à essayer sur une vraie machine Rocky Linux 10, avec systemd comme premier processus :
+- les protections de systemd (`ProtectSystem`, `LoadCredential`…) ;
 - le lancement de `imagunity-box-choix.service` à chaque redémarrage, par dépendance ;
 - la règle polkit ;
-- l'installation de Java (§ 2) ;
 - le TPM.
 
 ## 0. Prérequis
@@ -96,14 +101,13 @@ systemctl enable --now chronyd
 
 ## 2. Installer Java 25
 
-Voir d'abord si Rocky le fournit :
+Rocky Linux 10 le fournit (vérifié par la CI, version 25.0.5 LTS) :
 
 ```bash
-dnf list --available 'java-25-openjdk*'
-dnf -y install java-25-openjdk-headless        # si la liste précédente le propose
+dnf -y install java-25-openjdk-headless
 ```
 
-Sinon, utiliser le dépôt d'Adoptium (Temurin) :
+À défaut (version mineure de Rocky qui ne l'aurait pas), le dépôt d'Adoptium (Temurin) :
 
 ```bash
 cat > /etc/yum.repos.d/adoptium.repo <<'EOF'
@@ -117,7 +121,7 @@ EOF
 dnf -y install temurin-25-jre
 ```
 
-Dans les deux cas, vérifier avec `java -version`, qui doit afficher `version "25…"`. Java se met ensuite à jour avec le système (§ 10). Aucune de ces deux sources n'a pu être essayée depuis l'environnement d'essai.
+Dans les deux cas, vérifier avec `java -version`, qui doit afficher `version "25…"`. Java se met ensuite à jour avec le système (§ 10).
 
 ## 3. Installer la box
 

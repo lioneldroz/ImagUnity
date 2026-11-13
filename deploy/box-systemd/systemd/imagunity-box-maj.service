@@ -9,6 +9,8 @@ OnFailure=imagunity-alerte@%n.service
 Type=oneshot
 User=imagunity-maj
 Group=imagunity-maj
+# Messages accentués lisibles dans le journal, quelle que soit la langue du système.
+Environment=LANG=C.UTF-8
 EnvironmentFile=/etc/imagunity/box.env
 StateDirectory=imagunity-maj
 StateDirectoryMode=0755

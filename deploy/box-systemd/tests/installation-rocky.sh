@@ -62,7 +62,7 @@ echo "ok : box.env et phrase-box inchangés"
 echo "== Lanceur sous imagunity-maj"
 install -m 0644 /essai/editeur.pub.json /etc/imagunity/editeur.pub.json
 install -d -m 0755 -o imagunity-maj -g imagunity-maj /run/imagunity-choix
-runuser -u imagunity-maj -- env IMAGUNITY_RELEASE_KEY=/etc/imagunity/editeur.pub.json \
+runuser -u imagunity-maj -- env LANG=C.UTF-8 IMAGUNITY_RELEASE_KEY=/etc/imagunity/editeur.pub.json \
     IMAGUNITY_RELEASE_CODE="$(cat /essai/empreinte.txt)" IMAGUNITY_RELEASE_DIR=/var/lib/imagunity-maj \
     IMAGUNITY_RELEASE_BUNDLED=/opt/imagunity/imagunity-box.jar RUNTIME_DIRECTORY=/run/imagunity-choix \
     /opt/imagunity/bin/choisir.sh
@@ -82,7 +82,7 @@ echo "ok : versions, lanceur et choix en lecture seule ; configuration et phrase
 
 echo "== Démarrage de la box sous imagunity"
 install -d -m 0700 -o imagunity -g imagunity /var/lib/imagunity-box
-runuser -u imagunity -- env IMAGUNITY_DATA_DIR=/var/lib/imagunity-box SERVER_ADDRESS=127.0.0.1 \
+runuser -u imagunity -- env LANG=C.UTF-8 IMAGUNITY_DATA_DIR=/var/lib/imagunity-box SERVER_ADDRESS=127.0.0.1 \
     IMAGUNITY_DICOM_BIND_ADDRESS=127.0.0.1 IMAGUNITY_CONSOLE_PASSWORD=essai IMAGUNITY_BOX_NAME=box-rocky \
     /opt/imagunity/bin/demarrer.sh > /tmp/box.log 2>&1 &
 for _ in $(seq 1 60); do
