@@ -47,12 +47,12 @@ java -cp … com.imagunity.directory.DirectoryAdmin publier --annuaire http://lo
    Une fois l'entrée publiée (et lue par le relais), la box crée sa file d'elle-même.
 4. **Appairage** : depuis l'API de la box A, appairer la box B sous le nom `box-b` (`POST /api/v1/directory/boxes/{id}/pair`, corps `{"name":"box-b"}`, en-tête `X-ImagUnity-Console: 1`) ; la box B crée le contact à la réception et la poignée de main signée le lie à la box A de l'annuaire. Faire de même dans l'autre sens si besoin (`box-a`).
 
-Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vite), la campagne fournit une variante construite à partir d'artefacts préparés : voir [phase 8](../docs/phase8-campagne.md).
+Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vite), la campagne fournit une variante construite à partir d'artefacts préparés : voir [phase 8](../docs/phase8-campagne.md). Ces images reprennent le jar de la box construit par Maven, console comprise. Le `Dockerfile` de `box/` construit au contraire la box sans console (pas de Node.js dans l'image de construction) : API seule.
 
 | Service | URL |
 |---|---|
-| API de la box A | http://localhost:8081/api/v1/box ; compte `operateur` / `essai-synthetique` (test uniquement) |
-| API de la box B | http://localhost:8082/api/v1/box |
+| Console de la box A | http://localhost:8081/ (API : `/api/v1/…`) ; compte `operateur` / `essai-synthetique` (test uniquement) |
+| Console de la box B | http://localhost:8082/ |
 | Orthanc A (émetteur) | http://localhost:8042 |
 | Orthanc B (destinataire) | http://localhost:8043 |
 | Annuaire | http://localhost:8090 |

@@ -28,6 +28,7 @@ Les erreurs suivent le format `ProblemDetail` (RFC 9457) ; la console affiche le
 - les requêtes qui modifient l'état (relance, appairage) doivent porter l'en-tête `X-ImagUnity-Console` : un site tiers ne peut pas l'ajouter (CORS fermé), ce qui protège des requêtes intersites qu'un navigateur authentifié enverrait de lui-même. La console l'ajoute ;
 - `/actuator/health` reste libre, pour la supervision ;
 - le navigateur demande le compte lui-même (réponse 401 `WWW-Authenticate: Basic`) ;
+- la console est **servie par la box** sur `/` : le build Maven du module `app` la construit (`npm ci`, `npm run build`, Node.js 24) et l'embarque dans le jar ; `-Dconsole.skip=true` construit une box sans console. Politique de sécurité du contenu stricte (`default-src 'self'`, ni cadre ni script en ligne) ;
 - le compte circule en clair sur HTTP : servir la console derrière un **proxy TLS** sur le réseau du site. La console et l'API n'écoutent que sur l'interface du réseau local (`SERVER_ADDRESS`, [phase 8](phase8-campagne.md)).
 
 ## 2. Mises à jour en direct (SSE)

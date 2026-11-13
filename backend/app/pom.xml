@@ -54,9 +54,64 @@
         </dependency>
     </dependencies>
 
+    <properties>
+        <!-- Console React (frontend/) construite et embarquée dans le jar de la box, servie sur « / ».
+             Demande Node.js 24 et npm ; -Dconsole.skip=true construit la box sans console (API seule). -->
+        <console.skip>false</console.skip>
+        <console.dir>${project.basedir}/../../frontend</console.dir>
+    </properties>
+
     <build>
         <finalName>imagunity-box</finalName>
         <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <skip>${console.skip}</skip>
+                    <executable>npm</executable>
+                    <workingDirectory>${console.dir}</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>console-npm-ci</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <arguments><argument>ci</argument><argument>--no-audit</argument><argument>--no-fund</argument></arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>console-npm-build</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <arguments><argument>run</argument><argument>build</argument></arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>console-copie</id>
+                        <phase>process-resources</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <skip>${console.skip}</skip>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${console.dir}/dist</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

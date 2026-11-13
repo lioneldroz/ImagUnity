@@ -81,6 +81,12 @@ public final class DirectoryClient {
         }
     }
 
+    /** Cause lisible d'une erreur réseau : certaines (connexion refusée…) n'ont pas de message. */
+    static String reason(IOException e) {
+        return e.getMessage() != null && !e.getMessage().isBlank() ? e.getMessage()
+                : "connexion impossible (" + e.getClass().getSimpleName() + ")";
+    }
+
     /** Réponse lue avec une limite. */
     private record Reply(int statusCode, String body) {
     }
@@ -102,7 +108,7 @@ public final class DirectoryClient {
                 return new Reply(response.statusCode(), new String(body, java.nio.charset.StandardCharsets.UTF_8));
             }
         } catch (IOException e) {
-            throw new DirectoryException("Annuaire injoignable : " + e.getMessage(), e);
+            throw new DirectoryException("Annuaire injoignable : " + reason(e), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new DirectoryException(what + " interrompu(e)", e);

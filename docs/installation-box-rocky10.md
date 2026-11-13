@@ -229,24 +229,39 @@ curl -s http://192.168.1.78:8080/actuator/health      # {"status":"UP",…}
 
 Tant que la box n'est pas enrôlée, son journal affiche des refus `401` du relais : c'est normal.
 
-## 9. Enrôler, puis appairer
+## 9. Enrôler, puis appairer, depuis la console
 
-**Enrôlement.** On télécharge la demande d'enrôlement de la box, et on relève son empreinte :
+La **console** de la box s'ouvre dans un navigateur du poste d'exploitation, à l'adresse `http://192.168.1.78:8080/`, avec le compte opérateur. Elle est servie par la box elle-même. On y suit en direct :
+- les transferts envoyés et reçus ;
+- les partenaires ;
+- l'annuaire ;
+- la configuration centralisée ;
+- les règles de priorité.
+
+Le compte circule en HTTP sur le réseau du site : à réserver au poste d'exploitation (pare-feu, § 6) ou à placer derrière un proxy TLS.
+
+**Enrôlement.** Dans la carte « Annuaire de l'organisation » :
+1. relever l'**empreinte** de la box ;
+2. cliquer sur **« Télécharger la demande d'enrôlement »** ;
+3. envoyer le fichier au responsable ;
+4. lui dicter l'empreinte quand il la demande.
+
+Le responsable signe et publie l'entrée ([guide du site central, § 8](installation-site-central-rocky10.md)). Dans les 5 minutes qui suivent, la carte affiche la box comme active, et le journal affiche « File de réception IU-T créée ».
+
+**Appairage** avec chaque partenaire. La même carte liste les box de l'annuaire. Pour chaque partenaire :
+1. saisir le nom utilisé par la route DICOM (par exemple `box-b`) ;
+2. cliquer sur **« Appairer »** ;
+3. vérifier que le partenaire apparaît dans la carte « Partenaires ».
+
+Sans navigateur, les mêmes opérations se font par l'API :
 
 ```bash
 U='-u operateur:<mot de passe>'
 curl -sf $U http://192.168.1.78:8080/api/v1/directory/enrollment-request -o demande-box-chu-nord.json
-curl -s  $U http://192.168.1.78:8080/api/v1/directory | python3 -c "import json,sys; print(json.load(sys.stdin)['shortCode'])"
-```
-
-On envoie le fichier au responsable, et on lui dicte l'empreinte quand il la demande. Il signe et publie l'entrée ([guide du site central, § 8](installation-site-central-rocky10.md)). Dans les 5 minutes qui suivent, le journal de la box affiche « File de réception IU-T créée ».
-
-**Appairage** avec chaque partenaire, sous le nom utilisé par la route DICOM. L'identifiant `boxId` du partenaire se lit dans `GET /api/v1/directory`, liste `boxes` :
-
-```bash
-curl -s $U -H 'X-ImagUnity-Console: 1' -H 'Content-Type: application/json' \
+curl -s  $U http://192.168.1.78:8080/api/v1/directory          # empreinte (shortCode), box de l'annuaire (boxes)
+curl -s  $U -H 'X-ImagUnity-Console: 1' -H 'Content-Type: application/json' \
     -X POST http://192.168.1.78:8080/api/v1/directory/boxes/<boxId du partenaire>/pair -d '{"name":"box-b"}'
-curl -s $U http://192.168.1.78:8080/api/v1/peers       # partenaire « ACTIVE »
+curl -s  $U http://192.168.1.78:8080/api/v1/peers                # partenaire « ACTIVE »
 ```
 
 **Côté PACS** :
@@ -309,7 +324,7 @@ Une mise à jour de Java ne prend effet qu'au redémarrage de la box. La mise à
 |---|---|
 | État | `systemctl status imagunity-box imagunity-box-maj.timer` |
 | Journal | `journalctl -u imagunity-box -f` ; choix de la version : `journalctl -u imagunity-box-choix` ; mises à jour : `journalctl -u imagunity-box-maj` |
-| Transferts | `curl -s $U http://<ip>:8080/api/v1/overview` et `…/api/v1/transfers` |
+| Transferts | console `http://<ip>:8080/`, ou `curl -s $U http://<ip>:8080/api/v1/overview` et `…/api/v1/transfers` |
 | Sauvegarde | `/var/lib/imagunity-box` (identité de la box, transferts) et `/etc/imagunity`. Sans elles, il faut une nouvelle identité et un nouvel enrôlement |
 | Désinstaller | `systemctl disable --now imagunity-box imagunity-box-maj.timer`, puis faire révoquer l'entrée de la box par le responsable |
 
@@ -326,6 +341,8 @@ Une mise à jour de Java ne prend effet qu'au redémarrage de la box. La mise à
 | `imagunity-box-choix.service` en échec : la box ne démarre pas | Aucune version valide, ou empreinte de l'éditeur différente : `journalctl -u imagunity-box-choix` |
 
 ## Annexe : préparer l'archive (éditeur)
+
+Construire demande Java 25 et Node.js 24 : la console React est construite au passage et embarquée dans le jar de la box.
 
 ```bash
 cd backend && ./mvnw -DskipTests package && cd ..

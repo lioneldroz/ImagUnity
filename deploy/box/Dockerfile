@@ -8,7 +8,9 @@
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /src
 COPY . .
-RUN sh ./mvnw -B -ntp -DskipTests package
+# Sans la console React (Node.js absent de cette image) : API seule. Les images de la campagne, construites à partir du
+# jar produit par Maven (campagne/prepare.sh), l'embarquent.
+RUN sh ./mvnw -B -ntp -DskipTests -Dconsole.skip=true package
 
 FROM eclipse-temurin:25-jre
 # Outils TPM : clés de la box protégées par un secret scellé dans le TPM de l'hôte (docs/cles-tpm.md).
