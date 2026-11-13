@@ -24,6 +24,23 @@ public final class ChunkFiles implements ChunkContents {
     public ChunkFiles(Path root) throws IOException {
         this.root = root.toAbsolutePath().normalize();
         Files.createDirectories(this.root.resolve(".tmp"));
+        purgeTemporary(java.time.Instant.now().minus(STALE_TEMPORARY));
+    }
+
+    /** Âge au-delà duquel un fichier temporaire est un reste d'arrêt brutal (aucun téléversement ne dure autant). */
+    static final java.time.Duration STALE_TEMPORARY = java.time.Duration.ofHours(6);
+
+    /** Supprime les fichiers temporaires laissés par un arrêt brutal ; @return leur nombre */
+    int purgeTemporary(java.time.Instant before) throws IOException {
+        int purged = 0;
+        try (var temps = Files.list(root.resolve(".tmp"))) {
+            for (Path temp : temps.toList()) {
+                if (Files.getLastModifiedTime(temp).toInstant().isBefore(before) && Files.deleteIfExists(temp)) {
+                    purged++;
+                }
+            }
+        }
+        return purged;
     }
 
     public Path root() {

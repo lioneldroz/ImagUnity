@@ -125,7 +125,11 @@ public final class ChunkService {
                 return; // déjà reçu : renvoi après une réponse perdue
             }
             files.commit(received, chunk.senderId());
-            store.markUploaded(chunk.senderId());
+            if (!store.markUploaded(chunk.senderId())) {
+                // Morceau supprimé (par l'émetteur ou la purge) pendant le téléversement : rien ne doit rester.
+                files.delete(chunk.senderId());
+                throw new RelayException(HttpStatus.NOT_FOUND, "Morceau inconnu ou expiré");
+            }
         } finally {
             Files.deleteIfExists(received.temp());
         }
@@ -167,8 +171,9 @@ public final class ChunkService {
     }
 
     public void delete(String senderId) throws IOException {
-        store.delete(senderId);
+        // Contenu d'abord : si le stockage refuse, la ligne reste et la purge réessaiera (pas d'objet orphelin).
         files.delete(senderId);
+        store.delete(senderId);
     }
 
     /** Supprime les morceaux expirés, et ceux créés mais jamais téléversés à temps. */

@@ -61,6 +61,8 @@ class ChunkApiTest {
     @Autowired
     private RelayConfiguration.Purge purge;
     @Autowired
+    private ChunkFiles files;
+    @Autowired
     private javax.sql.DataSource dataSource;
 
     private final HttpClient http = HttpClient.newHttpClient();
@@ -184,7 +186,10 @@ class ChunkApiTest {
 
         assertThat(send(deposit(RelayFixture.REVOKED, RelayFixture.REVOKED_KEYS, body)).body())
                 .asString(StandardCharsets.UTF_8).contains("non active").contains("REVOKED");
-        assertThat(send(deposit(UUID.randomUUID(), RelayFixture.ACTIVE_KEYS, body)).statusCode()).isEqualTo(403);
+        assertThat(send(deposit(UUID.randomUUID(), RelayFixture.ACTIVE_KEYS, body)).statusCode())
+                .as("box inconnue : même réponse qu'une signature invalide").isEqualTo(401);
+        assertThat(send(deposit(RelayFixture.REVOKED, HybridKeyPair.generate(), body)).statusCode())
+                .as("box révoquée, signature invalide : rien n'est dit de son état").isEqualTo(401);
         assertThat(send(deposit(RelayFixture.ACTIVE, HybridKeyPair.generate(), body)).statusCode())
                 .as("signée par une autre clé").isEqualTo(401);
         HttpRequest.Builder replayed = deposit(RelayFixture.ACTIVE, RelayFixture.ACTIVE_KEYS, body);
@@ -252,5 +257,48 @@ class ChunkApiTest {
                 recipient.getPrivate(), null)).statusCode()).isEqualTo(404);
         assertThat(send(capability("GET", "/iu/v1/chunks/" + senderId, "autre-id", sender.getPrivate(), null))
                 .statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void anOversizedCreationOrAnUnsignedRequestLeavesNothingBehind() throws Exception {
+        var jdbc = org.springframework.jdbc.core.simple.JdbcClient.create(dataSource);
+        String huge = "{\"x\":\"" + "a".repeat(ChunkController.MAX_CREATE) + "\"}";
+        assertThat(send(deposit(RelayFixture.ACTIVE, RelayFixture.ACTIVE_KEYS, huge)).statusCode()).isEqualTo(413);
+
+        int seen = jdbc.sql("SELECT COUNT(*) FROM request_seen").query(Integer.class).single();
+        String body = createBody(SIZE, Codec.sha256Hex(content), List.of(recipient), 3600);
+        for (int i = 0; i < 5; i++) {
+            assertThat(send(deposit(RelayFixture.ACTIVE, HybridKeyPair.generate(), body)).statusCode()).isEqualTo(401);
+        }
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM request_seen").query(Integer.class).single())
+                .as("requêtes non signées : rien d'écrit en base").isEqualTo(seen);
+    }
+
+    @Test
+    void aChunkDeletedDuringItsUploadLeavesNoOrphanContent() throws Exception {
+        String senderId = create(3600).get("senderId").asString();
+        ChunkStore.Chunk chunk = chunks.chunk(senderId);
+        chunks.delete(senderId); // l'émetteur (ou la purge) supprime pendant le téléversement
+        ChunkFiles.Received received = files.receive(new java.io.ByteArrayInputStream(content), SIZE);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> chunks.upload(chunk, received))
+                .isInstanceOf(RelayException.class).hasMessageContaining("inconnu");
+        assertThat(files.path(senderId)).doesNotExist();
+        assertThat(received.temp()).doesNotExist();
+    }
+
+    @Test
+    void stalePartialUploadsArePurged() throws Exception {
+        java.nio.file.Path temp = files.root().resolve(".tmp").resolve("reste.part");
+        java.nio.file.Files.write(temp, new byte[] {1});
+        java.nio.file.Path recent = files.root().resolve(".tmp").resolve("en-cours.part");
+        java.nio.file.Files.write(recent, new byte[] {1});
+        java.nio.file.Files.setLastModifiedTime(temp, java.nio.file.attribute.FileTime.from(
+                Instant.now().minus(ChunkFiles.STALE_TEMPORARY).minusSeconds(60)));
+
+        assertThat(files.purgeTemporary(Instant.now().minus(ChunkFiles.STALE_TEMPORARY))).isEqualTo(1);
+        assertThat(temp).doesNotExist();
+        assertThat(recent).exists();
+        java.nio.file.Files.delete(recent);
     }
 }

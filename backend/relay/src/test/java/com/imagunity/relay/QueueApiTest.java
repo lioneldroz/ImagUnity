@@ -218,4 +218,24 @@ class QueueApiTest {
                 .as("messages expirés non rendus").isEqualTo(204);
         assertThat(queues.purge()).isEqualTo(2);
     }
+
+    @Test
+    void aQueueIsRotatedOnceAndOneSenderCannotFillIt() throws Exception {
+        JsonNode ids = createQueue();
+        QueueStore.Queue queue = queues.byRecvId(ids.get("recvId").asString());
+        QueueService.Ids rotated = queues.rotate(queue);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> queues.rotate(queue))
+                .as("deuxième renouvellement de la même file").hasMessageContaining("File inconnue");
+        QueueStore.Queue current = queues.byRecvId(rotated.recvId());
+
+        UUID flooder = UUID.randomUUID();
+        byte[] envelope = {1, 2, 3};
+        for (int i = 0; i < QueueService.MAX_PENDING_PER_SENDER; i++) {
+            queues.deposit(current, flooder, envelope);
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> queues.deposit(current, flooder, envelope))
+                .isInstanceOf(RelayException.class).hasMessageContaining("Trop de messages");
+        assertThat(queues.deposit(current, RelayFixture.ACTIVE, envelope).messageId())
+                .as("les autres box déposent encore").isNotBlank();
+    }
 }

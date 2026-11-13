@@ -48,18 +48,18 @@ public final class RequestAuthenticator {
         } catch (IllegalArgumentException e) {
             throw new RelayException(HttpStatus.UNAUTHORIZED, "Identifiant de box absent ou invalide");
         }
-        SignedRequest signed = admitted(request, bodySha256);
+        SignedRequest signed = parsed(request, bodySha256);
+        // Box inconnue ou signature invalide : même réponse, sans détail (pas d'indication sur l'annuaire à un tiers).
         Optional<BoxEntry> entry = directory.entry(boxId);
-        if (entry.isEmpty()) {
-            throw new RelayException(HttpStatus.FORBIDDEN, "Box absente de l'annuaire de l'organisation");
+        if (entry.isEmpty() || !signed.verifyDeposit(entry.get().signingKey(),
+                request.getHeader(SignedRequest.SIGNATURE))) {
+            throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête de dépôt refusée");
         }
         BoxEntry.Status status = entry.get().statusAt(clock.instant());
         if (status != BoxEntry.Status.ACTIVE) {
             throw new RelayException(HttpStatus.FORBIDDEN, "Box non active dans l'annuaire (" + status + ")");
         }
-        if (!signed.verifyDeposit(entry.get().signingKey(), request.getHeader(SignedRequest.SIGNATURE))) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Signature de dépôt invalide");
-        }
+        admit(signed);
         return boxId;
     }
 
@@ -72,13 +72,18 @@ public final class RequestAuthenticator {
         if (!id.equals(request.getHeader(SignedRequest.KEY_ID))) {
             throw new RelayException(HttpStatus.UNAUTHORIZED, "Identifiant de clé absent ou différent du chemin");
         }
-        SignedRequest signed = admitted(request, bodySha256);
+        SignedRequest signed = parsed(request, bodySha256);
         if (!signed.verifyCapability(publicKey(publicKey), request.getHeader(SignedRequest.SIGNATURE))) {
             throw new RelayException(HttpStatus.UNAUTHORIZED, "Signature invalide");
         }
+        admit(signed);
     }
 
-    private SignedRequest admitted(HttpServletRequest request, String bodySha256) {
+    /**
+     * Requête signée lue et dans la fenêtre d'horodatage ; son identifiant n'est enregistré ({@link #admit}) qu'une
+     * fois la signature vérifiée : une requête non signée n'écrit rien en base.
+     */
+    private SignedRequest parsed(HttpServletRequest request, String bodySha256) {
         SignedRequest signed;
         try {
             String timestamp = request.getHeader(SignedRequest.TIMESTAMP);
@@ -90,11 +95,18 @@ public final class RequestAuthenticator {
         } catch (ProtocolException | NumberFormatException e) {
             throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête signée mal formée : " + e.getMessage());
         }
+        Optional<String> outside = replay.outsideWindow(signed);
+        if (outside.isPresent()) {
+            throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête refusée : " + outside.get());
+        }
+        return signed;
+    }
+
+    private void admit(SignedRequest signed) {
         Optional<String> refusal = replay.admit(signed);
         if (refusal.isPresent()) {
             throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête refusée : " + refusal.get());
         }
-        return signed;
     }
 
     /** Clé publique Ed25519 publiée (X.509, base64url). */
