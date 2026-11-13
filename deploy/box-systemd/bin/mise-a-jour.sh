@@ -17,10 +17,14 @@ case "$RESULTAT" in
         ATTENTE=${IMAGUNITY_MAJ_ATTENTE:-300}
         CHOIX=${IMAGUNITY_CHOIX:-/run/imagunity-choix/choix}
         while [ "$ATTENTE" -gt 0 ]; do
-            # Version retenue par le lanceur au redémarrage, puis box en bonne santé.
-            if [ "$(cut -f3 "$CHOIX" 2>/dev/null)" = "$NUMERO" ] \
-                    && curl -sf --max-time 5 "$SANTE" | grep -q '"UP"'; then
-                echo "Box redémarrée sur la version n° $NUMERO, en bonne santé"
+            # Version retenue par le lanceur au redémarrage (celle-ci, ou une plus récente déjà sur la box, livrée
+            # par une nouvelle archive), puis box en bonne santé.
+            RETENUE=$(cut -f3 "$CHOIX" 2>/dev/null || true)
+            case "$RETENUE" in
+                '' | *[!0-9]*) RETENUE=0 ;;
+            esac
+            if [ "$RETENUE" -ge "$NUMERO" ] && curl -sf --max-time 5 "$SANTE" | grep -q '"UP"'; then
+                echo "Box redémarrée sur la version n° $RETENUE, en bonne santé"
                 exit 0
             fi
             sleep 5

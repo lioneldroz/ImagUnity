@@ -174,6 +174,8 @@ public final class IuTransport implements TransportPort {
     private final Semaphore receptions;
     private final Set<Thread> workers = ConcurrentHashMap.newKeySet();
     private final Set<Long> running = ConcurrentHashMap.newKeySet();
+    /** Fichiers envoyés dont le retrait des relais a été demandé, à faire dès la fin de leur envoi. */
+    private final Set<Long> discarding = ConcurrentHashMap.newKeySet();
     private final List<IuMailbox> mailboxes = new CopyOnWriteArrayList<>();
     private final List<Thread> starters = new CopyOnWriteArrayList<>();
     /** Messages déjà remis (même message déposé sur plusieurs relais) : identifiant → réception. */
@@ -737,10 +739,24 @@ public final class IuTransport implements TransportPort {
 
     @Override
     public void discardSentFile(long fileId) {
-        store.outgoing(fileId).ifPresent(outgoing -> launch(fileId, () -> {
-            outgoing.all().forEach(this::deleteCopy);
-            store.deleteOutgoing(fileId);
-        }));
+        // Retenu même si le fichier est encore en cours d'envoi (une copie lente sur un autre relais, après l'annonce
+        // anticipée) : le retrait est alors fait dès la fin de l'envoi, au lieu d'être oublié.
+        discarding.add(fileId);
+        launchDiscard(fileId);
+    }
+
+    private void launchDiscard(long fileId) {
+        if (store.outgoing(fileId).isEmpty()) {
+            discarding.remove(fileId);
+            return;
+        }
+        launch(fileId, () -> {
+            discarding.remove(fileId);
+            store.outgoing(fileId).ifPresent(outgoing -> {
+                outgoing.all().forEach(this::deleteCopy);
+                store.deleteOutgoing(fileId);
+            });
+        });
     }
 
     // --- Réception de fichiers ---
@@ -958,6 +974,9 @@ public final class IuTransport implements TransportPort {
             } finally {
                 running.remove(fileId);
                 workers.remove(Thread.currentThread());
+                if (discarding.contains(fileId) && !closed) {
+                    launchDiscard(fileId); // retrait demandé pendant l'envoi
+                }
             }
         });
         workers.add(thread);

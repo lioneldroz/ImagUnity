@@ -77,6 +77,12 @@ public final class QueueStore {
      */
     public boolean rotate(Queue queue, String newRecvId, String newSendId) {
         return Boolean.TRUE.equals(transactions.execute(status -> {
+            // File verrouillée d'abord : un dépôt simultané attend la fin du renouvellement (sa clé étrangère
+            // référence la ligne verrouillée), au lieu d'être accepté puis effacé en cascade avec l'ancienne file.
+            if (jdbc.sql("SELECT recv_id FROM queue WHERE recv_id = ? FOR UPDATE").param(queue.recvId())
+                    .query(String.class).optional().isEmpty()) {
+                return false; // déjà renouvelée par une autre requête
+            }
             jdbc.sql("INSERT INTO queue (recv_id, send_id, box_id, queue_key, created_at) VALUES (?, ?, ?, ?, ?)")
                     .params(newRecvId, newSendId, queue.boxId(), queue.queueKey(), utc(queue.createdAt())).update();
             jdbc.sql("UPDATE queue_message SET recv_id = ? WHERE recv_id = ?").params(newRecvId, queue.recvId())

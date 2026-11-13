@@ -17,6 +17,14 @@ Corrections issues de la revue de novembre 2026 :
 - **Sauvegarde du site central** : `sauvegarder.sh` sauvegarde aussi les données de Caddy, dont l'autorité de certification interne, et accepte un dossier de destination relatif.
 - **Console** : le flux en direct se rouvre de lui-même après une erreur HTTP (par exemple pendant le redémarrage de la box derrière un proxy).
 - **Transport** : téléchargements simultanés sans risque d'erreur de concurrence au démarrage.
+- **Anomalies mineures** :
+  - réception : une copie en double d'un paquet est supprimée dès son arrivée, et l'échec d'une copie ne fait plus échouer le transfert tant qu'une autre copie peut servir ; un manifeste qui liste deux fois une instance est refusé ;
+  - relais : plus de contenu de morceau sans enregistrement après un téléversement simultané à sa suppression ; renouvellement d'une file sans perte d'un message déposé au même moment ;
+  - envoi : les morceaux déjà créés sont retirés du relais si la préparation d'un envoi échoue, et le retrait d'un fichier demandé pendant son envoi est fait à la fin de celui-ci ;
+  - mises à jour : deux installations simultanées d'une même version ne laissent plus de dossier vide, et une version installée invalide est supprimée pour être téléchargée de nouveau ; plus de fausse alerte quand la box démarre sur une version plus récente que celle téléchargée ;
+  - identité de la box : fichiers de clés écrits d'un coup ; une création interrompue reprend au démarrage suivant ;
+  - annuaire : nom de box trop long refusé (422) et publication simultanée d'un même numéro en conflit (409), au lieu d'une erreur 500 ; fichier de règles de priorité `null` refusé proprement.
+- **Connu, non corrigé** : pendant une publication (`publier-version.sh`), une box peut lire l'ancien manifeste et télécharger le nouveau jar. L'empreinte ne correspond pas, la version est écartée et retentée la nuit suivante.
 
 ## 0.15.0
 

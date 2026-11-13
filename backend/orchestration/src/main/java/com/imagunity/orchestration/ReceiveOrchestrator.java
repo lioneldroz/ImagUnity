@@ -214,6 +214,43 @@ public final class ReceiveOrchestrator {
         Path path = received.path() != null ? received.path() : file.get().file();
         inbound.saveFile(file.get().downloaded(path, clock.instant()));
         tryComplete(file.get().peerName(), groupOf(file.get().fileName()));
+        discardIfAlreadyRestored(file.get());
+    }
+
+    /**
+     * Copie en double d'un paquet déjà restitué (le même paquet proposé deux fois, par exemple après un redémarrage de
+     * l'émetteur) : supprimée dès son arrivée, sinon elle resterait sur le disque.
+     */
+    private void discardIfAlreadyRestored(InboundFile received) {
+        Optional<InboundTransfer> transfer = inbound.findTransferByGroup(received.peerName(),
+                groupOf(received.fileName()));
+        if (transfer.isEmpty()) {
+            return;
+        }
+        boolean restored = transfer.get().state() == InboundTransfer.State.RESTORED
+                || messages.decodeAnnouncement(transfer.get().announcement()).stream()
+                        .flatMap(a -> a.parts().stream())
+                        .anyMatch(p -> p.fileName().equals(received.fileName())
+                                && transfer.get().restoredParts().contains(p.index()));
+        if (restored) {
+            discardCopies(received.peerName(), received.fileName());
+        }
+    }
+
+    /** Supprime les copies reçues, et pas encore utilisées, d'un paquet déjà restitué. */
+    private void discardCopies(String peerName, String fileName) {
+        for (InboundFile copy : inbound.findFiles(peerName, fileName)) {
+            if (copy.state() != InboundFile.State.DOWNLOADED) {
+                continue;
+            }
+            inbound.saveFile(copy.with(InboundFile.State.CONSUMED, clock.instant()));
+            try {
+                Files.deleteIfExists(copy.file());
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "Copie en double non supprimée : " + copy.file(), e);
+            }
+            LOG.log(Level.INFO, "Copie en double du paquet {0} supprimée", fileName);
+        }
     }
 
     private void onFileFailed(TransportEvent.FileFailed failed) {
@@ -234,6 +271,13 @@ public final class ReceiveOrchestrator {
             }
         }
         LOG.log(Level.WARNING, "Réception de {0} en échec : {1}", file.fileName(), reason);
+        // Une autre copie du même paquet, reçue ou en cours, peut encore servir : le transfert attend.
+        boolean otherCopy = inbound.findFiles(file.peerName(), file.fileName()).stream()
+                .anyMatch(f -> f.transportFileId() != file.transportFileId()
+                        && (f.state() == InboundFile.State.DOWNLOADED || f.state() == InboundFile.State.DOWNLOADING));
+        if (otherCopy) {
+            return;
+        }
         inbound.findTransferByGroup(file.peerName(), groupOf(file.fileName()))
                 .filter(t -> t.state() == InboundTransfer.State.ANNOUNCED)
                 .ifPresent(t -> fail(t, reason));
@@ -416,6 +460,7 @@ public final class ReceiveOrchestrator {
         } catch (IOException e) {
             LOG.log(Level.WARNING, "Paquet reçu non supprimé : " + file.file(), e);
         }
+        discardCopies(transfer.peerName(), part.fileName());
         LOG.log(Level.INFO, "Transfert {0} de {1} : paquet {2}/{3} restitué au PACS local ({4} instance(s), {5}/{3} "
                 + "paquet(s))", transfer.transferId(), transfer.peerName(), part.index(), part.count(),
                 progressed.restoredInstances() - transfer.restoredInstances(), progressed.restoredParts().size());

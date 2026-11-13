@@ -33,6 +33,8 @@ import java.util.function.LongConsumer;
  */
 public final class IuFileUploader {
 
+    private static final System.Logger LOG = System.getLogger(IuFileUploader.class.getName());
+
     private final IuFileClient client;
     private final UUID boxId;
     private final HybridKeyPair identity;
@@ -120,14 +122,22 @@ public final class IuFileUploader {
         random.nextBytes(padding);
         List<String> digests = Chunks.digests(packet, layout, padding);
         List<ChunkState> chunks = new ArrayList<>();
-        for (int i = 0; i < layout.chunkCount(); i++) {
-            KeyPair sender = ed25519();
-            KeyPair recipient = ed25519();
-            String digest = digests.get(i);
-            IuFileClient.Created created = retry.run("Création du morceau " + i, () -> client.create(boxId, identity,
-                    chunkSize, digest, sender.getPublic(), List.of(recipient.getPublic()), ttl));
-            chunks.add(new ChunkState(i, digest, created.senderId(), Codec.base64Url(sender.getPrivate().getEncoded()),
-                    created.recipientIds().getFirst(), Codec.base64Url(recipient.getPrivate().getEncoded()), false));
+        List<PrivateKey> senderKeys = new ArrayList<>();
+        try {
+            for (int i = 0; i < layout.chunkCount(); i++) {
+                KeyPair sender = ed25519();
+                KeyPair recipient = ed25519();
+                String digest = digests.get(i);
+                IuFileClient.Created created = retry.run("Création du morceau " + i, () -> client.create(boxId,
+                        identity, chunkSize, digest, sender.getPublic(), List.of(recipient.getPublic()), ttl));
+                senderKeys.add(sender.getPrivate());
+                chunks.add(new ChunkState(i, digest, created.senderId(),
+                        Codec.base64Url(sender.getPrivate().getEncoded()), created.recipientIds().getFirst(),
+                        Codec.base64Url(recipient.getPrivate().getEncoded()), false));
+            }
+        } catch (RuntimeException e) {
+            abandon(chunks, senderKeys);
+            throw e;
         }
         byte[] id = new byte[16];
         random.nextBytes(id);
@@ -147,18 +157,39 @@ public final class IuFileUploader {
             throw new TransportException("Envoi expiré, copie impossible");
         }
         List<ChunkState> chunks = new ArrayList<>();
-        for (ChunkState original : of.chunks()) {
-            KeyPair sender = ed25519();
-            KeyPair recipient = ed25519();
-            IuFileClient.Created created = retry.run("Création de la copie du morceau " + original.index(),
-                    () -> client.create(boxId, identity, of.chunkSize(), original.digest(), sender.getPublic(),
-                            List.of(recipient.getPublic()), ttl));
-            chunks.add(new ChunkState(original.index(), original.digest(), created.senderId(),
-                    Codec.base64Url(sender.getPrivate().getEncoded()), created.recipientIds().getFirst(),
-                    Codec.base64Url(recipient.getPrivate().getEncoded()), false));
+        List<PrivateKey> senderKeys = new ArrayList<>();
+        try {
+            for (ChunkState original : of.chunks()) {
+                KeyPair sender = ed25519();
+                KeyPair recipient = ed25519();
+                IuFileClient.Created created = retry.run("Création de la copie du morceau " + original.index(),
+                        () -> client.create(boxId, identity, of.chunkSize(), original.digest(), sender.getPublic(),
+                                List.of(recipient.getPublic()), ttl));
+                senderKeys.add(sender.getPrivate());
+                chunks.add(new ChunkState(original.index(), original.digest(), created.senderId(),
+                        Codec.base64Url(sender.getPrivate().getEncoded()), created.recipientIds().getFirst(),
+                        Codec.base64Url(recipient.getPrivate().getEncoded()), false));
+            }
+        } catch (RuntimeException e) {
+            abandon(chunks, senderKeys);
+            throw e;
         }
         return new UploadState(of.transferId(), of.fileName(), client.relay().toString(), of.chunkSize(), of.size(),
                 of.digest(), of.expiresAt(), chunks, of.paddingKey());
+    }
+
+    /**
+     * Préparation interrompue (relais injoignable en cours de route) : les morceaux déjà créés, que plus personne ne
+     * connaît, sont supprimés du relais, au lieu d'occuper le quota de la box jusqu'à leur expiration.
+     */
+    private void abandon(List<ChunkState> chunks, List<PrivateKey> senderKeys) {
+        for (int i = 0; i < chunks.size(); i++) {
+            try {
+                client.delete(chunks.get(i).senderId(), senderKeys.get(i));
+            } catch (IOException | RuntimeException e) {
+                LOG.log(System.Logger.Level.DEBUG, "Morceau abandonné non supprimé : {0}", e.getMessage());
+            }
+        }
     }
 
     /**

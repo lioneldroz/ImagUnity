@@ -98,8 +98,14 @@ public final class ReloadablePriority implements SeriesPriority, PrioritySource 
         } catch (JacksonException e) {
             throw new IllegalArgumentException("document JSON invalide : " + e.getOriginalMessage(), e);
         }
+        if (document == null) {
+            throw new IllegalArgumentException("document JSON invalide : objet attendu");
+        }
         List<PriorityRule> rules = new ArrayList<>();
         for (DocumentRule rule : document.rules() == null ? List.<DocumentRule>of() : document.rules()) {
+            if (rule == null) {
+                throw new IllegalArgumentException("document JSON invalide : règle vide");
+            }
             rules.add(new PriorityRule(rule.name(), rule.priority(), new DicomCondition(rule.and(), rule.or())));
         }
         return new PriorityRules(document.defaultPriority() == null ? SeriesPriority.DEFAULT

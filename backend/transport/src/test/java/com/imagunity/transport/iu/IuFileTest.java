@@ -63,6 +63,39 @@ class IuFileTest {
     }
 
     @Test
+    void anInterruptedPreparationRemovesTheChunksAlreadyCreated() throws Exception {
+        // Relais simulé : accepte la création du premier morceau, refuse la suivante.
+        java.util.List<String> requests = new java.util.concurrent.CopyOnWriteArrayList<>();
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/iu/v1/chunks", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
+            long creations = requests.stream().filter(r -> r.startsWith("POST")).count();
+            if (exchange.getRequestMethod().equals("POST") && creations == 1) {
+                byte[] body = "{\"senderId\":\"premier\",\"recipientIds\":[\"r1\"]}".getBytes();
+                exchange.sendResponseHeaders(201, body.length);
+                exchange.getResponseBody().write(body);
+            } else {
+                exchange.sendResponseHeaders(exchange.getRequestMethod().equals("DELETE") ? 204 : 400, -1);
+            }
+            exchange.close();
+        });
+        server.start();
+        try {
+            IuFileUploader flaky = new IuFileUploader(new IuFileClient(URI.create("http://127.0.0.1:"
+                    + server.getAddress().getPort()), http, Clock.systemUTC()), BOX, BOX_KEYS, Clock.systemUTC(), quick);
+
+            assertThatThrownBy(() -> flaky.prepare(packet(600 * 1024), 256 * 1024, Duration.ofHours(1)))
+                    .isInstanceOf(RelayRefusedException.class);
+
+            assertThat(requests).as("morceau déjà créé supprimé du relais").contains("DELETE /iu/v1/chunks/premier");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void packetTravelsThroughTheRelayAndIsRemovedOnceAcknowledged() throws Exception {
         Path packet = packet(3 * ChunkLayout.MIB + 4321);
         IuFileUploader uploader = uploader();
