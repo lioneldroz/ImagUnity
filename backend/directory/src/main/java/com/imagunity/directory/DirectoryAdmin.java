@@ -24,7 +24,7 @@ import java.util.UUID;
  * organisation-creer --organisation &lt;id&gt; --cles &lt;fichier&gt;
  * empreinte          --cle-publique &lt;fichier&gt;
  * box-demande        --cles &lt;fichier&gt; --box-id &lt;uuid&gt; --nom &lt;nom&gt; [--iu &lt;adresse&gt;] --sortie &lt;fichier&gt;
- * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 365] [--serie 1] --sortie &lt;fichier&gt;
+ * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 90] [--serie 1] --sortie &lt;fichier&gt;
  * revoquer           --cles &lt;clé organisation&gt; --entree &lt;fichier&gt; --motif &lt;texte&gt; --sortie &lt;fichier&gt;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
  * publier            --annuaire &lt;url&gt; --entree &lt;fichier&gt; [--compte &lt;utilisateur:mot de passe&gt;]
@@ -195,7 +195,7 @@ public final class DirectoryAdmin {
         Organization organization = organization(o);
         SignedDocument request = read(Path.of(require(o, "demande")));
         EnrollmentRequest r = EnrollmentRequest.verify(request);
-        long days = Long.parseLong(o.getOrDefault("validite-jours", "365"));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
         long serial = Long.parseLong(o.getOrDefault("serie", "1"));
         java.util.List<String> groups = o.containsKey("groupes") ? java.util.Arrays.stream(o.get("groupes")
                 .split(",")).map(String::strip).filter(g -> !g.isEmpty()).toList() : java.util.List.of();
@@ -414,7 +414,7 @@ public final class DirectoryAdmin {
                   organisation-creer --organisation <id> --cles <fichier>
                   empreinte          --cle-publique <fichier>
                   box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--iu <adresse>] --sortie <fichier>
-                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1]
+                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 90] [--serie 1]
                                      [--groupes imagerie-nord,urgences] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
                   verifier           --cle-publique <fichier> --entree <fichier>

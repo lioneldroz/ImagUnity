@@ -15,7 +15,7 @@
         à l'installation après vérification hors bande de son empreinte
 ```
 
-- **L'annuaire n'est pas de confiance.** Il ne fait que publier des entrées signées par le responsable. Un annuaire compromis ne peut ni créer une box, ni changer ses clés. Il ne peut que retenir des entrées (déni de service), et il ne peut pas faire revenir une entrée remplacée (§ 3).
+- **L'annuaire n'est pas de confiance.** Il ne fait que publier des entrées signées par le responsable. Un annuaire compromis ne peut ni créer une box, ni changer ses clés. Il ne peut pas faire revenir une entrée remplacée (§ 3). Il peut en revanche **retenir** des entrées : une nouvelle box n'est pas vue (déni de service), mais surtout une **révocation retenue** laisse la box révoquée active jusqu'à la fin de validité de son entrée encore connue. D'où une validité courte (90 jours par défaut), renouvelée par le responsable, et la surveillance de la date de dernière lecture réussie de l'annuaire (console, onglet Annuaire). Une liste de révocation datée et signée fait partie des suites possibles (pré-audit, constat C2).
 - **La clé du responsable** est la racine de confiance. Elle reste hors ligne, chez le responsable. Chaque box l'**épingle** à l'installation, après avoir vérifié son empreinte courte par un autre canal (téléphone, papier, QR code).
 - **Chaque box a sa propre identité** : une paire de clés de signature générée dans la box, et qui ne la quitte jamais (TPM ou élément sécurisé pour le pilote).
 - **Cryptographie** : uniquement des primitives standard du JDK 25. La suite `IU1` signe en double avec Ed25519 (RFC 8032) et ML-DSA-65 (FIPS 204, résistant au calcul quantique), et les deux signatures doivent être valides.
@@ -87,7 +87,7 @@ L'outil est en ligne de commande, et le responsable l'exécute sur un poste qui 
 | `organisation-creer --organisation <id> --cles <fichier>` | Génère la clé du responsable (fichier privé, droits 600) et sa clé publique `<fichier>.pub.json` ; affiche l'empreinte courte |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte courte d'une clé publique d'organisation |
 | `box-demande --cles <fichier> --box-id <uuid> --nom <nom> [--simplex <adresse>] --sortie <fichier>` | Côté box, en attendant l'étape C : génère l'identité de la box si besoin (clés de signature, et clés de chiffrement dans `<fichier>.chiffrement`) et produit une demande signée |
-| `enroler --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1] --sortie <fichier>` | Vérifie la preuve de possession, affiche l'empreinte de la box à confirmer hors bande, puis signe l'entrée |
+| `enroler --cles <clé organisation> --demande <fichier> [--validite-jours 90] [--serie 1] --sortie <fichier>` | Vérifie la preuve de possession, affiche l'empreinte de la box à confirmer hors bande, puis signe l'entrée |
 | `revoquer --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>` | Émet l'entrée révoquée (numéro + 1) |
 | `verifier --cle-publique <fichier> --entree <fichier>` | Vérifie une entrée et affiche son état |
 | `proteger --cles <fichier> [--box]` | Chiffre par phrase de passe une clé existante en clair (§ 9) |
