@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuration des box</title>
+  <link rel="stylesheet" href="admin.css">
+  <script src="admin.js" defer></script>
+</head>
+<body>
+<header class="bandeau">
+  <div>
+    <h1>Configuration des box</h1>
+    <p class="sous-titre">Organisation <strong id="organisation">…</strong> · prochaine version <strong id="prochaine">…</strong></p>
+  </div>
+  <button type="button" id="rafraichir" class="secondaire">Actualiser</button>
+</header>
+
+<main>
+  <p id="message" class="message" role="status" hidden></p>
+
+  <section>
+    <h2>Box de l'annuaire</h2>
+    <p class="aide">Version appliquée : remontée par chaque box après lecture de l'annuaire (compte rendu signé par la box).</p>
+    <div class="tableau">
+      <table>
+        <thead><tr><th>Box</th><th>Statut</th><th>Version appliquée</th><th>Dernier refus</th><th>Compte rendu</th></tr></thead>
+        <tbody id="box"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Brouillon</h2>
+    <p class="aide">Les règles suivent la syntaxe de la configuration locale : <code>and</code> (tous les champs), <code>or</code> (un champ suffit), valeurs exactes, <code>*</code>, <code>?</code>, alternatives <code>|</code>, négation <code>!</code>. Laisser un bloc vide pour garder la configuration locale des box.</p>
+    <div class="grille">
+      <fieldset>
+        <legend>Box visées</legend>
+        <label><input type="radio" name="cible" value="toutes" checked> Toute l'organisation</label>
+        <label><input type="radio" name="cible" value="liste"> Box choisies :</label>
+        <div id="choix-box" class="choix"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Audit</legend>
+        <label>Auteur <input type="text" id="auteur" maxlength="100" autocomplete="name"></label>
+        <label>Motif <input type="text" id="motif" maxlength="300"></label>
+      </fieldset>
+    </div>
+    <label class="bloc">Priorité des séries (JSON)
+      <textarea id="priorite" rows="9" spellcheck="false" placeholder='{ "default": 5, "rules": [ { "name": "scanner-thorax", "priority": 1, "and": { "Modality": "CT", "SeriesDescription": "*THORAX*|*POUMON*" } } ] }'></textarea>
+    </label>
+    <label class="bloc">Routage par champ DICOM (JSON)
+      <textarea id="routage" rows="7" spellcheck="false" placeholder='{ "rules": [ { "name": "chu-nord", "and": { "InstitutionName": "CHU NORD*" }, "to": ["box-b"] } ] }'></textarea>
+    </label>
+    <div class="actions">
+      <button type="button" id="preparer">Vérifier et préparer le document</button>
+    </div>
+    <div id="prepare" hidden>
+      <p>Document n° <strong id="numero"></strong> prêt à signer. Le télécharger, puis, sur le poste du responsable :</p>
+      <pre id="commandes"></pre>
+      <div class="actions">
+        <a id="telecharger" class="bouton" download>Télécharger le brouillon</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Essayer les règles</h2>
+    <p class="aide">En-tête DICOM <strong>synthétique</strong>, un champ par ligne (<code>Modality=CT</code> ; plusieurs valeurs séparées par <code>\</code>). Jamais de données de patient.</p>
+    <textarea id="entete" rows="5" spellcheck="false">Modality=CT
+SeriesDescription=THORAX 1.25
+InstitutionName=CHU NORD</textarea>
+    <div class="actions"><button type="button" id="essayer" class="secondaire">Essayer le brouillon</button></div>
+    <p id="resultat" class="resultat" hidden></p>
+  </section>
+
+  <section>
+    <h2>Publier un document signé</h2>
+    <p class="aide">Document produit par <code>configuration-signer</code>. Le service revérifie la signature du responsable et refuse un numéro de version déjà dépassé.</p>
+    <div class="actions">
+      <input type="file" id="fichier" accept=".json,application/json">
+      <button type="button" id="publier">Publier</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Versions publiées</h2>
+    <div id="versions"></div>
+  </section>
+</main>
+</body>
+</html>

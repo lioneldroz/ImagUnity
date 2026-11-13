@@ -74,6 +74,11 @@ imagunity:
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
     # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
     encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}
+  # Configuration centralisée (docs/configuration-centralisee.md) : règles de priorité et de routage signées par le
+  # responsable, lues avec l'annuaire et appliquées sans redémarrage. false : configuration locale seulement.
+  central-configuration:
+    enabled: ${IMAGUNITY_CENTRAL_CONFIGURATION:true}
+    file: ${IMAGUNITY_DATA_DIR:./data}/configuration-centrale.json
   priority:
     # Priorité des séries (1 = la plus haute, 9 = la plus basse) : les prioritaires partent et sont restituées les
     # premières. Règles dans un fichier JSON rechargé à chaud (IMAGUNITY_PRIORITY_FILE), ou ici / en variables

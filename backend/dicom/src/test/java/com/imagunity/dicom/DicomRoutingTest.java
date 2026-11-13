@@ -77,6 +77,25 @@ class DicomRoutingTest {
     }
 
     @Test
+    void centralRulesReplaceTheLocalOnesWithoutRestart() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<java.util.Optional<List<RoutingRule>>> central =
+                new java.util.concurrent.atomic.AtomicReference<>(java.util.Optional.of(List.of(
+                        new RoutingRule("central-ct", Map.of("Modality", "CT"), List.of("box-z")))));
+        scp.centralRouting(central::get);
+        assertThat(pacs.store("IU_AUTO", List.of(image("1.2.9.1", "1.2.9.1.1", "1.2.9.1.1.1", "CT",
+                "CHU NORD")))).containsExactly(Status.Success);
+        assertThat(await(1)).extracting(ReceivedStudy::destination).containsExactly("box-z");
+        assertThat(pacs.store("IU_AUTO", List.of(image("1.2.9.2", "1.2.9.2.1", "1.2.9.2.1.1", "MR",
+                "CHU NORD")))).singleElement()
+                .as("règle locale « irm » remplacée : aucune règle centrale ne correspond")
+                .isNotEqualTo(Status.Success);
+        central.set(java.util.Optional.empty());
+        assertThat(pacs.store("IU_AUTO", List.of(image("1.2.9.3", "1.2.9.3.1", "1.2.9.3.1.1", "MR",
+                "CHU NORD")))).containsExactly(Status.Success);
+        assertThat(await(1)).extracting(ReceivedStudy::destination).containsExactly("box-d");
+    }
+
+    @Test
     void studyIsRoutedByItsFieldsToEveryPartnerOfTheFirstMatchingRule() throws Exception {
         assertThat(pacs.echo("IU_AUTO")).isEqualTo(Status.Success);
         assertThat(pacs.store("IU_AUTO", List.of(

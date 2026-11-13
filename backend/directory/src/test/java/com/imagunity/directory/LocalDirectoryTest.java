@@ -152,4 +152,46 @@ class LocalDirectoryTest {
         }
         assertThatThrownBy(client::fetch).isInstanceOf(DirectoryException.class).hasMessageContaining("injoignable");
     }
+
+    @Test
+    void clientReadsConfigurationsAndSendsReports() throws Exception {
+        SignedDocument document = SignedDocument.sign("{}", HybridKeyPair.generate());
+        int[] status = {200};
+        String[] body = {"{\"organization\":\"chu-exemple\",\"configurations\":[" + document.toJson() + "]}"};
+        java.util.List<String> reports = new java.util.concurrent.CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/directory/v1/configurations", exchange -> {
+            if (exchange.getRequestMethod().equals("POST")) {
+                reports.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                exchange.sendResponseHeaders(status[0] == 200 ? 201 : status[0], -1);
+            } else {
+                byte[] bytes = body[0].getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(status[0], bytes.length);
+                exchange.getResponseBody().write(bytes);
+            }
+            exchange.close();
+        });
+        server.start();
+        DirectoryClient client = new DirectoryClient(URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                Duration.ofSeconds(5));
+        try {
+            assertThat(client.fetchConfigurations()).containsExactly(document);
+            body[0] = "{\"organization\":\"chu-exemple\",\"configurations\":null}";
+            assertThat(client.fetchConfigurations()).isEmpty();
+            client.report(document);
+            assertThat(reports).singleElement().satisfies(r -> assertThat(r).contains("payload"));
+            status[0] = 422;
+            assertThatThrownBy(client::fetchConfigurations).hasMessageContaining("422");
+            assertThatThrownBy(() -> client.report(document)).hasMessageContaining("refusé");
+        } finally {
+            server.stop(0);
+        }
+        assertThatThrownBy(client::fetchConfigurations).hasMessageContaining("injoignable");
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> client.report(document)).hasMessageContaining("interrompu");
+        } finally {
+            Thread.interrupted();
+        }
+    }
 }

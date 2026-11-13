@@ -301,10 +301,30 @@ class DirectoryConfiguration {
         };
     }
 
+    /**
+     * Configuration centralisée : documents signés par le responsable, lus avec l'annuaire. Ses règles l'emportent
+     * sur les règles locales de priorité et de routage, sans redémarrage.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "imagunity.central-configuration.enabled", havingValue = "true",
+            matchIfMissing = true)
+    CentralRules centralRules(BoxIdentity identity, KeyFiles.OrganizationPublicKey key,
+                              CentralConfigurationProperties properties, Clock clock, ReloadablePriority priority,
+                              org.springframework.beans.factory.ObjectProvider<com.imagunity.dicom.DicomStoreScp> scp) {
+        CentralRules rules = new CentralRules(identity.boxId(), key.organization(), key.key(), properties.file(),
+                clock);
+        rules.load();
+        priority.central(rules::priority);
+        scp.ifAvailable(s -> s.centralRouting(rules::routing));
+        return rules;
+    }
+
     /** Synchronisation périodique (la première au démarrage), puis nouvelle poignée de main avec les non-liés. */
     @Bean
     SmartLifecycle directoryLifecycle(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
-                                      DirectoryProperties properties, ExecutorService orchestrationExecutor) {
+                                      DirectoryProperties properties, ExecutorService orchestrationExecutor,
+                                      org.springframework.beans.factory.ObjectProvider<CentralRules> central,
+                                      BoxIdentity identity) {
         return new SmartLifecycle() {
             private ScheduledExecutorService scheduler;
 
@@ -313,8 +333,13 @@ class DirectoryConfiguration {
                 handshake.start();
                 scheduler = Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform().name("annuaire").daemon().factory());
-                scheduler.scheduleWithFixedDelay(() -> synchronize(directory, client, handshake, orchestrationExecutor),
-                        0, properties.syncInterval().toMillis(), TimeUnit.MILLISECONDS);
+                CentralRules rules = central.getIfAvailable();
+                scheduler.scheduleWithFixedDelay(() -> {
+                    synchronize(directory, client, handshake, orchestrationExecutor);
+                    if (rules != null) {
+                        synchronizeConfiguration(rules, client, identity);
+                    }
+                }, 0, properties.syncInterval().toMillis(), TimeUnit.MILLISECONDS);
             }
 
             @Override
@@ -333,6 +358,25 @@ class DirectoryConfiguration {
                 return PHASE;
             }
         };
+    }
+
+    /** Lit les documents de configuration publiés, applique le plus récent qui vise la box, rend compte. */
+    static void synchronizeConfiguration(CentralRules rules, DirectoryClient client, BoxIdentity identity) {
+        try {
+            rules.synchronize(client.fetchConfigurations());
+        } catch (com.imagunity.directory.DirectoryException e) {
+            rules.failed(e.getMessage());
+            LOG.debug("Configuration centrale non lue : {}", e.getMessage());
+            return;
+        }
+        rules.reportIfDue(identity.keys()).ifPresent(report -> {
+            try {
+                client.report(report);
+                rules.reported(report);
+            } catch (com.imagunity.directory.DirectoryException e) {
+                LOG.debug("Compte rendu de configuration non remis : {}", e.getMessage());
+            }
+        });
     }
 
     static void synchronize(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,

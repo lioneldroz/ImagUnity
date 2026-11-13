@@ -29,6 +29,22 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration(proxyBeanMethods = false)
 class DirectoryConfiguration {
 
+    /** Requêtes de l'interface qui modifient ou calculent : en-tête {@link #ADMIN_HEADER} exigé. */
+    static final class AdminHeaderFilter extends org.springframework.web.filter.OncePerRequestFilter {
+        @Override
+        protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
+                                        jakarta.servlet.http.HttpServletResponse response,
+                                        jakarta.servlet.FilterChain chain)
+                throws jakarta.servlet.ServletException, IOException {
+            if (request.getRequestURI().startsWith("/admin/api/") && !"GET".equals(request.getMethod())
+                    && !"1".equals(request.getHeader(ADMIN_HEADER))) {
+                response.sendError(403, "En-tête " + ADMIN_HEADER + " manquant");
+                return;
+            }
+            chain.doFilter(request, response);
+        }
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(DirectoryConfiguration.class);
 
     @Bean
@@ -54,10 +70,23 @@ class DirectoryConfiguration {
     }
 
     @Bean
+    ConfigurationService configurationService(ConfigurationStore store, EntryStore entries,
+                                              KeyFiles.OrganizationPublicKey key, Clock clock) {
+        return new ConfigurationService(store, entries, key.organization(), key.key(), clock);
+    }
+
+    /** En-tête exigé sur les requêtes de l'interface : un autre site ne peut pas le poser (anti-CSRF). */
+    static final String ADMIN_HEADER = "X-ImagUnity-Admin";
+
+    @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/directory/v1/entries").hasRole("PUBLISHER")
+                        .requestMatchers(HttpMethod.POST, "/directory/v1/configurations").hasRole("PUBLISHER")
+                        // Comptes rendus : signés par la box, vérifiés par le service ; sans compte.
+                        .requestMatchers(HttpMethod.POST, "/directory/v1/configurations/reports").permitAll()
+                        .requestMatchers("/admin", "/admin/", "/admin/**").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.GET, "/directory/v1/**", "/actuator/health",
                                 "/actuator/health/**").permitAll()
                         .requestMatchers("/error").permitAll()
@@ -65,6 +94,10 @@ class DirectoryConfiguration {
                 .httpBasic(basic -> basic.realmName("ImagUnity annuaire"))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(csrf -> csrf.disable())
+                .addFilterAfter(new AdminHeaderFilter(), org.springframework.security.web.authentication.www
+                        .BasicAuthenticationFilter.class)
+                .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; frame-ancestors 'none'; form-action 'self'")))
                 .build();
     }
 

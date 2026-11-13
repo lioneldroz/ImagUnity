@@ -70,6 +70,17 @@ public final class DicomStoreScp implements AutoCloseable {
         this(config, listener, Clock.systemUTC());
     }
 
+    /** Règles de routage de la configuration centralisée, si elle en fixe ; sinon celles de la configuration. */
+    private volatile java.util.function.Supplier<Optional<List<RoutingRule>>> centralRouting = Optional::empty;
+
+    /**
+     * Règles de routage fixées hors de la configuration locale (configuration centralisée), relues à chaque instance :
+     * un changement s'applique sans redémarrage. Vide : règles de la configuration locale.
+     */
+    public void centralRouting(java.util.function.Supplier<Optional<List<RoutingRule>>> rules) {
+        this.centralRouting = rules;
+    }
+
     DicomStoreScp(DicomInputConfig config, StudyListener listener, Clock clock) {
         this.config = config;
         this.store = new IncomingStore(config.storageDir());
@@ -376,8 +387,10 @@ public final class DicomStoreScp implements AutoCloseable {
         if (fixed.isPresent()) {
             return List.of(fixed.get());
         }
-        RoutingRule rule = config.ruleFor(dataset).orElseThrow(() -> new DicomServiceException(
-                Status.ProcessingFailure, "Aucune règle de routage ne correspond à cette instance"));
+        List<RoutingRule> rules = centralRouting.get().orElse(config.rules());
+        RoutingRule rule = rules.stream().filter(r -> r.matches(dataset)).findFirst().orElseThrow(() ->
+                new DicomServiceException(Status.ProcessingFailure,
+                        "Aucune règle de routage ne correspond à cette instance"));
         LOG.log(Level.DEBUG, "Règle de routage {0} appliquée", rule.name());
         return rule.destinations();
     }

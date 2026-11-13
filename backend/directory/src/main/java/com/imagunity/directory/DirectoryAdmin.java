@@ -93,6 +93,8 @@ public final class DirectoryAdmin {
                 case "verifier" -> verify(options);
                 case "publier" -> publish(options);
                 case "proteger" -> protect(options);
+                case "configuration-signer" -> signConfiguration(options);
+                case "configuration-publier" -> publishConfiguration(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -214,26 +216,8 @@ public final class DirectoryAdmin {
     }
 
     private int publish(Map<String, String> o) throws IOException {
-        String directory = require(o, "annuaire").replaceAll("/+$", "");
         SignedDocument entry = read(Path.of(require(o, "entree")));
-        String account = o.getOrDefault("compte", environment.get(ACCOUNT_VARIABLE));
-        if (account == null || !account.contains(":")) {
-            throw new MissingOptionException("Compte de dépôt manquant : --compte utilisateur:mot-de-passe ou "
-                    + ACCOUNT_VARIABLE);
-        }
-        HttpRequest request = HttpRequest.newBuilder(URI.create(directory + "/directory/v1/entries"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Basic " + Base64.getEncoder()
-                        .encodeToString(account.getBytes(StandardCharsets.UTF_8)))
-                .POST(HttpRequest.BodyPublishers.ofString(entry.toJson()))
-                .build();
-        HttpResponse<String> response;
-        try (HttpClient http = HttpClient.newHttpClient()) {
-            response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Publication interrompue", e);
-        }
+        HttpResponse<String> response = post(o, "/directory/v1/entries", entry);
         switch (response.statusCode()) {
             case 201 -> out.println("Entrée publiée dans l'annuaire");
             case 200 -> out.println("Entrée déjà publiée à l'identique");
@@ -243,6 +227,69 @@ public final class DirectoryAdmin {
             }
         }
         return 0;
+    }
+
+    /**
+     * Signe un brouillon de configuration (préparé et vérifié par l'interface d'administration) avec la clé du
+     * responsable, après en avoir affiché le contenu.
+     */
+    private int signConfiguration(Map<String, String> o) throws IOException {
+        Organization organization = organization(o);
+        CentralConfiguration draft = CentralConfiguration.fromJson(Files.readString(
+                Path.of(require(o, "brouillon")), StandardCharsets.UTF_8));
+        out.println("Configuration de « " + draft.organization() + " », " + draft.describe());
+        out.println("Box visées : " + (draft.target().all() ? "toute l'organisation"
+                : draft.target().boxes().size() + " box (" + draft.target().boxes() + ")"));
+        if (draft.priority() != null) {
+            out.println("Priorité : par défaut " + (draft.priority().defaultPriority() == null ? "5"
+                    : draft.priority().defaultPriority()) + " ; règles "
+                    + draft.priority().rules().stream().map(r -> r.name() + " (" + r.priority() + ")").toList());
+        }
+        if (draft.routing() != null) {
+            out.println("Routage : règles " + draft.routing().rules().stream().map(r -> r.name() + " → " + r.to())
+                    .toList());
+        }
+        SignedDocument signed = organization.signConfiguration(draft);
+        write(Path.of(require(o, "sortie")), signed);
+        out.println("Configuration signée : à publier (configuration-publier)");
+        return 0;
+    }
+
+    private int publishConfiguration(Map<String, String> o) throws IOException {
+        SignedDocument configuration = read(Path.of(require(o, "configuration")));
+        HttpResponse<String> response = post(o, "/directory/v1/configurations", configuration);
+        switch (response.statusCode()) {
+            case 201 -> out.println("Configuration publiée : les box visées l'appliqueront à leur prochaine lecture");
+            case 200 -> out.println("Configuration déjà publiée à l'identique");
+            default -> {
+                err.println("Publication refusée (HTTP " + response.statusCode() + ") : " + response.body());
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    /** Dépôt d'un document signé sur le service d'annuaire, avec le compte du responsable. */
+    private HttpResponse<String> post(Map<String, String> o, String path, SignedDocument document)
+            throws IOException {
+        String directory = require(o, "annuaire").replaceAll("/+$", "");
+        String account = o.getOrDefault("compte", environment.get(ACCOUNT_VARIABLE));
+        if (account == null || !account.contains(":")) {
+            throw new MissingOptionException("Compte de dépôt manquant : --compte utilisateur:mot-de-passe ou "
+                    + ACCOUNT_VARIABLE);
+        }
+        HttpRequest request = HttpRequest.newBuilder(URI.create(directory + path))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Basic " + Base64.getEncoder()
+                        .encodeToString(account.getBytes(StandardCharsets.UTF_8)))
+                .POST(HttpRequest.BodyPublishers.ofString(document.toJson()))
+                .build();
+        try (HttpClient http = HttpClient.newHttpClient()) {
+            return http.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Publication interrompue", e);
+        }
     }
 
     private Organization organization(Map<String, String> o) throws IOException {
@@ -343,6 +390,8 @@ public final class DirectoryAdmin {
                   verifier           --cle-publique <fichier> --entree <fichier>
                   publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]
                   proteger           --cles <fichier> [--box]
+                  configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier>
+                  configuration-publier --annuaire <url> --configuration <fichier> [--compte <utilisateur:mot de passe>]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;
