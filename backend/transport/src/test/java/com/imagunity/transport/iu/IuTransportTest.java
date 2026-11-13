@@ -241,22 +241,22 @@ class IuTransportTest {
         IuStore store = new IuStore(dir.resolve("boite"));
         Instant now = Instant.parse("2026-11-12T10:00:00Z");
         IuOutbox outbox = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), RelayHarness.A,
-                RelayHarness.A_KEYS, id -> Optional.empty(), Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1));
+                RelayHarness.A_KEYS, id -> List.of(), Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1));
         store.addPending(RelayHarness.B, new byte[] {1}, now);
         assertThat(outbox.flush()).isFalse();
         IuOutbox down = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), RelayHarness.A,
-                RelayHarness.A_KEYS, id -> Optional.of(QueueAddress.parse("http://127.0.0.1:1/iu/v1/queues/"
+                RelayHarness.A_KEYS, id -> List.of(QueueAddress.parse("http://127.0.0.1:1/iu/v1/queues/"
                 + "y".repeat(43))), Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1));
         assertThat(down.flush()).isFalse();
         IuOutbox later = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), RelayHarness.A,
-                RelayHarness.A_KEYS, id -> Optional.empty(), Clock.fixed(now.plus(Duration.ofDays(2)),
+                RelayHarness.A_KEYS, id -> List.of(), Clock.fixed(now.plus(Duration.ofDays(2)),
                 ZoneOffset.UTC), Duration.ofDays(1));
         assertThat(later.flush()).isTrue();
         assertThat(store.pending()).isEmpty();
         // Refus définitif (message vide) : abandonné.
         store.addPending(RelayHarness.B, new byte[0], now);
         IuOutbox refused = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), RelayHarness.A,
-                RelayHarness.A_KEYS, id -> Optional.of(QueueAddress.parse(real.address())),
+                RelayHarness.A_KEYS, id -> List.of(QueueAddress.parse(real.address())),
                 Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1));
         assertThat(refused.flush()).isTrue();
         assertThat(store.pending()).isEmpty();

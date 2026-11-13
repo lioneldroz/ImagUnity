@@ -48,7 +48,7 @@ public record Retry(Duration patience, Duration maxDelay, Sleeper sleeper) {
                 failure = e;
             }
             if (waited.compareTo(patience) >= 0) {
-                throw new TransportException(what + " impossible : " + failure.getMessage(), failure);
+                throw new TransportException(what + " impossible : " + reason(failure), failure);
             }
             try {
                 sleeper.sleep(delay);
@@ -59,5 +59,10 @@ public record Retry(Duration patience, Duration maxDelay, Sleeper sleeper) {
             waited = waited.plus(delay);
             delay = delay.multipliedBy(2).compareTo(maxDelay) > 0 ? maxDelay : delay.multipliedBy(2);
         }
+    }
+
+    /** Message d'une erreur, ou son type s'il n'en a pas (nom d'hôte introuvable, par exemple). */
+    static String reason(Exception failure) {
+        return failure.getMessage() != null ? failure.getMessage() : failure.getClass().getSimpleName();
     }
 }

@@ -112,14 +112,74 @@ public final class IuFileClient {
                 if (response.statusCode() != expected) {
                     throw refused(response.statusCode(), body.readAllBytes());
                 }
-                body.transferTo(received);
+                copyWatched(body, received);
                 return received.toByteArray();
             } catch (IOException e) {
-                if (++interruptions > 5) {
+                if (e instanceof Stalled || ++interruptions > 5) {
                     throw e;
                 }
                 // reprise au même endroit, avec une nouvelle requête signée
             }
+        }
+    }
+
+    /** Inactivité admise pendant la réception d'un corps de réponse, au-delà de laquelle la connexion est coupée. */
+    static volatile Duration idleTimeout = Duration.ofSeconds(60);
+    private static final java.util.concurrent.ScheduledExecutorService WATCHDOG =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().factory());
+
+    /**
+     * Copie le corps reçu, en le fermant s'il ne progresse plus pendant {@link #idleTimeout} : le délai d'une requête
+     * ne couvre que l'arrivée des en-têtes, et un relais disparu sans fermer la connexion bloquerait la lecture.
+     */
+    /** Relais muet : la connexion est abandonnée, sans reprise sur le même relais. */
+    static final class Stalled extends IOException {
+        Stalled(Duration idle) {
+            super("Relais muet depuis " + idle.toMillis() + " ms");
+        }
+    }
+
+    private static void copyWatched(InputStream body, ByteArrayOutputStream received) throws IOException {
+        long idle = idleTimeout.toNanos();
+        Thread reader = Thread.currentThread();
+        java.util.concurrent.atomic.AtomicLong last = new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        java.util.concurrent.atomic.AtomicBoolean stalled = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
+        long period = Math.max(100, idleTimeout.toMillis() / 4);
+        java.util.concurrent.ScheduledFuture<?> watch = WATCHDOG.scheduleAtFixedRate(() -> {
+            synchronized (done) {
+                if (!done.get() && System.nanoTime() - last.get() > idle && stalled.compareAndSet(false, true)) {
+                    reader.interrupt(); // la lecture attend des données : réveillée par l'interruption
+                    try {
+                        body.close();
+                    } catch (IOException e) {
+                        // fermeture au mieux
+                    }
+                }
+            }
+        }, period, period, java.util.concurrent.TimeUnit.MILLISECONDS);
+        try {
+            byte[] buffer = new byte[64 * 1024];
+            int n;
+            while ((n = body.read(buffer)) >= 0) {
+                received.write(buffer, 0, n);
+                last.set(System.nanoTime());
+            }
+        } catch (IOException e) {
+            if (!stalled.get()) {
+                throw e;
+            }
+        } finally {
+            watch.cancel(false);
+            synchronized (done) {
+                done.set(true);
+            }
+            if (stalled.get()) {
+                Thread.interrupted(); // interruption due au chien de garde seulement
+            }
+        }
+        if (stalled.get()) {
+            throw new Stalled(idleTimeout);
         }
     }
 

@@ -79,6 +79,16 @@ Une nouvelle version se dépose dans `/data/mises-a-jour/depot/` de la box (jar 
 
 `compose.tpm.yml` protège les clés des box par un secret scellé dans le TPM de l'hôte (`/dev/tpmrm0`) ; au premier démarrage, la phrase de passe sert une dernière fois, puis son secret peut être retiré. Sans TPM matériel, `campagne/compose.tpm-logiciel.yml` donne à chaque box un TPM logiciel pour les essais. Voir [clés TPM](../docs/cles-tpm.md).
 
+### Plusieurs relais
+
+Une box peut utiliser plusieurs relais IU-T indépendants ([spécification § 6.7](../docs/specification-protocole.md)) : `IMAGUNITY_IU_RELAYS=http://relay:8443,http://relay-2:8443` (le premier est le principal ; remplace `IMAGUNITY_IU_RELAY`) et `IMAGUNITY_IU_REPLICAS` (copies des morceaux de chaque envoi ; `0`, par défaut, une par relais). La surcouche [`compose.deux-relais.yml`](compose.deux-relais.yml) ajoute un second relais, sa base, et règle les deux box :
+
+```bash
+docker compose -f docker-compose.yml -f compose.deux-relais.yml up -d
+```
+
+Chaque box crée alors une file sur chaque relais et publie une adresse par relais (`iu`, `iu-2`) : télécharger sa nouvelle demande d'enrôlement, faire réémettre son entrée (`enroler --serie <n+1>`, puis `publier`). Tant que l'entrée n'est pas réémise, les messages ne passent que par le relais principal ; les morceaux sont copiés sur les deux dans tous les cas. Une box qui reçoit des morceaux sur un relais absent de sa configuration ignore ces copies. La bande passante montante est multipliée par le nombre de copies : `IMAGUNITY_IU_REPLICAS=1` garde les files redondantes sans doubler les morceaux.
+
 ### Routage par champ DICOM
 
 Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le partenaire d'après le contenu de l'examen (modalité, établissement…), par des règles lues dans l'ordre ; une instance qu'aucune règle ne couvre est refusée au PACS. Exemple d'essai : `campagne/compose.routage.yml`. Voir [routage DICOM](../docs/routage-dicom.md).

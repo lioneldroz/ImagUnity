@@ -23,7 +23,8 @@ import java.util.stream.Stream;
  * et réceptions de fichiers (avec l'avancement par morceau, pour reprendre après une coupure ou un redémarrage).
  *
  * <pre>
- * file.json              file de réception (identifiant de relève et clé : secrets)
+ * file-&lt;relais&gt;.json     file de réception sur chaque relais (identifiant de relève et clé : secrets) ;
+ *                        file.json : file d'une version à un seul relais, toujours relue
  * contacts.json          compteur des identifiants locaux, et contacts (box de l'annuaire)
  * sortants/&lt;n&gt;.json      messages scellés, en attente de dépôt
  * envois/&lt;id&gt;.json       envois de fichiers (morceaux et leurs clés)
@@ -45,35 +46,70 @@ final class IuStore {
     }
 
     /** Message scellé en attente de dépôt dans la file de {@code to}. */
-    record Pending(long seq, UUID to, String envelope, Instant createdAt) {
+    /**
+     * Message scellé en attente de dépôt dans une file de {@code to}.
+     *
+     * @param slot rang de l'adresse de file du destinataire (une par relais : 0 pour {@code iu}, 1 pour {@code iu-2}…)
+     */
+    record Pending(long seq, UUID to, String envelope, Instant createdAt, int slot) {
+
+        Pending(long seq, UUID to, String envelope, Instant createdAt) {
+            this(seq, to, envelope, createdAt, 0);
+        }
     }
 
     /** Envoi d'un fichier ; {@code state} vaut {@code null} tant que les morceaux ne sont pas créés. */
     /**
      * Envoi d'un fichier.
      *
-     * @param state     morceaux, {@code null} tant qu'ils ne sont pas créés
+     * @param state     morceaux sur le relais principal, {@code null} tant qu'ils ne sont pas créés
      * @param announced téléversé et décrit au destinataire ({@code FileSent} émis)
      * @param described description déjà envoyée (annonce anticipée : avant la fin du téléversement)
+     * @param copies    copies des morceaux sur les autres relais (redondance)
      */
     record Outgoing(long fileId, long peerId, UUID boxId, String path, IuFileUploader.UploadState state,
-                    boolean announced, Instant createdAt, boolean described) {
+                    boolean announced, Instant createdAt, boolean described, List<IuFileUploader.UploadState> copies) {
+
+        Outgoing {
+            copies = copies == null ? List.of() : List.copyOf(copies);
+        }
+
+        Outgoing(long fileId, long peerId, UUID boxId, String path, IuFileUploader.UploadState state,
+                 boolean announced, Instant createdAt, boolean described) {
+            this(fileId, peerId, boxId, path, state, announced, createdAt, described, List.of());
+        }
 
         Outgoing(long fileId, long peerId, UUID boxId, String path, IuFileUploader.UploadState state,
                  boolean announced, Instant createdAt) {
             this(fileId, peerId, boxId, path, state, announced, createdAt, announced);
         }
 
+        /** Toutes les copies : la principale d'abord. */
+        List<IuFileUploader.UploadState> all() {
+            List<IuFileUploader.UploadState> all = new ArrayList<>();
+            if (state != null) {
+                all.add(state);
+            }
+            all.addAll(copies);
+            return all;
+        }
+
         Outgoing with(IuFileUploader.UploadState updated) {
-            return new Outgoing(fileId, peerId, boxId, path, updated, announced, createdAt, described);
+            return new Outgoing(fileId, peerId, boxId, path, updated, announced, createdAt, described, copies);
+        }
+
+        /** Copies remplacées : la première devient la principale. */
+        Outgoing withAll(List<IuFileUploader.UploadState> all) {
+            return new Outgoing(fileId, peerId, boxId, path, all.isEmpty() ? null : all.getFirst(), announced,
+                    createdAt, described, all.isEmpty() ? List.of() : all.subList(1, all.size()));
         }
 
         Outgoing describedNow() {
-            return new Outgoing(fileId, peerId, boxId, path, state, announced, createdAt, true);
+            return new Outgoing(fileId, peerId, boxId, path, state, announced, createdAt, true, copies);
         }
 
         Outgoing announcedNow() {
-            return new Outgoing(fileId, peerId, boxId, path, state, true, createdAt, true);
+            return new Outgoing(fileId, peerId, boxId, path, state, true, createdAt, true, copies);
         }
     }
 
@@ -124,21 +160,44 @@ final class IuStore {
 
     // --- File de réception ---
 
-    synchronized Optional<IuMailbox.Queue> queue() {
-        return read(dir.resolve("file.json")).map(IuMailbox.Queue::fromJson);
+    /** Nom de fichier propre à un relais. */
+    private static String key(java.net.URI relay) {
+        return Codec.sha256Hex(relay.toString().replaceAll("/+$", "").getBytes(StandardCharsets.UTF_8))
+                .substring(0, 16);
+    }
+
+    /** File de réception de la box sur ce relais. */
+    synchronized Optional<IuMailbox.Queue> queue(java.net.URI relay) {
+        Optional<IuMailbox.Queue> keyed = read(dir.resolve("file-" + key(relay) + ".json"))
+                .map(IuMailbox.Queue::fromJson);
+        if (keyed.isPresent()) {
+            return keyed;
+        }
+        String wanted = relay.toString().replaceAll("/+$", "");
+        return read(dir.resolve("file.json")).map(IuMailbox.Queue::fromJson)
+                .filter(q -> q.relay().replaceAll("/+$", "").equals(wanted));
     }
 
     synchronized void saveQueue(IuMailbox.Queue queue) {
-        write(dir.resolve("file.json"), queue.toJson());
+        write(dir.resolve("file-" + key(java.net.URI.create(queue.relay())) + ".json"), queue.toJson());
     }
 
-    /** Identifiant de dépôt réservé par la box, publié dans sa demande d'enrôlement avant la création de sa file. */
-    synchronized Optional<String> reservedSendId() {
+    /**
+     * Identifiant de dépôt réservé par la box sur ce relais, publié dans sa demande d'enrôlement avant la création de
+     * sa file.
+     *
+     * @param primary relais principal : un identifiant réservé par une version à un seul relais lui revient
+     */
+    synchronized Optional<String> reservedSendId(java.net.URI relay, boolean primary) {
+        Optional<String> keyed = read(dir.resolve("file-reservee-" + key(relay) + ".txt")).map(String::strip);
+        if (keyed.isPresent() || !primary) {
+            return keyed;
+        }
         return read(dir.resolve("file-reservee.txt")).map(String::strip);
     }
 
-    synchronized void saveReservedSendId(String sendId) {
-        write(dir.resolve("file-reservee.txt"), sendId);
+    synchronized void saveReservedSendId(java.net.URI relay, String sendId) {
+        write(dir.resolve("file-reservee-" + key(relay) + ".txt"), sendId);
     }
 
     // --- Contacts et identifiants ---
@@ -192,9 +251,13 @@ final class IuStore {
     // --- Messages à déposer ---
 
     synchronized void addPending(UUID to, byte[] envelope, Instant now) {
+        addPending(to, 0, envelope, now);
+    }
+
+    synchronized void addPending(UUID to, int slot, byte[] envelope, Instant now) {
         long seq = nextId();
         write(dir.resolve("sortants").resolve(String.format("%019d.json", seq)), Codec.json().writeValueAsString(
-                new Pending(seq, to, Codec.base64Url(envelope), now)));
+                new Pending(seq, to, Codec.base64Url(envelope), now, slot)));
     }
 
     synchronized List<Pending> pending() {

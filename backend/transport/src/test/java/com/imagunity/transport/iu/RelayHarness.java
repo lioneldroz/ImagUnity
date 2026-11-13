@@ -67,9 +67,19 @@ final class RelayHarness {
         directoryUrl = URI.create("http://127.0.0.1:" + directory.getAddress().getPort());
         organizationKey = Files.createTempFile("organisation", ".pub.json");
         KeyFiles.writeOrganizationPublic(organizationKey, "chu-exemple", ORG.publicKey());
-        relay = new SpringApplicationBuilder(RelayApplication.class).run(
+        relay = relay("relais-client");
+        relayUrl = URI.create("http://127.0.0.1:" + relay.getEnvironment().getProperty("local.server.port"));
+        // Contexte refermé par le crochet d'arrêt de Spring à la fin de la JVM de test.
+    }
+
+    /**
+     * Relais supplémentaire, indépendant (sa base, son stockage), sur le même annuaire : pour les essais à plusieurs
+     * relais. À refermer par l'essai (arrêt simulé d'un relais).
+     */
+    static ConfigurableApplicationContext relay(String name) throws Exception {
+        ConfigurableApplicationContext context = new SpringApplicationBuilder(RelayApplication.class).run(
                 "--server.port=0", "--spring.jmx.enabled=false",
-                "--spring.datasource.url=jdbc:h2:mem:relais-client;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                "--spring.datasource.url=jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "--spring.datasource.username=sa",
                 "--imagunity.relay.storage-dir=" + Files.createTempDirectory("relais"),
                 "--imagunity.relay.min-free-space=1MB",
@@ -77,11 +87,14 @@ final class RelayHarness {
                 "--imagunity.relay.directory.url=" + directoryUrl,
                 "--imagunity.relay.directory.organization-key=" + organizationKey,
                 "--imagunity.relay.directory.organization-code=" + ORG.publicKey().shortCode());
-        relayUrl = URI.create("http://127.0.0.1:" + relay.getEnvironment().getProperty("local.server.port"));
-        LocalDirectory local = relay.getBean(LocalDirectory.class);
+        LocalDirectory local = context.getBean(LocalDirectory.class);
         for (int i = 0; i < 100 && (local.entry(A).isEmpty() || local.entry(B).isEmpty()); i++) {
             Thread.sleep(50);
         }
-        // Contexte refermé par le crochet d'arrêt de Spring à la fin de la JVM de test.
+        return context;
+    }
+
+    static URI url(ConfigurableApplicationContext relay) {
+        return URI.create("http://127.0.0.1:" + relay.getEnvironment().getProperty("local.server.port"));
     }
 }

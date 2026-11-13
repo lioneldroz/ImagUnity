@@ -58,17 +58,18 @@ public final class QueueService {
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    private final java.util.function.Function<UUID, java.util.Optional<String>> publishedAddress;
+    private final java.util.function.Function<UUID, java.util.List<String>> publishedAddresses;
 
     /**
-     * @param publishedAddress adresse de file publiée dans l'entrée d'annuaire de chaque box ({@code transport.iu})
+     * @param publishedAddresses adresses de file publiées dans l'entrée d'annuaire de chaque box ({@code transport.iu},
+     *                           {@code transport.iu-2}… : une par relais de la box)
      */
     public QueueService(QueueStore store, RelayProperties properties, Clock clock,
-                        java.util.function.Function<UUID, java.util.Optional<String>> publishedAddress) {
+                        java.util.function.Function<UUID, java.util.List<String>> publishedAddresses) {
         this.store = store;
         this.properties = properties;
         this.clock = clock;
-        this.publishedAddress = publishedAddress;
+        this.publishedAddresses = publishedAddresses;
     }
 
     public Ids create(UUID boxId, CreateRequest request) {
@@ -86,16 +87,17 @@ public final class QueueService {
     }
 
     /**
-     * Identifiant de dépôt réservé par la box avant son enrôlement : admis seulement s'il est celui de l'adresse
+     * Identifiant de dépôt réservé par la box avant son enrôlement : admis seulement s'il est celui d'une adresse
      * publiée dans son entrée d'annuaire signée (aucune autre box ne peut se l'approprier), et pas encore pris.
      */
     private String reserved(UUID boxId, String sendId) {
         if (!ID.matcher(sendId).matches()) {
             throw new RelayException(HttpStatus.BAD_REQUEST, "Identifiant de dépôt invalide");
         }
-        String published = publishedAddress.apply(boxId).map(PUBLISHED::matcher)
-                .filter(java.util.regex.Matcher::matches).map(m -> m.group(1)).orElse(null);
-        if (!sendId.equals(published)) {
+        boolean published = publishedAddresses.apply(boxId).stream().filter(java.util.Objects::nonNull)
+                .map(PUBLISHED::matcher).filter(java.util.regex.Matcher::matches)
+                .anyMatch(m -> sendId.equals(m.group(1)));
+        if (!published) {
             throw new RelayException(HttpStatus.CONFLICT,
                     "Identifiant de dépôt absent de l'entrée d'annuaire de la box");
         }

@@ -64,11 +64,16 @@ public final class IuTransport implements TransportPort {
     /** Taille d'un fragment de description : un message signé et chiffré reste sous 64 Kio. */
     static final int FRAGMENT = 20_000;
     static final int MAX_FRAGMENTS = 2_000;
+    /** Avec plusieurs relais : patience pour créer les morceaux sur l'un d'eux avant de l'écarter de l'envoi. */
+    static final Duration PICK_PATIENCE = Duration.ofSeconds(5);
+    /** Relais écarté d'un envoi : essayé une seule fois par envoi pendant cette durée. */
+    static final Duration UNREACHABLE_FOR = Duration.ofMinutes(1);
 
     /**
      * Réglages.
      *
-     * @param relay     relais de l'organisation
+     * @param relays    relais de l'organisation, le principal d'abord : une file de réception sur chacun, et une copie
+     *                  des morceaux de chaque envoi sur chacun (redondance : un relais peut disparaître sans perte)
      * @param stateDir  dossier de l'état durable (file, contacts, transferts en cours)
      * @param ttl       durée de séjour demandée pour les morceaux
      * @param parallel  transferts de fichiers simultanés
@@ -76,12 +81,19 @@ public final class IuTransport implements TransportPort {
      * @param early     annonce anticipée (§ 6.6) : la description part dès la création des morceaux, et le
      *                  destinataire télécharge au fil du téléversement
      * @param chunkSize taille de morceau imposée, ou 0 pour l'adapter à la liaison ({@link IuLink})
+     * @param replicas  copies des morceaux de chaque envoi, sur autant de relais (0 : un par relais)
      */
-    public record Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early,
-                           int chunkSize) {
+    public record Settings(List<URI> relays, Path stateDir, Duration ttl, int parallel, Duration keepState,
+                           boolean early, int chunkSize, int replicas) {
 
         public Settings {
-            relay = URI.create(relay.toString().replaceAll("/+$", ""));
+            if (relays == null || relays.isEmpty()) {
+                throw new IllegalArgumentException("Au moins un relais IU-T");
+            }
+            relays = relays.stream().map(Settings::normalize).distinct().toList();
+            if (replicas < 0) {
+                throw new IllegalArgumentException("Nombre de copies négatif : " + replicas);
+            }
             if (parallel < 1) {
                 throw new IllegalArgumentException("Au moins un transfert à la fois");
             }
@@ -91,9 +103,30 @@ public final class IuTransport implements TransportPort {
             }
         }
 
+        /** Un seul relais. */
+        public Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early,
+                        int chunkSize) {
+            this(List.of(relay), stateDir, ttl, parallel, keepState, early, chunkSize, 0);
+        }
+
         /** Taille de morceau adaptée à la liaison. */
         public Settings(URI relay, Path stateDir, Duration ttl, int parallel, Duration keepState, boolean early) {
             this(relay, stateDir, ttl, parallel, keepState, early, 0);
+        }
+
+        /** Adresse de relais sans barre finale. */
+        static URI normalize(URI relay) {
+            return URI.create(relay.toString().replaceAll("/+$", ""));
+        }
+
+        /** Relais principal. */
+        public URI relay() {
+            return relays.getFirst();
+        }
+
+        /** Copies des morceaux : sur combien de relais. */
+        int copies() {
+            return replicas == 0 ? relays.size() : Math.min(replicas, relays.size());
         }
 
         /** Avec l'annonce anticipée. */
@@ -117,7 +150,14 @@ public final class IuTransport implements TransportPort {
     private final IuStore store;
     private final IuLink link;
     private final IuMsgClient messages;
-    private final IuFileUploader uploader;
+    /** Un envoyeur de morceaux par relais. */
+    private final java.util.Map<URI, IuFileUploader> uploaders = new java.util.LinkedHashMap<>();
+    private final java.util.Map<URI, Object> queueLocks = new ConcurrentHashMap<>();
+    /** Mêmes relais, un seul essai : relais écartés récemment. */
+    private final java.util.Map<URI, IuFileUploader> onceUploaders = new java.util.LinkedHashMap<>();
+    private final java.util.Map<URI, Instant> unreachable = new ConcurrentHashMap<>();
+    /** Mêmes relais, patience courte : choix des relais d'un envoi. */
+    private final java.util.Map<URI, IuFileUploader> quickUploaders = new java.util.LinkedHashMap<>();
     private final IuFileDownloader downloader;
     /** Pour un fichier annoncé tôt : un morceau pas encore téléversé est attendu jusqu'à l'expiration du fichier. */
     private final IuFileDownloader patientDownloader;
@@ -126,8 +166,10 @@ public final class IuTransport implements TransportPort {
     private final Semaphore transfers;
     private final Set<Thread> workers = ConcurrentHashMap.newKeySet();
     private final Set<Long> running = ConcurrentHashMap.newKeySet();
-    private volatile IuMailbox mailbox;
-    private volatile Thread starter;
+    private final List<IuMailbox> mailboxes = new CopyOnWriteArrayList<>();
+    private final List<Thread> starters = new CopyOnWriteArrayList<>();
+    /** Messages déjà remis (même message déposé sur plusieurs relais) : identifiant → réception. */
+    private final java.util.LinkedHashMap<String, Instant> delivered = new java.util.LinkedHashMap<>();
     private volatile boolean started;
     private volatile boolean closed;
     private int fragmentSize = FRAGMENT;
@@ -145,12 +187,19 @@ public final class IuTransport implements TransportPort {
         this.store = new IuStore(settings.stateDir());
         this.link = new IuLink(settings.stateDir());
         this.messages = new IuMsgClient(http, clock);
-        this.uploader = new IuFileUploader(new IuFileClient(settings.relay(), http, clock), boxId, identity, clock,
-                retry);
+        for (URI relay : settings.relays()) {
+            IuFileClient client = new IuFileClient(relay, http, clock);
+            uploaders.put(relay, new IuFileUploader(client, boxId, identity, clock, retry));
+            quickUploaders.put(relay, new IuFileUploader(client, boxId, identity, clock,
+                    new Retry(PICK_PATIENCE, retry.maxDelay(), retry.sleeper())));
+            onceUploaders.put(relay, new IuFileUploader(client, boxId, identity, clock,
+                    new Retry(Duration.ZERO, retry.maxDelay(), retry.sleeper())));
+        }
         this.downloader = new IuFileDownloader(http, clock, retry);
         this.patientDownloader = new IuFileDownloader(http, clock,
                 new Retry(settings.ttl(), retry.maxDelay(), retry.sleeper()));
-        this.outbox = new IuOutbox(store, messages, boxId, identity, this::addressOf, clock, settings.keepState());
+        this.outbox = new IuOutbox(store, messages, boxId, identity, this::addressesOf, clock,
+                settings.keepState());
         // Équitable : les paquets partent dans l'ordre où ils sont confiés (les prioritaires d'abord).
         this.transfers = new Semaphore(settings.parallel(), true);
     }
@@ -166,7 +215,9 @@ public final class IuTransport implements TransportPort {
         started = true;
         forgetOld();
         outbox.start();
-        starter = Thread.ofVirtual().name("iu-démarrage").start(this::startMailbox);
+        for (URI relay : settings.relays()) {
+            starters.add(Thread.ofVirtual().name("iu-démarrage").start(() -> startMailbox(relay)));
+        }
         for (IuStore.Outgoing outgoing : store.outgoing()) {
             if (!outgoing.announced()) {
                 launch(outgoing.fileId(), () -> upload(outgoing));
@@ -179,21 +230,21 @@ public final class IuTransport implements TransportPort {
         }
     }
 
-    private void startMailbox() {
+    private void startMailbox(URI relay) {
         Duration pause = Duration.ofSeconds(1);
         while (!closed) {
             try {
-                IuMailbox box = new IuMailbox(messages, queue(), keys,
+                IuMailbox box = new IuMailbox(messages, queue(relay, true), keys,
                         id -> directory.partner(id).map(IuDirectory.Partner::signingKey), this::onMessage, clock);
                 if (closed) {
                     return;
                 }
-                mailbox = box;
+                mailboxes.add(box);
                 box.start(sleeper);
-                LOG.log(Level.INFO, "Relève de la file IU-T sur {0}", settings.relay());
+                LOG.log(Level.INFO, "Relève de la file IU-T sur {0}", relay);
                 return;
             } catch (TransportException e) {
-                LOG.log(Level.WARNING, "File IU-T indisponible, nouvel essai : {0}", e.getMessage());
+                LOG.log(Level.WARNING, "File IU-T sur {0} indisponible, nouvel essai : {1}", relay, e.getMessage());
                 try {
                     sleeper.sleep(pause);
                 } catch (InterruptedException interrupted) {
@@ -203,10 +254,6 @@ public final class IuTransport implements TransportPort {
                         : pause.multipliedBy(2);
             }
         }
-    }
-
-    private IuMailbox.Queue queue() {
-        return queue(true);
     }
 
     /**
@@ -219,30 +266,36 @@ public final class IuTransport implements TransportPort {
      *
      * @param patient réessayer longuement sur coupure ; sinon un seul essai
      */
-    private synchronized IuMailbox.Queue queue(boolean patient) {
-        Optional<IuMailbox.Queue> existing = store.queue();
+    private IuMailbox.Queue queue(URI relay, boolean patient) {
+        // Un verrou par relais : un relais injoignable au démarrage ne retient pas la création des autres files.
+        synchronized (queueLocks.computeIfAbsent(relay, r -> new Object())) {
+            return queueLocked(relay, patient);
+        }
+    }
+
+    private IuMailbox.Queue queueLocked(URI relay, boolean patient) {
+        Optional<IuMailbox.Queue> existing = store.queue(relay);
         if (existing.isPresent()) {
             return existing.get();
         }
         IuMailbox.Queue created;
         try {
-            created = createQueue(patient, reservedSendId());
+            created = createQueue(relay, patient, reservedSendId(relay));
         } catch (RelayRefusedException e) {
             if (e.status() != 409) {
                 throw e;
             }
             LOG.log(Level.WARNING, "Adresse réservée non publiée dans l''entrée de la box ({0}) : file créée avec un "
                     + "identifiant tiré par le relais, entrée à faire réémettre", e.getMessage());
-            created = createQueue(patient, null);
+            created = createQueue(relay, patient, null);
         }
         store.saveQueue(created);
         LOG.log(Level.INFO, "File de réception IU-T créée : {0}", created.address());
         return created;
     }
 
-    private IuMailbox.Queue createQueue(boolean patient, String sendId) {
-        Retry.Call<IuMailbox.Queue> create = () -> IuMailbox.create(messages, settings.relay(), boxId, identity,
-                sendId);
+    private IuMailbox.Queue createQueue(URI relay, boolean patient, String sendId) {
+        Retry.Call<IuMailbox.Queue> create = () -> IuMailbox.create(messages, relay, boxId, identity, sendId);
         if (patient) {
             return retry.run("Création de la file de réception", create);
         }
@@ -253,12 +306,12 @@ public final class IuTransport implements TransportPort {
         }
     }
 
-    private synchronized String reservedSendId() {
-        return store.reservedSendId().orElseGet(() -> {
+    private synchronized String reservedSendId(URI relay) {
+        return store.reservedSendId(relay, relay.equals(settings.relay())).orElseGet(() -> {
             byte[] id = new byte[32];
             new java.security.SecureRandom().nextBytes(id);
             String sendId = Codec.base64Url(id);
-            store.saveReservedSendId(sendId);
+            store.saveReservedSendId(relay, sendId);
             return sendId;
         });
     }
@@ -277,11 +330,29 @@ public final class IuTransport implements TransportPort {
      */
     @Override
     public String contactAddress() {
+        return address(settings.relay());
+    }
+
+    /**
+     * Adresses des files de réception de cette box, une par relais, à publier dans sa demande d'enrôlement : {@code iu}
+     * pour le relais principal, puis {@code iu-2}, {@code iu-3}…
+     */
+    @Override
+    public java.util.Map<String, String> contactAddresses() {
+        java.util.Map<String, String> addresses = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < settings.relays().size(); i++) {
+            addresses.put(i == 0 ? ADDRESS_KIND : ADDRESS_KIND + "-" + (i + 1), address(settings.relays().get(i)));
+        }
+        return addresses;
+    }
+
+    private String address(URI relay) {
         try {
-            return queue(false).address().toString();
+            return queue(relay, false).address().toString();
         } catch (TransportException e) {
-            LOG.log(Level.INFO, "File IU-T pas encore créée ({0}) : adresse réservée publiée", e.getMessage());
-            return new QueueAddress(settings.relay(), reservedSendId()).toString();
+            LOG.log(Level.INFO, "File IU-T sur {0} pas encore créée ({1}) : adresse réservée publiée", relay,
+                    e.getMessage());
+            return new QueueAddress(relay, reservedSendId(relay)).toString();
         }
     }
 
@@ -364,13 +435,31 @@ public final class IuTransport implements TransportPort {
         return partner;
     }
 
-    private Optional<QueueAddress> addressOf(UUID box) {
-        return directory.partner(box).filter(IuDirectory.Partner::active).map(IuDirectory.Partner::address)
-                .map(QueueAddress::parse);
+    /** Adresses des files d'une box active de l'annuaire, une par relais (vide : inconnue ou inactive). */
+    private List<QueueAddress> addressesOf(UUID box) {
+        return directory.partner(box).filter(IuDirectory.Partner::active).map(IuDirectory.Partner::addresses)
+                .orElse(List.of()).stream().map(QueueAddress::parse).toList();
     }
 
-    /** Message vérifié de la file : contact créé au besoin, puis remis à l'orchestrateur. */
-    void onMessage(SignedMessage message) {
+    /**
+     * Message vérifié d'une file : contact créé au besoin, puis remis à l'orchestrateur. Un même message, déposé dans les
+     * files de cette box sur plusieurs relais, n'est remis qu'une fois.
+     */
+    synchronized void onMessage(SignedMessage message) {
+        forgetDelivered();
+        if (delivered.containsKey(message.messageId())) {
+            return;
+        }
+        handle(message);
+        delivered.put(message.messageId(), clock.instant());
+    }
+
+    private void forgetDelivered() {
+        Instant limit = clock.instant().minus(IuMailbox.SEEN);
+        delivered.values().removeIf(at -> at.isBefore(limit));
+    }
+
+    private void handle(SignedMessage message) {
         Optional<IuDirectory.Partner> partner = directory.partner(message.boxId());
         if (partner.isEmpty() || !partner.get().active()) {
             LOG.log(Level.WARNING, "Message {0} de la box {1}, non active dans l''annuaire : écarté", message.type(),
@@ -417,6 +506,14 @@ public final class IuTransport implements TransportPort {
         Path file = Path.of(outgoing.path());
         try {
             transfers.acquire();
+            // Rendu dès qu'une copie est complète : une copie qui traîne (relais en panne) ne retient pas les envois
+            // suivants.
+            java.util.concurrent.atomic.AtomicBoolean held = new java.util.concurrent.atomic.AtomicBoolean(true);
+            Runnable release = () -> {
+                if (held.compareAndSet(true, false)) {
+                    transfers.release();
+                }
+            };
             try {
                 long size = Files.size(file);
                 if (outgoing.state() == null) {
@@ -424,7 +521,7 @@ public final class IuTransport implements TransportPort {
                     LOG.log(Level.INFO, "Envoi IU-T {0} : morceaux de {1} Kio (débit estimé : {2})", outgoing.fileId(),
                             chunkSize / ChunkLayout.KIB, link.bytesPerSecond().isPresent()
                                     ? Math.round(link.bytesPerSecond().getAsDouble() / 1024) + " Kio/s" : "inconnu");
-                    outgoing = outgoing.with(uploader.prepare(file, chunkSize, settings.ttl()));
+                    outgoing = outgoing.withAll(prepareCopies(file, chunkSize));
                     store.save(outgoing);
                 }
                 if (settings.early() && !outgoing.described()) {
@@ -432,27 +529,15 @@ public final class IuTransport implements TransportPort {
                     outgoing = outgoing.describedNow();
                     store.save(outgoing);
                 }
-                IuStore.Outgoing base = outgoing;
-                long[] last = {uploadedBytes(outgoing.state()), System.nanoTime()};
-                IuFileUploader.UploadState state = uploader.upload(file, outgoing.state(),
-                        s -> store.save(base.with(s)),
-                        done -> {
-                            long now = System.nanoTime();
-                            link.record(done - last[0], Duration.ofNanos(now - last[1]), clock.instant());
-                            last[0] = done;
-                            last[1] = now;
-                            emit(new TransportEvent.FileProgress(base.fileId(), TransportEvent.Direction.SENDING,
-                                    done, size));
-                        });
-                outgoing = outgoing.with(state);
+                outgoing = uploadCopies(file, size, outgoing, release);
                 if (!outgoing.described()) {
                     announceFile(outgoing, false);
+                    emit(new TransportEvent.FileSent(new PeerId(outgoing.peerId()), outgoing.fileId()));
                 }
                 store.save(outgoing.announcedNow());
             } finally {
-                transfers.release();
+                release.run();
             }
-            emit(new TransportEvent.FileSent(new PeerId(outgoing.peerId()), outgoing.fileId()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (IOException | UncheckedIOException | TransportException | ProtocolException e) {
@@ -460,12 +545,156 @@ public final class IuTransport implements TransportPort {
                 return; // arrêt de la box : l'envoi reprendra au démarrage
             }
             LOG.log(Level.WARNING, "Envoi IU-T {0} en échec : {1}", outgoing.fileId(), e.getMessage());
-            if (outgoing.state() != null) {
-                uploader.delete(outgoing.state());
-            }
+            IuStore.Outgoing failed = store.outgoing(outgoing.fileId()).orElse(outgoing);
+            failed.all().forEach(this::deleteCopy);
             store.deleteOutgoing(outgoing.fileId());
             emit(new TransportEvent.FileFailed(outgoing.fileId(), e.getMessage()));
         }
+    }
+
+    /**
+     * Crée les morceaux sur {@link Settings#copies()} relais : le premier qui répond devient le principal (les morceaux
+     * y sont calculés), les autres reçoivent une copie. Avec plusieurs relais, un relais injoignable est vite écarté
+     * ({@link #PICK_PATIENCE}) ; si aucun ne répond, le premier est réessayé avec la patience habituelle.
+     */
+    private List<IuFileUploader.UploadState> prepareCopies(Path file, int chunkSize) throws IOException {
+        List<URI> relays = settings.relays();
+        boolean several = relays.size() > 1;
+        List<IuFileUploader.UploadState> copies = new ArrayList<>();
+        for (URI relay : relays) {
+            if (copies.size() >= settings.copies()) {
+                break;
+            }
+            boolean down = unreachable.getOrDefault(relay, Instant.MIN).isAfter(clock.instant());
+            IuFileUploader uploader = !several ? uploaders.get(relay)
+                    : down ? onceUploaders.get(relay) : quickUploaders.get(relay);
+            try {
+                copies.add(copies.isEmpty() ? uploader.prepare(file, chunkSize, settings.ttl())
+                        : uploader.prepareCopy(copies.getFirst()));
+                unreachable.remove(relay);
+            } catch (TransportException | IOException e) {
+                if (!several) {
+                    throw e;
+                }
+                unreachable.put(relay, clock.instant().plus(UNREACHABLE_FOR));
+                LOG.log(Level.WARNING, "Relais {0} écarté pour cet envoi : {1}", relay, e.getMessage());
+            }
+        }
+        if (copies.isEmpty()) {
+            copies.add(uploaders.get(relays.getFirst()).prepare(file, chunkSize, settings.ttl()));
+        }
+        if (several) {
+            LOG.log(Level.INFO, "Envoi copié sur {0} relais", copies.size());
+        }
+        return copies;
+    }
+
+    /**
+     * Téléverse toutes les copies en parallèle. {@code FileSent} part dès qu'une copie est complète (annonce anticipée),
+     * sinon après toutes ; une copie en échec est retirée de son relais et oubliée, l'envoi n'échoue que si toutes
+     * échouent.
+     */
+    private IuStore.Outgoing uploadCopies(Path file, long size, IuStore.Outgoing outgoing, Runnable firstComplete)
+            throws InterruptedException {
+        List<IuFileUploader.UploadState> initial = outgoing.all();
+        IuFileUploader.UploadState[] current = initial.toArray(new IuFileUploader.UploadState[0]);
+        boolean[] failed = new boolean[current.length];
+        RuntimeException[] lastFailure = new RuntimeException[1];
+        boolean[] sent = {false};
+        IuStore.Outgoing base = outgoing;
+        Object lock = new Object();
+        Runnable save = () -> {
+            List<IuFileUploader.UploadState> alive = new ArrayList<>();
+            for (int i = 0; i < current.length; i++) {
+                if (!failed[i]) {
+                    alive.add(current[i]);
+                }
+            }
+            store.save(base.withAll(alive));
+        };
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < current.length; i++) {
+            int copy = i;
+            IuFileUploader uploader = uploaderFor(current[i]).orElse(null);
+            if (uploader == null) {
+                LOG.log(Level.WARNING, "Relais {0} retiré de la configuration : copie abandonnée", current[i].relay());
+                failed[i] = true;
+                continue;
+            }
+            threads.add(Thread.ofVirtual().name("iu-copie-" + i).start(() -> {
+                long[] last = {uploadedBytes(current[copy]), System.nanoTime()};
+                try {
+                    IuFileUploader.UploadState done = uploader.upload(file, current[copy], s -> {
+                        synchronized (lock) {
+                            current[copy] = s;
+                            save.run();
+                        }
+                    }, bytes -> {
+                        long now = System.nanoTime();
+                        synchronized (lock) {
+                            link.record(bytes - last[0], Duration.ofNanos(now - last[1]), clock.instant());
+                        }
+                        last[0] = bytes;
+                        last[1] = now;
+                        if (copy == 0) {
+                            emit(new TransportEvent.FileProgress(base.fileId(), TransportEvent.Direction.SENDING,
+                                    bytes, size));
+                        }
+                    });
+                    boolean first;
+                    synchronized (lock) {
+                        current[copy] = done;
+                        save.run();
+                        first = base.described() && !sent[0];
+                        sent[0] = true;
+                    }
+                    firstComplete.run();
+                    if (first) {
+                        emit(new TransportEvent.FileSent(new PeerId(base.peerId()), base.fileId()));
+                    }
+                } catch (IOException | UncheckedIOException | TransportException | ProtocolException e) {
+                    if (closed) {
+                        return;
+                    }
+                    RuntimeException failure = e instanceof RuntimeException r ? r
+                            : new TransportException(e.getMessage(), e);
+                    LOG.log(Level.WARNING, "Copie de l''envoi IU-T {0} sur {1} en échec : {2}", base.fileId(),
+                            current[copy].relay(), e.getMessage());
+                    deleteCopy(current[copy]);
+                    synchronized (lock) {
+                        failed[copy] = true;
+                        lastFailure[0] = failure;
+                        save.run();
+                    }
+                }
+            }));
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        if (closed) {
+            throw new InterruptedException("arrêt de la box");
+        }
+        List<IuFileUploader.UploadState> alive = new ArrayList<>();
+        for (int i = 0; i < current.length; i++) {
+            if (!failed[i]) {
+                alive.add(current[i]);
+            }
+        }
+        if (alive.isEmpty()) {
+            throw lastFailure[0] != null ? lastFailure[0] : new TransportException("Aucun relais disponible");
+        }
+        return outgoing.withAll(alive);
+    }
+
+    private java.util.Optional<IuFileUploader> uploaderFor(IuFileUploader.UploadState state) {
+        URI relay = Settings.normalize(URI.create(state.relay()));
+        return java.util.Optional.ofNullable(uploaders.get(relay));
+    }
+
+    /** Retire une copie de son relais (au mieux). */
+    private void deleteCopy(IuFileUploader.UploadState state) {
+        uploaderFor(state).ifPresent(uploader -> uploader.delete(state));
     }
 
     /** Octets déjà téléversés d'un envoi (reprise). */
@@ -487,7 +716,7 @@ public final class IuTransport implements TransportPort {
      *              le destinataire, qui les attendait, reçoit un refus définitif
      */
     private void announceFile(IuStore.Outgoing outgoing, boolean early) {
-        String json = IuFileUploader.description(outgoing.state(), early).toJson();
+        String json = IuFileUploader.description(outgoing.all(), early).toJson();
         int parts = (json.length() + fragmentSize - 1) / fragmentSize;
         if (parts > MAX_FRAGMENTS) {
             throw new TransportException("Description du fichier trop longue (" + parts + " fragments)");
@@ -503,9 +732,7 @@ public final class IuTransport implements TransportPort {
     @Override
     public void discardSentFile(long fileId) {
         store.outgoing(fileId).ifPresent(outgoing -> launch(fileId, () -> {
-            if (outgoing.state() != null) {
-                uploader.delete(outgoing.state());
-            }
+            outgoing.all().forEach(this::deleteCopy);
             store.deleteOutgoing(fileId);
         }));
     }
@@ -547,8 +774,7 @@ public final class IuTransport implements TransportPort {
         String json = String.join("", fragments);
         FileDescription description;
         try {
-            description = FileDescription.fromJson(json);
-            checkRelay(description);
+            description = knownReplicas(FileDescription.fromJson(json));
         } catch (ProtocolException | TransportException e) {
             LOG.log(Level.WARNING, "Description de fichier de la box {0} écartée : {1}", contact.boxId(),
                     e.getMessage());
@@ -556,22 +782,41 @@ public final class IuTransport implements TransportPort {
             return;
         }
         IuStore.Incoming offered = new IuStore.Incoming(incoming.fileId(), incoming.peerId(), incoming.boxId(),
-                incoming.transferId(), null, json, null, List.of(), IuStore.Status.OFFERED, incoming.createdAt());
+                incoming.transferId(), null, description.toJson(), null, List.of(), IuStore.Status.OFFERED,
+                incoming.createdAt());
         store.save(offered);
         emit(new TransportEvent.FileOffered(new PeerId(contact.peerId()), offered.fileId(), description.fileName(),
                 description.size()));
     }
 
-    /** Les morceaux ne sont téléchargés que depuis le relais de cette box. */
-    private void checkRelay(FileDescription description) {
-        String relay = settings.relay().toString();
+    /**
+     * Les morceaux ne sont téléchargés que depuis les relais de l'organisation, configurés dans cette box : les
+     * répliques sur un autre relais sont écartées (l'émetteur peut en utiliser que cette box ne connaît pas) ; un
+     * morceau sans réplique sur un relais connu rend la description inutilisable.
+     */
+    private FileDescription knownReplicas(FileDescription description) {
+        Set<String> allowed = new java.util.HashSet<>();
+        settings.relays().forEach(r -> allowed.add(r.toString()));
+        List<FileDescription.Chunk> chunks = new ArrayList<>();
+        boolean filtered = false;
         for (FileDescription.Chunk chunk : description.chunks()) {
-            for (FileDescription.Replica replica : chunk.replicas()) {
-                if (!replica.relay().replaceAll("/+$", "").equals(relay)) {
-                    throw new TransportException("morceau sur un autre relais que " + relay + " : " + replica.relay());
-                }
+            List<FileDescription.Replica> replicas = chunk.replicas().stream()
+                    .filter(r -> allowed.contains(r.relay().replaceAll("/+$", ""))).toList();
+            if (replicas.isEmpty()) {
+                throw new TransportException("morceau sur un relais hors de l'organisation : "
+                        + chunk.replicas().getFirst().relay());
             }
+            filtered |= replicas.size() != chunk.replicas().size();
+            chunks.add(new FileDescription.Chunk(chunk.index(), chunk.digest(), replicas));
         }
+        if (!filtered) {
+            return description;
+        }
+        LOG.log(Level.INFO, "Transfert {0} : répliques sur des relais inconnus de cette box écartées",
+                description.transferId());
+        return new FileDescription(description.suite(), description.transferId(), description.mode(),
+                description.fileName(), description.chunkSize(), description.chunkCount(), description.size(),
+                description.digest(), chunks, description.expiresAt());
     }
 
     @Override
@@ -731,14 +976,8 @@ public final class IuTransport implements TransportPort {
     public void close() {
         closed = true;
         outbox.close();
-        Thread pending = starter;
-        if (pending != null) {
-            pending.interrupt();
-        }
-        IuMailbox box = mailbox;
-        if (box != null) {
-            box.close();
-        }
+        starters.forEach(Thread::interrupt);
+        mailboxes.forEach(IuMailbox::close);
         workers.forEach(Thread::interrupt);
     }
 }

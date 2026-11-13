@@ -132,10 +132,15 @@ class RelayConfiguration {
         return new QueueStore(dataSource);
     }
 
+    /** Clés d'adresse IU-T d'une entrée d'annuaire : {@code iu}, {@code iu-2}… (une par relais de la box). */
+    static final java.util.regex.Pattern IU_ADDRESS = java.util.regex.Pattern.compile("iu(?:-([2-9]|[1-9][0-9]))?");
+
     @Bean
     QueueService queueService(QueueStore store, RelayProperties properties, Clock clock, LocalDirectory directory) {
         return new QueueService(store, properties, clock,
-                box -> directory.entry(box).map(e -> e.transport().get("iu")));
+                box -> directory.entry(box).map(e -> e.transport().entrySet().stream()
+                        .filter(t -> IU_ADDRESS.matcher(t.getKey()).matches()).map(java.util.Map.Entry::getValue)
+                        .toList()).orElse(java.util.List.of()));
     }
 
     @Bean

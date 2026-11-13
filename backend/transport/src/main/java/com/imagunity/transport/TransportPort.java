@@ -23,6 +23,14 @@ public interface TransportPort extends AutoCloseable {
      */
     String contactAddress();
 
+    /**
+     * Adresses de contact à publier dans la demande d'enrôlement (champ {@code transport} de l'entrée) : une par relais
+     * pour un transport à plusieurs relais ({@code iu}, {@code iu-2}…).
+     */
+    default java.util.Map<String, String> contactAddresses() {
+        return java.util.Map.of(addressKind(), contactAddress());
+    }
+
     /** Clé de l'adresse de contact dans le champ {@code transport} des entrées d'annuaire. */
     default String addressKind() {
         return "iu";
