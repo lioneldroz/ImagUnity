@@ -51,6 +51,9 @@ export function CentralConfigurationCard() {
         </p>
       )}
       {view.error && <p className="error small">Dernière lecture impossible : {view.error}</p>}
+      <p className="muted small">
+        Groupes de la box : {view.groups.length > 0 ? view.groups.join(', ') : 'aucun'}.
+      </p>
       {view.checkedAt && <p className="muted small">Dernière lecture de l’annuaire : {formatDate(view.checkedAt)}</p>}
     </div>
   )

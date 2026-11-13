@@ -135,8 +135,8 @@ public class ConfigurationService {
     // --- Interface d'administration ---
 
     /** Box de l'annuaire, pour l'interface. */
-    public record BoxView(UUID boxId, String displayName, String status, Long applied, java.time.Instant appliedAt,
-                          Long refused, String refusal, java.time.Instant reportedAt) {
+    public record BoxView(UUID boxId, String displayName, String status, List<String> groups, Long applied,
+                          java.time.Instant appliedAt, Long refused, String refusal, java.time.Instant reportedAt) {
     }
 
     /** Version publiée, décodée pour l'interface. */
@@ -145,8 +145,12 @@ public class ConfigurationService {
                                CentralConfiguration.Routing routing) {
     }
 
-    /** État pour l'interface : box, documents publiés (du plus récent au plus ancien), prochain numéro. */
-    public record State(String organization, List<BoxView> boxes, List<DocumentView> documents, long nextSequence) {
+    /**
+     * État pour l'interface : box, groupes connus (ceux des box actives), documents publiés (du plus récent au plus
+     * ancien), prochain numéro.
+     */
+    public record State(String organization, List<BoxView> boxes, List<String> groups, List<DocumentView> documents,
+                        long nextSequence) {
     }
 
     public State state() {
@@ -156,7 +160,7 @@ public class ConfigurationService {
         for (SignedDocument document : entries.current()) {
             entry(document).ifPresent(e -> {
                 ConfigurationStore.Report r = reports.get(e.boxId());
-                boxes.add(new BoxView(e.boxId(), e.displayName(), e.statusAt(clock.instant()).name(),
+                boxes.add(new BoxView(e.boxId(), e.displayName(), e.statusAt(clock.instant()).name(), e.groups(),
                         r == null ? null : r.applied(), r == null ? null : r.appliedAt(),
                         r == null ? null : r.refused(), r == null ? null : r.refusal(),
                         r == null ? null : r.reportedAt()));
@@ -170,7 +174,9 @@ public class ConfigurationService {
             documents.addFirst(new DocumentView(c.sequence(), c.issuedAt(), c.author(), c.comment(), c.target(),
                     c.priority(), c.routing()));
         }
-        return new State(organization, boxes, documents, store.highestSequence().orElse(0) + 1);
+        List<String> groups = boxes.stream().filter(b -> "ACTIVE".equals(b.status()))
+                .flatMap(b -> b.groups().stream()).distinct().sorted().toList();
+        return new State(organization, boxes, groups, documents, store.highestSequence().orElse(0) + 1);
     }
 
     /** Brouillon demandé par l'interface. */

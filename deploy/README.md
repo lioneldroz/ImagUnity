@@ -101,7 +101,7 @@ Réglages du stockage des morceaux : `IMAGUNITY_RELAY_STORAGE=s3`, `IMAGUNITY_RE
 
 ### Configuration centralisée
 
-Règles de priorité et de routage des box fixées depuis le service d'annuaire ([configuration centralisée](../docs/configuration-centralisee.md)) : interface d'administration sur http://localhost:8090/admin/ (compte du responsable), signature du document par le responsable (`DirectoryAdmin configuration-signer`), publication, application par les box sans redémarrage. Verrouillage local d'une box : `IMAGUNITY_CENTRAL_CONFIGURATION=false`.
+Règles de priorité et de routage des box fixées depuis le service d'annuaire ([configuration centralisée](../docs/configuration-centralisee.md)) : interface d'administration sur http://localhost:8090/admin/ (compte du responsable), signature du document par le responsable (`DirectoryAdmin configuration-signer`), publication, application par les box sans redémarrage. Verrouillage local d'une box : `IMAGUNITY_CENTRAL_CONFIGURATION=false`. Groupes de box : `enroler --groupes imagerie-nord,urgences` (dans l'entrée signée), après avoir mis à jour l'annuaire, les relais et toutes les box.
 
 ### Routage par champ DICOM
 

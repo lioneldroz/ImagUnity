@@ -49,12 +49,14 @@ La signature porte sur les **octets UTF-8 exacts** du texte `payload`. Celui-ci 
   "serial": 1,
   "validFrom": "2026-11-12T00:00:00Z",
   "validUntil": "2027-11-12T00:00:00Z",
-  "revoked": false, "revokedAt": null, "revocationReason": null
+  "revoked": false, "revokedAt": null, "revocationReason": null,
+  "groups": ["imagerie-nord", "urgences"]
 }
 ```
 
 - `serial` augmente à chaque nouvelle émission pour la même box (renouvellement, changement d'adresse, révocation) : seule l'entrée de numéro le plus haut compte.
 - La **révocation** est une entrée signée de numéro supérieur, avec `revoked: true`.
+- `groups` : groupes de la box pour la [configuration centralisée](configuration-centralisee.md), fixés par le responsable (`enroler --groupes imagerie-nord,urgences`) ; minuscules, chiffres et tirets, 16 au plus. Absent quand la box n'a pas de groupe : les entrées sans groupe restent identiques. Pour changer les groupes d'une box, réémettre son entrée avec un numéro supérieur.
 - `encryptionKeys` porte les clés de chiffrement de la box (X25519 et ML-KEM-768). Les paquets qui lui sont destinés sont chiffrés pour elles ([chiffrement applicatif](chiffrement-applicatif.md)). Le champ est absent des entrées antérieures, qui sont à réémettre.
 
 ### 2.3 Demande d'enrôlement

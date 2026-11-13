@@ -20,6 +20,8 @@ export interface CentralConfigurationView {
   refusal: string | null
   checkedAt: string | null
   error: string | null
+  /** Groupes de la box, d'après son entrée d'annuaire (fixés par le responsable). */
+  groups: string[]
 }
 
 export const fetchCentralConfiguration = () => getJson<CentralConfigurationView>('/api/v1/configuration')

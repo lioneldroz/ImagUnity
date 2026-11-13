@@ -53,6 +53,7 @@ function afficher() {
     id.className = "discret";
     id.textContent = b.boxId;
     nom.appendChild(id);
+    cellule(ligne, b.groups.length ? b.groups.join(", ") : "—");
     cellule(ligne, { ACTIVE: "active", REVOKED: "révoquée", EXPIRED: "expirée", NOT_YET_VALID: "pas encore valide" }[b.status] || b.status, "statut-" + b.status);
     cellule(ligne, b.applied == null ? "pas de compte rendu" : (b.applied === 0 ? "configuration locale" : "n° " + b.applied + " (" + date(b.appliedAt) + ")"));
     cellule(ligne, b.refusal ? "n° " + b.refused + " : " + b.refusal : "—", b.refusal ? "refus" : "");
@@ -70,8 +71,22 @@ function afficher() {
   }
   if (!etat.boxes.length) {
     const ligne = document.createElement("tr");
-    cellule(ligne, "Aucune box dans l'annuaire").colSpan = 5;
+    cellule(ligne, "Aucune box dans l'annuaire").colSpan = 6;
     corps.appendChild(ligne);
+  }
+
+  const groupes = $("choix-groupes");
+  const groupesCoches = new Set([...groupes.querySelectorAll("input:checked")].map((c) => c.value));
+  groupes.replaceChildren();
+  for (const g of etat.groups) {
+    const label = document.createElement("label");
+    const case_ = document.createElement("input");
+    case_.type = "checkbox";
+    case_.value = g;
+    case_.checked = groupesCoches.has(g);
+    const membres = etat.boxes.filter((b) => b.status === "ACTIVE" && b.groups.includes(g)).length;
+    label.append(case_, " groupe « " + g + " » (" + membres + " box)");
+    groupes.appendChild(label);
   }
 
   const versions = $("versions");
@@ -87,7 +102,10 @@ function afficher() {
     const infos = document.createElement("div");
     infos.className = "discret";
     infos.textContent = [
-      d.target.all ? "toute l'organisation" : d.target.boxes.length + " box",
+      d.target.all ? "toute l'organisation" : [
+        (d.target.boxes || []).length ? d.target.boxes.length + " box" : null,
+        (d.target.groups || []).length ? "groupes " + d.target.groups.join(", ") : null,
+      ].filter(Boolean).join(" et "),
       d.author ? "par " + d.author : null, d.comment || null,
       d.priority ? "priorité : " + d.priority.rules.length + " règle(s)" : "priorité locale",
       d.routing ? "routage : " + d.routing.rules.length + " règle(s)" : "routage local",
@@ -106,7 +124,8 @@ function reprendreVersion(d) {
   $("priorite").value = d.priority ? JSON.stringify(d.priority, null, 2) : "";
   $("routage").value = d.routing ? JSON.stringify(d.routing, null, 2) : "";
   document.querySelector("input[name=cible][value=" + (d.target.all ? "toutes" : "liste") + "]").checked = true;
-  for (const c of $("choix-box").querySelectorAll("input")) c.checked = !d.target.all && d.target.boxes.includes(c.value);
+  for (const c of $("choix-box").querySelectorAll("input")) c.checked = !d.target.all && (d.target.boxes || []).includes(c.value);
+  for (const c of $("choix-groupes").querySelectorAll("input")) c.checked = !d.target.all && (d.target.groups || []).includes(c.value);
   $("motif").value = "";
   $("prepare").hidden = true;
   message("Version n° " + d.sequence + " reprise comme brouillon : la modifier, puis préparer un nouveau document.", "ok");
@@ -122,8 +141,9 @@ function lireJson(id, nom) {
 function brouillon() {
   const toutes = document.querySelector("input[name=cible]:checked").value === "toutes";
   const boxes = [...$("choix-box").querySelectorAll("input:checked")].map((c) => c.value);
+  const groups = [...$("choix-groupes").querySelectorAll("input:checked")].map((c) => c.value);
   return {
-    target: toutes ? { all: true } : { all: false, boxes },
+    target: toutes ? { all: true } : { all: false, boxes, groups },
     author: $("auteur").value, comment: $("motif").value,
     priority: lireJson("priorite", "Priorité"), routing: lireJson("routage", "Routage"),
   };

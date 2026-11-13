@@ -14,7 +14,7 @@ class CentralConfigurationControllerTest {
         Instant at = Instant.parse("2026-11-13T10:00:00Z");
         CentralConfigurationController.Status.View applied = new CentralConfigurationController.Status.View(true, 7,
                 at, "responsable", "thorax d'abord", at, true, true, List.of("chu → box-b"), 8, "mot-clé inconnu",
-                at, null);
+                at, null, List.of("imagerie-nord"));
         CentralConfigurationController.Status status = () -> applied;
         assertThat(new CentralConfigurationController(Providers.of(CentralConfigurationController.Status.class,
                 status)).configuration()).isEqualTo(applied);
@@ -24,5 +24,6 @@ class CentralConfigurationControllerTest {
         assertThat(none.enabled()).isFalse();
         assertThat(none.sequence()).isZero();
         assertThat(none.routingRules()).isEmpty();
+        assertThat(none.groups()).isEmpty();
     }
 }

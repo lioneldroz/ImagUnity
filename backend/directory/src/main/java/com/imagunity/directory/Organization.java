@@ -34,10 +34,21 @@ public final class Organization {
      * @param serial   numéro d'émission (1 au premier enrôlement, puis croissant)
      */
     public SignedDocument enroll(SignedDocument request, Instant now, Duration validity, long serial) {
+        return enroll(request, now, validity, serial, java.util.List.of());
+    }
+
+    /**
+     * Enrôle la box qui a signé cette demande, dans des groupes (configuration centralisée). Pour changer les groupes
+     * d'une box, réémettre son entrée avec un numéro supérieur.
+     *
+     * @param groups groupes de la box, fixés par le responsable (la demande de la box n'en contient pas)
+     */
+    public SignedDocument enroll(SignedDocument request, Instant now, Duration validity, long serial,
+                                 java.util.List<String> groups) {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
         BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), r.displayName(), r.signingKeys(), r.encryptionKeys(),
                 r.transport(),
-                serial, now, now.plus(validity), false, null, null);
+                serial, now, now.plus(validity), false, null, null, groups);
         return SignedDocument.sign(Json.write(entry), keys);
     }
 

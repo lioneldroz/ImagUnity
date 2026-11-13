@@ -211,4 +211,49 @@ class CentralRulesTest {
         assertThat(rules.snapshot().error()).contains("injoignable");
         assertThat(rules.snapshot().sequence()).isEqualTo(6);
     }
+
+    @Test
+    void groupsTargetTheBoxAndLeavingAGroupFallsBackToWhatStillTargetsIt() {
+        java.util.concurrent.atomic.AtomicReference<java.util.Collection<String>> groups =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of("imagerie-nord"));
+        Path file = dir.resolve("groupes.json");
+        CentralRules rules = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), file, clock, groups::get);
+        SignedDocument everyone = document(4, CentralConfiguration.Target.everyone(), "Modality", false);
+        SignedDocument nord = document(5, CentralConfiguration.Target.groups(List.of("imagerie-nord")), "Modality",
+                true);
+        SignedDocument sud = document(6, CentralConfiguration.Target.groups(List.of("imagerie-sud")), "Modality",
+                false);
+        assertThat(rules.synchronize(List.of(everyone, nord, sud))).isTrue();
+        assertThat(rules.snapshot().sequence()).as("la plus récente qui vise la box ou son groupe").isEqualTo(5);
+        assertThat(rules.status().groups()).containsExactly("imagerie-nord");
+
+        // Le responsable retire la box du groupe : la n° 4 (toute l'organisation) la vise encore.
+        groups.set(List.of());
+        assertThat(rules.synchronize(List.of(everyone, nord, sud))).isTrue();
+        assertThat(rules.snapshot().sequence()).isEqualTo(4);
+        assertThat(rules.routing()).as("routage de la n° 5 abandonné").isEmpty();
+
+        // Seuls des documents de groupes : hors du groupe, configuration locale.
+        Path other = dir.resolve("groupes-seuls.json");
+        groups.set(List.of("imagerie-nord"));
+        CentralRules onlyGroups = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), other, clock, groups::get);
+        assertThat(onlyGroups.synchronize(List.of(nord, sud))).isTrue();
+        groups.set(List.of());
+        assertThat(onlyGroups.synchronize(List.of(nord, sud))).isTrue();
+        assertThat(onlyGroups.snapshot().sequence()).isZero();
+        assertThat(onlyGroups.priority()).isEmpty();
+        assertThat(onlyGroups.synchronize(List.of(nord, sud))).isFalse();
+
+        // Rejointe plus tard : la n° 5, déjà appliquée, n'est pas réappliquée (jamais de retour en arrière), même
+        // après un redémarrage ; une version plus récente l'est.
+        CentralRules restarted = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), other, clock, groups::get);
+        restarted.load();
+        groups.set(List.of("imagerie-nord"));
+        assertThat(restarted.synchronize(List.of(nord))).isFalse();
+        assertThat(restarted.snapshot().sequence()).isZero();
+        SignedDocument nord7 = document(7, CentralConfiguration.Target.groups(List.of("imagerie-nord")), "Modality",
+                false);
+        assertThat(restarted.synchronize(List.of(nord, nord7))).isTrue();
+        assertThat(restarted.snapshot().sequence()).isEqualTo(7);
+    }
 }

@@ -1,7 +1,7 @@
 # Configuration centralisée des box (plan)
 
 > Objectif : paramétrer chaque box (règles de priorité, règles de routage, puis d'autres réglages) depuis un serveur central de l'organisation, par une interface d'administration, au lieu de la configuration locale de chaque box.
-> Statut : **fait, première version** (novembre 2026), vérifiée sur la pile Docker (§ 9). Décisions : signature par la **clé du responsable** (option C, § 3), périmètre **priorité et routage**, ciblage **toute l'organisation ou une liste de box**, **interface d'administration** simple sur le service d'annuaire. Le reste de ce document garde le plan d'origine ; les questions encore ouvertes sont au § 8.
+> Statut : **fait, première version** (novembre 2026), vérifiée sur la pile Docker (§ 9). Décisions : signature par la **clé du responsable** (option C, § 3), périmètre **priorité et routage**, ciblage **toute l'organisation, des box ou des groupes de box** (groupes signés dans l'entrée d'annuaire, § 10), **interface d'administration** simple sur le service d'annuaire. Le reste de ce document garde le plan d'origine ; les questions encore ouvertes sont au § 8.
 
 ## 1. Principe
 
@@ -88,7 +88,7 @@ Proposition de départ : **C** pour commencer (aucune clé en ligne, réutilise 
 
 ## 8. Questions ouvertes
 
-- Groupes de box : définis dans l'annuaire (attribut de l'entrée) ou dans le serveur de configuration ?
+- ~~Groupes de box : définis dans l'annuaire ou dans le serveur de configuration ?~~ Décidé : dans l'entrée d'annuaire, signés par le responsable (§ 10).
 - Autres réglages à centraliser : seuils, durées de séjour, taille de morceau, comptes de la console (à exclure ?).
 - Verrouillage local possible ou non.
 
@@ -126,6 +126,18 @@ Box 0.12.0, relais réparti, liaison bridée à 20 Mbit/s, scénario `priorite` 
 
 ### Pas encore fait
 
-- Groupes de box (§ 8) ; option A, clé de configuration déléguée (§ 3) ; réglages autres que priorité et routage.
+- Option A, clé de configuration déléguée (§ 3) ; réglages autres que priorité et routage.
 - Éditeur de règles par formulaire (aujourd'hui : JSON, vérifié par le service).
 - Comptes d'administration distincts du compte du responsable, rôles (§ 5).
+
+## 10. Groupes de box
+
+Un document peut viser des **groupes** (`"target": {"groups": ["imagerie-nord"]}`), seuls ou avec des box nommées.
+
+- **Appartenance signée** : les groupes d'une box sont dans son [entrée d'annuaire](annuaire-signe.md), signée par le responsable : `DirectoryAdmin enroler … --groupes imagerie-nord,urgences`. Une box ne peut pas se déclarer d'un groupe, le service d'annuaire non plus.
+- **Box ajoutée plus tard à un groupe** : elle reçoit la configuration du groupe à sa lecture suivante de l'annuaire, sans nouveau document. Exception : un document qu'elle a déjà appliqué n'est jamais réappliqué (pas de retour en arrière, même après un redémarrage) ; elle attend alors la version suivante.
+- **Box retirée d'un groupe** (entrée réémise sans ce groupe) : si la version appliquée ne la vise plus, elle applique le document le plus récent qui la vise encore (par exemple une version pour toute l'organisation), sinon sa configuration locale.
+- **Interface** : groupes de chaque box dans le tableau ; cases « groupe … (n box) » pour la cible, d'après les box actives.
+- **Mise à jour d'un parc** : les box et les relais antérieurs refusent une entrée qui porte des groupes (champ inconnu dans un document signé) et gardent alors l'entrée précédente de cette box. Mettre à jour le service d'annuaire, les relais et toutes les box **avant** d'attribuer des groupes.
+
+*Vérifié en réel* (box 0.13.1) : n° 4 publiée pour `imagerie-nord` ; box-a placée dans le groupe l'applique, box-b reste sur la n° 2 (toute l'organisation) ; box-a retirée du groupe revient à la n° 2. Un relais non mis à jour écarte l'entrée de box-a avec groupes (journal « Entrée de l'annuaire écartée »), d'où l'ordre de mise à jour ci-dessus.
