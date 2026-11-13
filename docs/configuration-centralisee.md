@@ -1,7 +1,7 @@
 # Configuration centralisée des box (plan)
 
 > Objectif : paramétrer chaque box (règles de priorité, règles de routage, puis d'autres réglages) depuis un serveur central de l'organisation, par une interface d'administration, au lieu de la configuration locale de chaque box.
-> Statut : **plan, à réaliser plus tard** (décidé en novembre 2026, avant les règles de priorité). Les règles de priorité et de routage sont déjà décrites comme un document JSON au format prévu ici, et rechargeables sans redémarrage.
+> Statut : **fait, première version** (novembre 2026), vérifiée sur la pile Docker (§ 9). Décisions : signature par la **clé du responsable** (option C, § 3), périmètre **priorité et routage**, ciblage **toute l'organisation ou une liste de box**, **interface d'administration** simple sur le service d'annuaire. Le reste de ce document garde le plan d'origine ; les questions encore ouvertes sont au § 8.
 
 ## 1. Principe
 
@@ -91,3 +91,41 @@ Proposition de départ : **C** pour commencer (aucune clé en ligne, réutilise 
 - Groupes de box : définis dans l'annuaire (attribut de l'entrée) ou dans le serveur de configuration ?
 - Autres réglages à centraliser : seuils, durées de séjour, taille de morceau, comptes de la console (à exclure ?).
 - Verrouillage local possible ou non.
+
+## 9. Réalisé (première version)
+
+![Interface d'administration](images/configuration-centralisee-interface.png)
+
+### Parcours
+
+1. **Préparer** : interface du service d'annuaire, `https://<annuaire>/admin/` (compte du responsable). Elle montre les box, la version que chacune applique et son dernier refus, les versions publiées (« Reprendre comme brouillon »). On y édite les règles de priorité et de routage (JSON, même syntaxe que la configuration locale), on les **essaie sur un en-tête DICOM synthétique**, puis « Vérifier et préparer le document » produit le brouillon numéroté, règles vérifiées comme le fera la box.
+2. **Signer** sur le poste du responsable, clé hors ligne :
+   `DirectoryAdmin configuration-signer --cles organisation.json --brouillon brouillon-3.json --sortie configuration-3.json` (le contenu est affiché avant la signature).
+3. **Publier** : par l'interface (« Publier un document signé ») ou `DirectoryAdmin configuration-publier --annuaire <url> --configuration configuration-3.json`.
+4. **Application** : chaque box visée lit les documents à sa synchronisation avec l'annuaire (`IMAGUNITY_DIRECTORY_SYNC_INTERVAL`), les vérifie et applique le plus récent **sans redémarrage** ; elle rend compte à l'annuaire (compte rendu signé par sa clé d'identité) et la console de la box affiche la version en vigueur.
+
+### Règles appliquées
+
+- **Document** : `type` (`imagunity.configuration`, qui le distingue d'une entrée de box), organisation, cible (`all` ou liste de box), numéro de version croissant pour l'organisation, date, auteur et motif (audit), bloc `priority` et/ou bloc `routing`. Un bloc absent laisse la configuration locale de la box en vigueur.
+- **Service d'annuaire** : revérifie la signature du responsable et les règles ; refuse un numéro de version déjà dépassé (`409`). Il ne signe rien.
+- **Box** : signature (clé épinglée), organisation, date, cible ; **jamais de retour en arrière** (un document plus ancien que celui appliqué est ignoré) ; un document dont une règle est invalide est **refusé**, la configuration en vigueur reste appliquée, le refus est visible dans la console et dans l'interface. Le document appliqué est gardé (`configuration-centrale.json`) et revérifié au démarrage.
+- **Préséance** : règles centrales, sinon règles locales. **Verrouillage local** : `IMAGUNITY_CENTRAL_CONFIGURATION=false` (la box garde sa configuration locale, par exemple une box de démonstration).
+- **Routage central** : n'agit que sur la destination de routage de la box (`IMAGUNITY_DICOM_ROUTING_AET`, configuration locale) ; les partenaires désignés doivent être appairés.
+- **Anti-CSRF** : les requêtes de l'interface qui calculent ou publient exigent l'en-tête `X-ImagUnity-Admin` ; politique de sécurité du contenu stricte (`default-src 'self'`).
+
+### Vérifié en réel (pile Docker, novembre 2026)
+
+Box 0.12.0, relais réparti, liaison bridée à 20 Mbit/s, scénario `priorite` de la campagne **sans aucune règle locale** (étude de 4 séries, 190 instances, la série THORAX arrivée en dernier) :
+
+| Version centrale appliquée | Application | Série THORAX complète chez Orthanc B | Étude restituée |
+|---|---|---|---|
+| n° 1 : `thorax`, priorité 1 | ≈ 5 s après la publication, sur les deux box | **18,5 s** | 102,0 s |
+| n° 2 : aucune règle (publiée ensuite, **sans redémarrer** les box) | ≈ 10 s | 95,8 s | 96,9 s |
+
+190/190 instances identiques dans les deux cas ; republier la n° 1 après la n° 2 ne change rien (déjà publiée, plus ancienne pour les box). Résultats bruts : [n° 1](../deploy/campagne/resultats/campagne-20261113-093336.json), [n° 2](../deploy/campagne/resultats/campagne-20261113-093547.json).
+
+### Pas encore fait
+
+- Groupes de box (§ 8) ; option A, clé de configuration déléguée (§ 3) ; réglages autres que priorité et routage.
+- Éditeur de règles par formulaire (aujourd'hui : JSON, vérifié par le service).
+- Comptes d'administration distincts du compte du responsable, rôles (§ 5).

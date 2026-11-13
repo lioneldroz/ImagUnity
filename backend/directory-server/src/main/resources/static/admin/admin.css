@@ -21,7 +21,7 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord); vertical-align: top; }
 th { color: var(--discret); font-weight: 600; font-size: 13px; }
 .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-fieldset { border: 1px solid var(--bord); border-radius: 6px; margin: 0; padding: 8px 12px; display: grid; gap: 6px; }
+fieldset { border: 1px solid var(--bord); border-radius: 6px; margin: 0; padding: 8px 12px; display: grid; gap: 6px; align-content: start; }
 label { display: grid; gap: 4px; }
 fieldset label:has(input[type=radio]), .choix label { display: flex; gap: 8px; align-items: center; }
 .bloc { margin-top: 12px; }

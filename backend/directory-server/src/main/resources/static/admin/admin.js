@@ -59,6 +59,7 @@ function afficher() {
     cellule(ligne, date(b.reportedAt));
     corps.appendChild(ligne);
 
+    if (b.status !== "ACTIVE") continue; // seules les box actives peuvent être visées
     const label = document.createElement("label");
     const case_ = document.createElement("input");
     case_.type = "checkbox";

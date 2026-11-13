@@ -99,6 +99,10 @@ docker compose -f docker-compose.yml -f compose.relais-reparti.yml up -d
 
 Réglages du stockage des morceaux : `IMAGUNITY_RELAY_STORAGE=s3`, `IMAGUNITY_RELAY_S3_ENDPOINT`, `IMAGUNITY_RELAY_S3_BUCKET` (créé au besoin), `IMAGUNITY_RELAY_S3_ACCESS_KEY` et `IMAGUNITY_RELAY_S3_SECRET_KEY` (secrets, jamais dans un fichier versionné), `IMAGUNITY_RELAY_S3_PATH_STYLE` (`true` hors AWS). Tout service compatible S3 convient (MinIO, Garage, SeaweedFS, AWS, OVH…). Pour K3s : [k3s/README.md](k3s/README.md).
 
+### Configuration centralisée
+
+Règles de priorité et de routage des box fixées depuis le service d'annuaire ([configuration centralisée](../docs/configuration-centralisee.md)) : interface d'administration sur http://localhost:8090/admin/ (compte du responsable), signature du document par le responsable (`DirectoryAdmin configuration-signer`), publication, application par les box sans redémarrage. Verrouillage local d'une box : `IMAGUNITY_CENTRAL_CONFIGURATION=false`.
+
 ### Routage par champ DICOM
 
 Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le partenaire d'après le contenu de l'examen (modalité, établissement…), par des règles lues dans l'ordre ; une instance qu'aucune règle ne couvre est refusée au PACS. Exemple d'essai : `campagne/compose.routage.yml`. Voir [routage DICOM](../docs/routage-dicom.md).

@@ -1,7 +1,7 @@
 # Priorité des séries utiles au diagnostic
 
 > Objectif (pilote, priorité 6 du [plan](plan-de-realisation.md)) : les séries utiles au diagnostic partent et sont restituées au PACS du destinataire **les premières**, sans attendre la fin de l'étude.
-> Statut : **fait**, vérifié sur la pile Docker (§ 6). Plus tard : règles réglées depuis un serveur central ([configuration centralisée](configuration-centralisee.md)).
+> Statut : **fait**, vérifié sur la pile Docker (§ 6). Les règles peuvent aussi être fixées depuis le service d'annuaire ([configuration centralisée](configuration-centralisee.md)) : elles l'emportent alors sur les règles locales.
 
 ## 1. Principe
 
@@ -86,7 +86,7 @@ Les [règles de routage](routage-dicom.md) acceptent la même syntaxe : `and`, `
 
 - La box émettrice attend toujours la **fin de l'étude** (aucune nouvelle instance pendant le délai d'inactivité) avant d'empaqueter : la priorité joue sur l'ordre d'envoi et de restitution, pas encore sur un envoi anticipé des séries prioritaires pendant que le PACS envoie la suite.
 - Une restitution partielle laisse des instances dans le PACS du destinataire si un paquet suivant échoue ; l'accusé signale l'échec et le transfert se relance depuis la console de l'émetteur (les instances déjà restituées sont simplement renvoyées).
-- Règles fixées par la box ; la configuration depuis un serveur central est planifiée ([configuration centralisée](configuration-centralisee.md)).
+- Règles fixées par la box, ou depuis le service d'annuaire ([configuration centralisée](configuration-centralisee.md)).
 
 ## 6. Vérifié en réel (pile Docker, novembre 2026)
 
