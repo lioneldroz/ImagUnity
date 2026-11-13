@@ -1,0 +1,45 @@
+<section id="routage" data-transition="fade" style="background:#EAF0F5;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Routage</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">La box choisit le destinataire d’après l’examen</h2>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:32px">
+<div style="width:520px;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:20px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">PACS A</h3>
+<p style="font-size:28px;color:#4A5568">envoie tout à une seule destination</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;background:#2563A8;border-radius:20px;padding:28px">
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Box A</h3>
+<p style="font-size:28px;color:#DCE8F5">lit la modalité, l’établissement… et applique la première règle qui correspond</p>
+</div>
+</div>
+<x-shape kind="arrow-right" style="width:96px;height:48px;background:#2563A8"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#FDFDFB;border-radius:16px;padding:22px 28px">
+<p style="flex:1;font-size:28px;font-weight:600">Scanner du CHU</p>
+<p style="font-size:28px;background:#B84A12;color:#F3F4EE;padding:8px 22px;border-radius:999px">Hôpital B</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#FDFDFB;border-radius:16px;padding:22px 28px">
+<p style="flex:1;font-size:28px;font-weight:600">IRM</p>
+<p style="font-size:28px;background:#B84A12;color:#F3F4EE;padding:8px 22px;border-radius:999px">Hôpitaux B et C</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#FDFDFB;border-radius:16px;padding:22px 28px">
+<p style="flex:1;font-size:28px;font-weight:600">Échographie d’une clinique</p>
+<p style="font-size:28px;background:#3A4556;color:#F3F4EE;padding:8px 22px;border-radius:999px">Refusée : aucune règle</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Rien ne part au hasard</h3>
+<p style="font-size:28px;color:#4A5568">Un examen qu’aucune règle ne couvre est refusé au PACS, qui le signale</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Aussi par DICOMweb</h3>
+<p style="font-size:28px;color:#4A5568">Les examens déposés par le web (STOW-RS) suivent les mêmes règles</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Routage par champ DICOM · vérifié sur la chaîne de tests, images identiques</p>
+<aside>Jusqu’ici, le PACS choisissait le destinataire : une destination DICOM par hôpital partenaire. Avec le routage, le PACS envoie tout à une seule destination, et c’est la box qui choisit le ou les partenaires d’après le contenu de l’examen : modalité, établissement, description… Les règles sont lues dans l’ordre ; la première qui correspond désigne les destinataires. Essai sur la chaîne de tests : le scanner du CHU part vers l’hôpital B, 10 images sur 10 identiques ; l’IRM part vers deux hôpitaux à la fois ; l’échographie d’une clinique, qu’aucune règle ne couvre, est refusée dès l’envoi par le PACS, qui le signale : rien ne part vers un destinataire non prévu. Les examens déposés par DICOMweb (STOW-RS) passent par les mêmes règles. Les destinations fixes d’avant fonctionnent toujours.</aside>
+</section>

@@ -15,7 +15,7 @@
 <div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:20px;padding:28px">
 <x-icon name="Lock" style="color:#F3F4EE;width:52px;height:52px"></x-icon>
 <div style="display:flex;flex-direction:column;gap:6px">
-<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais XFTP</h3>
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais · morceaux</h3>
 <p style="font-size:26px;color:#D5DEEA">garde des morceaux chiffrés</p>
 </div>
 </div>
@@ -26,7 +26,7 @@
 <div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:20px;padding:28px">
 <x-icon name="Chat" style="color:#F3F4EE;width:52px;height:52px"></x-icon>
 <div style="display:flex;flex-direction:column;gap:6px">
-<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais SMP</h3>
+<h3 style="font-size:32px;font-weight:700;color:#F3F4EE">Relais · messages</h3>
 <p style="font-size:26px;color:#D5DEEA">transmet le message chiffré</p>
 </div>
 </div>
@@ -34,7 +34,7 @@
 <div style="display:flex;flex-direction:row;gap:24px">
 <div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#E3E6EA;border-radius:16px;padding:28px">
 <h3 style="font-size:32px;font-weight:700">Le relais ne voit rien</h3>
-<p style="font-size:28px;color:#3A4556">Mesuré : aucun nom, identifiant ni UID en clair dans 5,5 Go stockés, des données indiscernables du hasard</p>
+<p style="font-size:28px;color:#3A4556">Mesuré : aucun nom, identifiant ni UID en clair dans tout ce que le relais stocke, des données indiscernables du hasard</p>
 </div>
 <div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#E3E6EA;border-radius:16px;padding:28px">
 <h3 style="font-size:32px;font-weight:700">Le destinataire peut être absent</h3>
@@ -42,5 +42,5 @@
 </div>
 </div>
 <p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Dépôt et annonce</p>
-<aside>Deux envois partent de la box A, chacun par une connexion sortante. Les paquets, chiffrés pour la seule box B, vont sur le relais de fichiers (XFTP). Un court message, l’annonce, part par le relais de messages (SMP) : il liste les paquets, leurs tailles et leurs empreintes. Pendant la campagne de tests, nous avons fouillé tout ce que les relais avaient écrit sur disque : aucune donnée lisible. La box B n’a pas besoin d’être allumée à ce moment-là ; quand elle a confirmé la réception, la box A fait retirer les paquets du relais.</aside>
+<aside>Deux envois partent de la box A, chacun par une connexion sortante. Les paquets, chiffrés pour la seule box B, sont découpés en morceaux et déposés sur le relais. Un court message, l’annonce, part dans la boîte de réception de la box B sur le même relais : il liste les paquets, leurs tailles et leurs empreintes, et il est lui aussi chiffré et signé. Pendant la campagne de tests, nous avons fouillé tout ce que le relais avait écrit sur disque, base et stockage compris : aucune donnée lisible, et des fichiers indiscernables du hasard (8,0 bits par octet). La box B n’a pas besoin d’être allumée à ce moment-là ; quand elle a confirmé la réception, la box A fait retirer les paquets du relais.</aside>
 </section>

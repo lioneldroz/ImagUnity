@@ -1,0 +1,47 @@
+<section id="centrale" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Configuration centralisée</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Les règles se décident une fois, pour tout le réseau</h2>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:14px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#DCE8F5;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#2563A8">1 · Préparer</p>
+<p style="font-size:26px;color:#1B2433">Le responsable écrit et essaie les règles</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#2563A8"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#DCE8F5;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#2563A8">2 · Signer</p>
+<p style="font-size:26px;color:#1B2433">Il relit le document exact et le signe avec sa clé</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#2563A8"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#DCE8F5;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#2563A8">3 · Publier</p>
+<p style="font-size:26px;color:#1B2433">L’annuaire met le document à disposition des box</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B84A12"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FBE3D3;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#B84A12">4 · Appliquer</p>
+<p style="font-size:26px;color:#1B2433">Chaque box vérifie et applique, sans redémarrer</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Qui est visé</h3>
+<p style="font-size:28px;color:#4A5568">Toutes les box, une liste, ou des groupes comme « imagerie-nord »</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Qui l’applique</h3>
+<p style="font-size:28px;color:#4A5568">Chaque box rend compte de la version qu’elle applique, ou de son refus</p>
+</div>
+<div style="width:400px;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-top:8px solid #B84A12;border-radius:16px;padding:28px">
+<p style="font-family:'Space Grotesk', Arial, sans-serif;font-size:72px;font-weight:700;line-height:1.0;color:#B84A12">≈ 5 s</p>
+<p style="font-size:28px;color:#4A5568">pour que les deux box l’appliquent</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:16px;padding:22px 28px">
+<x-icon name="Lock" style="color:#F3F4EE;width:44px;height:44px"></x-icon>
+<p style="font-size:28px;color:#F3F4EE">Un annuaire piraté ne peut ni inventer une règle, ni faire revenir une ancienne version : chaque document est <b>signé et numéroté</b>.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Configuration centralisée · mesuré sur la chaîne de tests</p>
+<aside>Avec des dizaines de box, régler chacune à la main serait source d’erreurs. Le responsable de l’organisation fixe donc les règles de priorité et de routage à un seul endroit : l’interface du service d’annuaire, où il peut aussi les essayer sur un exemple d’examen fictif. Il signe ensuite le document avec sa clé, conservée hors ligne ; l’outil lui montre le document exact avant de signer et demande confirmation. L’annuaire publie le document ; chaque box visée le lit, vérifie la signature et l’applique sans redémarrer. On peut viser toutes les box, une liste, ou des groupes de box définis dans l’annuaire. Chaque box rend compte de la version qu’elle applique, ou de la raison d’un refus, et l’interface les affiche. Mesuré : une nouvelle règle de priorité appliquée par les deux box environ 5 secondes après sa publication ; série urgente alors complète en 18,5 s au lieu de 96 s. Sécurité : un annuaire piraté ne peut pas fabriquer de règle, faute de la clé du responsable, ni faire revenir une ancienne version, car chaque document porte un numéro croissant. Un site peut aussi garder ses propres règles en verrouillant sa box.</aside>
+</section>
