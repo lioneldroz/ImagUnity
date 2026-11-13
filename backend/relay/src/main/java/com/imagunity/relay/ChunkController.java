@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.UUID;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -83,7 +82,7 @@ public class ChunkController {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> get(@PathVariable String id, @RequestParam(defaultValue = "0") int wait,
-                                 HttpServletRequest request) throws InterruptedException {
+                                 HttpServletRequest request) throws InterruptedException, IOException {
         java.util.Optional<ChunkStore.Recipient> recipient = recipientIfAny(id);
         if (recipient.isEmpty()) {
             ChunkStore.Chunk chunk = chunks.chunk(id);
@@ -91,8 +90,7 @@ public class ChunkController {
             return ResponseEntity.ok(chunks.state(chunk));
         }
         auth.capability(request, EMPTY, id, recipient.get().recipientKey());
-        Resource content = new FileSystemResource(chunks.download(recipient.get(),
-                Duration.ofSeconds(Math.max(0, wait))));
+        Resource content = chunks.download(recipient.get(), Duration.ofSeconds(Math.max(0, wait)));
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).body(content);
     }
 

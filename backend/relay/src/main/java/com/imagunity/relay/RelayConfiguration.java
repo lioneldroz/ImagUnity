@@ -103,12 +103,18 @@ class RelayConfiguration {
     }
 
     @Bean
-    ReplayGuard replayGuard(Clock clock) {
-        return new ReplayGuard(clock);
+    ReplayStore replayStore(DataSource dataSource, Clock clock) {
+        return new ReplayStore(dataSource, clock);
     }
 
     @Bean
-    RequestAuthenticator requestAuthenticator(LocalDirectory directory, ReplayGuard replay, Clock clock) {
+    RelayLease relayLease(DataSource dataSource, Clock clock, RelayProperties properties) {
+        LOG.log(Level.INFO, "Instance du relais : {0}", properties.instance());
+        return new RelayLease(dataSource, clock, properties.instance());
+    }
+
+    @Bean
+    RequestAuthenticator requestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock) {
         return new RequestAuthenticator(directory, replay, clock);
     }
 
@@ -122,9 +128,37 @@ class RelayConfiguration {
         return new ChunkFiles(properties.storageDir());
     }
 
+    /** Contenu des morceaux : le disque de {@link ChunkFiles}, ou un stockage S3 partagé par les instances. */
     @Bean
-    ChunkService chunkService(ChunkStore store, ChunkFiles files, RelayProperties properties, Clock clock) {
-        return new ChunkService(store, files, properties, clock);
+    @org.springframework.context.annotation.Primary
+    ChunkContents chunkContents(ChunkFiles files, RelayProperties properties) throws IOException {
+        RelayProperties.Storage storage = properties.storage();
+        if (!storage.s3()) {
+            if (!"disk".equalsIgnoreCase(storage.type())) {
+                throw new IllegalStateException("Stockage des morceaux inconnu : " + storage.type() + " (disk ou s3)");
+            }
+            LOG.log(Level.INFO, "Morceaux sur disque : {0}", files.root());
+            return files;
+        }
+        if (storage.accessKey() == null || storage.secretKey() == null) {
+            throw new IllegalStateException("Stockage S3 sans compte : IMAGUNITY_RELAY_S3_ACCESS_KEY et "
+                    + "IMAGUNITY_RELAY_S3_SECRET_KEY");
+        }
+        S3ChunkContents s3 = new S3ChunkContents(S3ChunkContents.client(storage.endpoint(), storage.region(),
+                storage.accessKey(), storage.secretKey(), storage.pathStyle()), storage.bucket(), storage.prefix());
+        try {
+            s3.ensureBucket(storage.startupPatience(), java.time.Duration.ofSeconds(2));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Démarrage interrompu", e);
+        }
+        LOG.log(Level.INFO, "Morceaux sur le stockage {0} ({1})", s3, storage.endpoint());
+        return s3;
+    }
+
+    @Bean
+    ChunkService chunkService(ChunkStore store, ChunkContents contents, RelayProperties properties, Clock clock) {
+        return new ChunkService(store, contents, properties, clock);
     }
 
     @Bean
@@ -144,25 +178,39 @@ class RelayConfiguration {
     }
 
     @Bean
-    Purge purge(ChunkService chunks, QueueService queues) {
-        return new Purge(chunks, queues);
+    Purge purge(ChunkService chunks, QueueService queues, ReplayStore replay, RelayLease lease) {
+        return new Purge(chunks, queues, replay, lease);
     }
 
-    /** Purge des morceaux et des messages expirés, chaque minute. */
+    /**
+     * Purge des morceaux, des messages et des identifiants de requête expirés, chaque minute, par une seule instance
+     * à la fois (bail en base, repris par une autre si cette instance s'arrête).
+     */
     static final class Purge {
+
+        static final String LEASE = "purge";
+        static final java.time.Duration LEASE_FOR = java.time.Duration.ofMinutes(3);
 
         private final ChunkService chunks;
         private final QueueService queues;
+        private final ReplayStore replay;
+        private final RelayLease lease;
 
-        Purge(ChunkService chunks, QueueService queues) {
+        Purge(ChunkService chunks, QueueService queues, ReplayStore replay, RelayLease lease) {
             this.chunks = chunks;
             this.queues = queues;
+            this.replay = replay;
+            this.lease = lease;
         }
 
         @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
         void run() {
+            if (!lease.acquire(LEASE, LEASE_FOR)) {
+                return; // une autre instance purge
+            }
             chunks.purge();
             queues.purge();
+            replay.purge();
         }
     }
 }

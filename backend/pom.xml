@@ -41,6 +41,7 @@
         <zstd-jni.version>1.5.7-26</zstd-jni.version>
         <commons-compress.version>1.28.0</commons-compress.version>
         <jacoco.version>0.8.16</jacoco.version>
+        <awssdk.version>2.57.7</awssdk.version>
         <!-- Minimum coverage thresholds checked by "mvn verify" (see jacoco-maven-plugin),
              applied to each module (BUNDLE). Measured on 2026-11-11: 98.5 % of lines,
              96.3 % of branches (lowest module: dicom, 97.4 % / 93.9 %). Can be overridden on the
@@ -51,6 +52,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${awssdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.imagunity</groupId>
                 <artifactId>imagunity-domain</artifactId>

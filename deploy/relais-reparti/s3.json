@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "relais",
+      "credentials": [ { "accessKey": "relais-essai", "secretKey": "secret-synthetique-de-test" } ],
+      "actions": [ "Admin", "Read", "Write", "List" ]
+    }
+  ]
+}

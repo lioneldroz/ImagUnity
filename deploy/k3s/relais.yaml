@@ -1,0 +1,141 @@
+# Instances du relais : identiques, sans état ; tout état partagé est dans PostgreSQL et le stockage S3.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: relais
+data:
+  IMAGUNITY_RELAY_DB_URL: jdbc:postgresql://relais-postgres:5432/relais
+  IMAGUNITY_RELAY_STORAGE: s3
+  IMAGUNITY_RELAY_S3_ENDPOINT: http://relais-s3:8333
+  IMAGUNITY_RELAY_S3_BUCKET: imagunity-relais
+  # Fichiers temporaires de téléversement seulement (volume éphémère du pod).
+  IMAGUNITY_RELAY_STORAGE_DIR: /tmp/morceaux
+  IMAGUNITY_RELAY_DIRECTORY_URL: http://annuaire.imagunity.example:8090
+  IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
+  # Empreinte courte du responsable, vérifiée hors bande.
+  IMAGUNITY_RELAY_ORGANIZATION_CODE: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+  IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL: 5m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relais
+  labels: {app: relais}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: relais}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}   # mise à jour sans coupure : une instance à la fois
+  template:
+    metadata:
+      labels: {app: relais}
+    spec:
+      # Les attentes longues (30 s) se terminent avant l'arrêt (arrêt propre du relais : 40 s).
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: relais}
+      containers:
+        - name: relais
+          image: imagunity/relay
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8443}
+          envFrom:
+            - configMapRef: {name: relais}
+          env:
+            - name: IMAGUNITY_RELAY_INSTANCE
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: IMAGUNITY_RELAY_DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: relais-base, key: password}}
+            - name: IMAGUNITY_RELAY_S3_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: relais-s3, key: access-key}}
+            - name: IMAGUNITY_RELAY_S3_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: relais-s3, key: secret-key}}
+          lifecycle:
+            # Laisse à Traefik le temps de retirer l'instance avant le début de l'arrêt.
+            preStop:
+              sleep: {seconds: 5}
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 5
+            failureThreshold: 36      # jusqu'à 3 minutes (attente du stockage S3 au démarrage)
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: organisation, mountPath: /config, readOnly: true}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: organisation
+          configMap: {name: relais-organisation}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: relais
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: relais}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relais
+spec:
+  selector: {app: relais}
+  ports:
+    - {name: http, port: 8443, targetPort: http}
+---
+# Point d'entrée des box (Traefik de K3s). En production : TLS (certificat de l'établissement ou ACME) et un nom
+# d'hôte réel ; l'adresse publiée dans l'annuaire est https://<hôte>.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: relais
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: imagunity-relais-reessai@kubernetescrd
+spec:
+  rules:
+    - host: relais.imagunity.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: relais, port: {name: http}}
+---
+# Requête coupée par une instance qui s'arrête (erreur de connexion, avant toute réponse) : rejouée sur une autre.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: reessai
+spec:
+  retry:
+    attempts: 3
+    initialInterval: 200ms

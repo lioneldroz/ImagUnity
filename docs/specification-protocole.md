@@ -1,6 +1,6 @@
 # ImagUnity — Spécification du protocole de transport (IU-T)
 
-> **Statut : v0.7, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée, remplissage aléatoire, taille de morceau adaptative, priorité des séries et redondance entre plusieurs relais faits. Reste l'étape 7 (audit externe). Historique en fin de document.
+> **Statut : v0.8, en service** : étapes 1 à 5 faites (module `protocol`, relais IU-FILE et IU-MSG, adaptateur `iu` du `TransportPort`, **bascule** : campagne de la phase 8 passée sur IU-T, SimpleX retiré du code et du Compose ; § 13.4). Étape 6 (performances) en cours : annonce anticipée, remplissage aléatoire, taille de morceau adaptative, priorité des séries, redondance entre plusieurs relais et relais réparti sans état faits. Reste l'étape 7 (audit externe). Historique en fin de document.
 > Objet : définir un transport propre à ImagUnity, inspiré de XFTP et SMP, pour **remplacer SimpleX** (simplex-chat, relais SMP et XFTP) derrière le `TransportPort`.
 > Références : [note d'architecture](ImagUnity%20—%20Note%20d'architecture.docx), [plan de réalisation](plan-de-realisation.md), [phase 1](phase1-simplex.md), [annuaire signé](annuaire-signe.md), [chiffrement applicatif](chiffrement-applicatif.md).
 
@@ -250,6 +250,28 @@ La box crée tous les morceaux (requêtes légères), envoie aussitôt la descri
 - **Coût** : la bande passante montante de la box est multipliée par le nombre de copies. Sur une liaison lente, `IMAGUNITY_IU_REPLICAS=1` garde une signalisation redondante (une file par relais) sans doubler les morceaux.
 - **Métadonnées** : chaque relais voit les mêmes volumes et horaires que s'il était seul ; la redondance ne lui révèle rien de plus. Des relais opérés par des tiers différents qui mettraient leurs journaux en commun pourraient associer les copies par leurs tailles et leurs horaires.
 - **Plus tard (« forme 2 »)** : un relais sans état derrière un répartiteur de charge (stockage des morceaux partagé, anti-rejeu en base, purge unique), pour la disponibilité d'un même relais sans multiplier les copies.
+
+### 6.8 Relais réparti (sans état)
+
+**v0.8** : un relais peut tourner en **plusieurs instances identiques derrière un répartiteur de charge** (Traefik). Les box ne voient qu'une adresse ; une instance peut tomber, être redémarrée ou mise à jour sans perte ni coupure. Contrairement au § 6.7, rien n'est copié : la bande passante des box est inchangée. Les deux formes se combinent (plusieurs relais, chacun réparti).
+
+Tout l'état partagé est hors des instances :
+
+| État | Où | Règle entre instances |
+|---|---|---|
+| Morceaux, destinataires, files, messages, quotas | PostgreSQL | déjà en base |
+| Contenu des morceaux | **stockage compatible S3** (`IMAGUNITY_RELAY_STORAGE=s3`), ou disque pour une instance seule | un morceau déposé par une instance est retiré par une autre ; le téléversement est reçu dans un fichier temporaire local, vérifié (taille, empreinte, signature), puis envoyé au stockage |
+| **Anti-rejeu** (§ 6.3) | table `request_seen` | une requête rejouée vers une autre instance est refusée comme sur la même |
+| **Purge** des éléments expirés | bail en base (`relay_lease`) | une seule instance purge à la fois ; le bail est repris si elle s'arrête |
+| Annuaire vu du relais | tables de l'annuaire | une instance en retard ne remplace jamais une entrée par une émission plus ancienne |
+
+- **Attentes longues** : interrogation de la base, donc indépendantes de l'instance qui a reçu le dépôt.
+- **Sondes** : `/actuator/health/readiness` et `/actuator/health/liveness` ; le répartiteur retire une instance qui ne répond plus.
+- **Arrêt propre** : l'instance cesse d'accepter des requêtes et laisse finir celles en cours (40 s au plus, au-delà des 30 s d'une attente longue).
+- **Répartiteur** : délai de lecture du corps de 5 minutes, réponse sans délai imposé, pas de mise en tampon, **journaux d'accès coupés** (les chemins portent des identifiants de capacité, inutilisables sans la signature de chaque requête), nouvel essai sur une autre instance en cas d'erreur de connexion.
+- **Ce qui devient critique** : la base et le stockage S3, points uniques de panne du site. Leur redondance (réplication PostgreSQL, stockage S3 distribué) relève de l'exploitation. La perte d'un site relais entier reste couverte par le § 6.7.
+- **Métadonnées** : le stockage S3 ne voit que des objets chiffrés, nommés par l'identifiant opaque de leur émetteur ; aucun nom de fichier, aucune box nommée.
+
 
 ---
 
@@ -593,6 +615,17 @@ Fait ensuite : **redondance entre plusieurs relais indépendants** (v0.7, § 6.7
 
 Toutes les instances identiques (100/100, 600/600). Les premiers essais ont révélé trois blocages, corrigés avant ces mesures : un retrait figé sur un relais disparu sans fermer la connexion (lecture sans délai), un acquittement réessayé jusqu'à l'expiration sur le relais tombé, et une copie défaillante qui retenait la place de l'envoi.
 
+Fait ensuite : **relais réparti sans état** (v0.8, § 6.8). *Mesuré* sur la pile de la campagne ([`compose.relais-reparti.yml`](../deploy/compose.relais-reparti.yml) : deux instances `relay-a` et `relay-b`, Traefik, PostgreSQL, SeaweedFS comme stockage S3 ; résultats bruts [avant](../deploy/campagne/resultats/campagne-20261113-083550.json) et [après](../deploy/campagne/resultats/campagne-20261113-083808.json) l'ajout du nouvel essai dans Traefik) :
+
+| Scénario | Résultat | Accusé |
+|---|---|---|
+| Nominal, 50 Mo, par le répartiteur | | **11,9 s** (12,7 s avec un relais à une instance) |
+| Dépôt, destinataire éteint, inspection du stockage S3 et de la base | 1 407 fichiers, 184 Mo : aucune donnée en clair, entropie minimale des morceaux 8,0 bits/octet | 21,2 s |
+| Une instance arrêtée pendant le dépôt, 300 Mo | Traefik la retire, l'autre continue | 30,9 s, puis 20,5 s |
+| Redémarrage d'une instance après l'autre en plein transfert, 300 Mo | sans échec ; erreurs vues par les box : 14 avant le nouvel essai dans Traefik, 1 après (une attente longue coupée, réessayée) | 35,6 s, puis 43,5 s (attentes du scénario comprises) |
+
+Toutes les instances identiques (100/100, 600/600). Le stockage d'essai (SeaweedFS) doit être réglé sur de petits volumes (`-master.volumeSizeLimitMB=64`) : avec 1 Go par volume, il a occupé 20 Go de disque pour quelques centaines de mégaoctets de morceaux.
+
 ---
 
 ## Historique
@@ -604,5 +637,6 @@ Toutes les instances identiques (100/100, 600/600). Les premiers essais ont rév
 | 0.3 | 2026-11-12 | Décisions pour l'implémentation : appui sur les briques réalisées (annuaire signé, chiffrement applicatif, messages signés, TPM) ; **pas de seconde couche de chiffrement** des morceaux (paquets déjà chiffrés pour le destinataire, § 5) ; **dépôt authentifié par la signature d'identité de la box**, vérifiée par le relais d'après l'annuaire, au lieu de certificats clients (§ 6.4) ; AES-256-GCM au lieu de ChaCha20-Poly1305 (§ 4.1) ; **annonce anticipée reportée** à l'étape 6 (§ 6.6) ; adresse de la file dans le champ `transport` de l'entrée d'annuaire et appairage par l'annuaire (§ 9) ; JSON signé sur ses octets exacts (§ 7) ; correspondance avec le `TransportPort` (§ 13.2) ; métadonnée « couple émetteur / file » rendue explicite (§ 12, question 5) ; SimpleX gardé en parallèle jusqu'à la bascule. |
 | 0.4 | 2026-11-12 | Étape 4 : identifiant de dépôt **réservé par la box** et publié dans sa demande d'enrôlement, accepté par le relais seulement s'il figure dans l'entrée signée de cette box (§ 8.2, § 9) — la création de file exigeant une box déjà enrôlée, la v0.3 ne permettait pas de publier l'adresse à l'enrôlement ; adaptateur `iu`, boîte d'envoi, description en fragments, reprise et bascule depuis SimpleX (§ 13.4). |
 | 0.5 | 2026-11-12 | Étape 6 (première partie) : **annonce anticipée** par défaut (§ 6.6 : attente jusqu'à l'expiration, abandon par retrait des morceaux, sans message `file.cancel`), **remplissage pseudo-aléatoire** du dernier morceau (§ 5.2), mode de la description (§ 7) ; mesures (§ 13.4). |
+| 0.8 | 2026-11-13 | Étape 6 : **relais réparti sans état** (§ 6.8) : plusieurs instances derrière Traefik, anti-rejeu et bail de purge en base, annuaire en mise à jour conditionnelle, contenu des morceaux sur un stockage compatible S3, sondes et arrêt propre ; déploiement Compose et K3s. |
 | 0.7 | 2026-11-13 | Étape 6 : annonce du transfert dès les paquets confiés et restitution au fil de l'eau ([priorité des séries](priorite-dicom.md)) ; **plusieurs relais indépendants** (§ 6.7) : une file et une adresse d'annuaire par relais (`iu`, `iu-2`…, § 9), messages déposés sur tous et traités une fois, morceaux copiés sur `IMAGUNITY_IU_REPLICAS` relais, bascule par morceau au téléchargement. |
 | 0.6 | 2026-11-12 | Étape 6 : **taille de morceau adaptée à la liaison** (§ 5.2 : 3 s par morceau au débit mesuré, 512 morceaux au plus par paquet) ; mesures sur liaison à 2 Mbit/s (§ 13.4). |

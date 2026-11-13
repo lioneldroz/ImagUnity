@@ -304,6 +304,54 @@ class IuTransportRelaysTest {
         assertThat(b.events()).noneMatch(TransportEvent.FileOffered.class::isInstance);
     }
 
+    /** Relais réparti : deux instances sur la même base et le même stockage, derrière un répartiteur. */
+    private RoundRobinProxy distributedRelay() throws Exception {
+        String database = "reparti-" + UUID.randomUUID();
+        Path storage = Files.createTempDirectory("relais-reparti");
+        ConfigurableApplicationContext one = RelayHarness.relay(database, storage, "relais-a");
+        ConfigurableApplicationContext two = RelayHarness.relay(database, storage, "relais-b");
+        relays.add(one);
+        relays.add(two);
+        RoundRobinProxy proxy = new RoundRobinProxy(List.of(RelayHarness.url(one), RelayHarness.url(two)));
+        stoppers.add(proxy::close);
+        return proxy;
+    }
+
+    @Test
+    void aDistributedRelayServesEachRequestFromWhicheverInstance() throws Exception {
+        RoundRobinProxy proxy = distributedRelay();
+        Box a = a(List.of(proxy.url()), 0);
+        Box b = b(List.of(proxy.url()));
+        PeerId[] peers = pair(a, b);
+        a.transport().sendMessage(peers[0], "par le répartiteur");
+        assertThat(b.await(TransportEvent.MessageReceived.class).text()).isEqualTo("par le répartiteur");
+
+        Path packet = randomFile(dir.resolve("envoi/paquet-7.iu1"), 3_000_000);
+        a.transport().sendFile(peers[0], packet);
+        TransportEvent.FileOffered offered = b.await(TransportEvent.FileOffered.class);
+        b.transport().receiveFile(offered.fileId(), dir.resolve("recu/paquet-7.iu1"));
+        assertThat(Files.mismatch(packet, b.await(TransportEvent.FileReceived.class).path())).isEqualTo(-1);
+        assertThat(proxy.served.values()).as("les deux instances ont servi").hasSize(2)
+                .allSatisfy(n -> assertThat(n.get()).isGreaterThan(5));
+    }
+
+    @Test
+    void aDistributedRelayKeepsWorkingWhenAnInstanceStops() throws Exception {
+        RoundRobinProxy proxy = distributedRelay();
+        Box a = a(List.of(proxy.url()), 0);
+        Box b = b(List.of(proxy.url()));
+        PeerId[] peers = pair(a, b);
+        Path packet = randomFile(dir.resolve("envoi/paquet-8.iu1"), 3_000_000);
+        long fileId = a.transport().sendFile(peers[0], packet);
+        uploaded(a, fileId);
+        relays.get(relays.size() - 2).close(); // une instance s'arrête : ses morceaux restent sur le stockage
+        TransportEvent.FileOffered offered = b.await(TransportEvent.FileOffered.class);
+        b.transport().receiveFile(offered.fileId(), dir.resolve("recu/paquet-8.iu1"));
+        assertThat(Files.mismatch(packet, b.await(TransportEvent.FileReceived.class).path())).isEqualTo(-1);
+        b.transport().sendMessage(peers[1], "accusé");
+        assertThat(a.await(TransportEvent.MessageReceived.class).text()).isEqualTo("accusé");
+    }
+
     @Test
     void theNumberOfCopiesCanBeLimited() throws Exception {
         URI r1 = relay();

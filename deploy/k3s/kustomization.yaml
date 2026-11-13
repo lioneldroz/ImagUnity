@@ -1,0 +1,21 @@
+# Relais IU-T réparti sur K3s (spécification § 6.8) : plusieurs instances sans état derrière Traefik, base PostgreSQL
+# et stockage S3 partagés.
+#
+#   kubectl apply -k deploy/k3s
+#
+# Avant : créer les secrets (voir secrets.exemple.yaml) et le ConfigMap de la clé publique du responsable :
+#   kubectl -n imagunity-relais create configmap relais-organisation --from-file=organisation.pub.json
+# PostgreSQL et S3 de ce dossier sont des déploiements d'essai à une instance ; en production, une base répliquée
+# (opérateur CloudNativePG, par exemple) et un stockage S3 redondant (MinIO distribué, Garage, service S3 externe).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: imagunity-relais
+resources:
+  - namespace.yaml
+  - relais.yaml
+  - traefik-config.yaml
+  - essai/postgres.yaml
+  - essai/s3.yaml
+images:
+  - name: imagunity/relay
+    newTag: campagne

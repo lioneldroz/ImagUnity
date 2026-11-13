@@ -1,0 +1,46 @@
+# PostgreSQL d'essai, une instance (non répliquée). En production : CloudNativePG ou une base gérée.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: relais-postgres
+spec:
+  serviceName: relais-postgres
+  replicas: 1
+  selector:
+    matchLabels: {app: relais-postgres}
+  template:
+    metadata:
+      labels: {app: relais-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          env:
+            - {name: POSTGRES_DB, value: relais}
+            - {name: POSTGRES_USER, value: relais}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: relais-base, key: password}}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {containerPort: 5432}
+          readinessProbe:
+            exec: {command: [pg_isready, -U, relais, -d, relais]}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: donnees, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata:
+        name: donnees
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relais-postgres
+spec:
+  selector: {app: relais-postgres}
+  ports:
+    - {port: 5432}

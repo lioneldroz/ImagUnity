@@ -1,7 +1,18 @@
 imagunity:
   relay:
-    # Contenu des morceaux (les métadonnées sont en base).
+    # Contenu des morceaux (les métadonnées sont en base) ; fichiers temporaires de téléversement dans tous les cas.
     storage-dir: ${IMAGUNITY_RELAY_STORAGE_DIR:./data/morceaux}
+    # Stockage des morceaux : disk (ce dossier) ou s3 (service compatible S3, partagé par plusieurs instances).
+    storage:
+      type: ${IMAGUNITY_RELAY_STORAGE:disk}
+      endpoint: ${IMAGUNITY_RELAY_S3_ENDPOINT:}
+      region: ${IMAGUNITY_RELAY_S3_REGION:us-east-1}
+      bucket: ${IMAGUNITY_RELAY_S3_BUCKET:imagunity-relais}
+      access-key: ${IMAGUNITY_RELAY_S3_ACCESS_KEY:}
+      secret-key: ${IMAGUNITY_RELAY_S3_SECRET_KEY:}
+      path-style: ${IMAGUNITY_RELAY_S3_PATH_STYLE:true}
+    # Nom de l'instance (journaux, baux) ; par défaut le nom de la machine.
+    instance-id: ${IMAGUNITY_RELAY_INSTANCE:}
     # Durée de séjour : demandée par la box, plafonnée ; morceau créé mais jamais téléversé : purgé plus tôt.
     default-ttl: 72h
     max-ttl: 7d
@@ -24,6 +35,8 @@ imagunity:
 spring:
   application:
     name: imagunity-relay
+  lifecycle:
+    timeout-per-shutdown-phase: 40s
   threads:
     virtual:
       enabled: true
@@ -34,6 +47,8 @@ spring:
 
 server:
   port: ${IMAGUNITY_RELAY_PORT:8443}
+  # Arrêt propre : le répartiteur cesse d'envoyer des requêtes, les attentes longues en cours (30 s au plus) finissent.
+  shutdown: graceful
   # Les morceaux arrivent en flux : pas de limite de corps propre à Spring ; la taille est contrôlée par le relais.
   tomcat:
     max-swallow-size: 16MB
@@ -43,3 +58,8 @@ management:
     web:
       exposure:
         include: health,info
+  # Sondes pour un répartiteur ou Kubernetes : /actuator/health/liveness et /actuator/health/readiness.
+  endpoint:
+    health:
+      probes:
+        enabled: true

@@ -1,0 +1,18 @@
+# Réglages du Traefik fourni par K3s (dans kube-system) : délais compatibles avec les attentes longues des box et les
+# morceaux de 8 Mio, journaux d'accès coupés (les chemins portent des identifiants de capacité).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        transport:
+          respondingTimeouts:
+            readTimeout: 5m
+            idleTimeout: 3m
+    logs:
+      access:
+        enabled: false

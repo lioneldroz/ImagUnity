@@ -1,0 +1,74 @@
+# Relais réparti (sans état, spécification § 6.8) : deux instances identiques du relais derrière le répartiteur
+# Traefik, sur la même base PostgreSQL et le même stockage S3 (SeaweedFS dans ce labo ; MinIO, Garage ou un service
+# S3 en production). Le service « relay » devient le répartiteur : les box gardent leur adresse.
+#
+#   docker compose -f docker-compose.yml -f compose.relais-reparti.yml up -d
+#
+# Comptes S3 et mots de passe : valeurs de test uniquement.
+
+x-relais-reparti: &relais-reparti
+  image: ${IMAGUNITY_RELAY_IMAGE:-imagunity-relay}
+  build:
+    context: ../backend
+    dockerfile: ../deploy/relay/Dockerfile
+  environment: &relais-env
+    IMAGUNITY_RELAY_DB_URL: jdbc:postgresql://relay-db:5432/relais
+    IMAGUNITY_RELAY_DB_PASSWORD: essai-synthetique
+    # Fichiers temporaires de téléversement seulement : le contenu vérifié part sur le stockage S3.
+    IMAGUNITY_RELAY_STORAGE_DIR: /tmp/morceaux
+    IMAGUNITY_RELAY_STORAGE: s3
+    IMAGUNITY_RELAY_S3_ENDPOINT: http://s3:8333
+    IMAGUNITY_RELAY_S3_BUCKET: imagunity-relais
+    IMAGUNITY_RELAY_S3_ACCESS_KEY: relais-essai
+    IMAGUNITY_RELAY_S3_SECRET_KEY: secret-synthetique-de-test
+    IMAGUNITY_RELAY_DIRECTORY_URL: http://directory:8090
+    IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
+    IMAGUNITY_RELAY_ORGANIZATION_CODE: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:?empreinte du responsable, vérifiée hors bande}
+    IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:-5m}
+  volumes:
+    - ./annuaire/organisation.pub.json:/config/organisation.pub.json:ro
+  depends_on: [relay-db, directory, s3]
+  networks: [relais]
+  restart: unless-stopped
+
+services:
+
+  relay-a:
+    <<: *relais-reparti
+    environment:
+      <<: *relais-env
+      IMAGUNITY_RELAY_INSTANCE: relay-a
+
+  relay-b:
+    <<: *relais-reparti
+    environment:
+      <<: *relais-env
+      IMAGUNITY_RELAY_INSTANCE: relay-b
+
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/config/s3.json -master.volumeSizeLimitMB=64 -master.volumePreallocate=false
+    volumes:
+      - relay-s3-data:/data
+      - ./relais-reparti/s3.json:/config/s3.json:ro
+    networks: [relais]
+
+  # Le service « relay » devient le répartiteur : même nom, même port, les box ne changent rien.
+  relay:
+    image: traefik:v3.5.3
+    build: !reset null
+    environment: !reset {}
+    command:
+      - --entrypoints.relais.address=:8443
+      # Attentes longues des box (30 s côté relais) : lecture du corps bornée, réponse sans limite.
+      - --entrypoints.relais.transport.respondingTimeouts.readTimeout=5m
+      - --entrypoints.relais.transport.respondingTimeouts.idleTimeout=3m
+      - --providers.file.filename=/etc/traefik/relais.yml
+      - --accesslog=false
+      - --log.level=INFO
+    volumes: !override
+      - ./relais-reparti/traefik.yml:/etc/traefik/relais.yml:ro
+    depends_on: !override [relay-a, relay-b]
+
+volumes:
+  relay-s3-data:
