@@ -28,6 +28,11 @@ jobs:
           distribution: temurin     # JDK Eclipse Temurin (build OpenJDK)
           java-version: '25'
           cache: maven               # Met en cache ~/.m2 pour accélérer les builds suivants
+      - uses: actions/setup-node@v7 # La console React est construite et embarquée dans le jar de la box
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - run: sh ./mvnw -B -ntp verify
         # mvnw  : Maven Wrapper (utilise la version de Maven définie dans le projet)
         # sh    : évite les problèmes si le fichier n'a pas le bit exécutable

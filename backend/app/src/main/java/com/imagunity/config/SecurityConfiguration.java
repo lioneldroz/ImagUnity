@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
@@ -49,6 +48,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 class SecurityConfiguration {
 
     static final String CONSOLE_HEADER = "X-ImagUnity-Console";
+    static final String CONTENT_SECURITY_POLICY = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+            + "form-action 'none'; object-src 'none'";
     static final String DICOMWEB = "/dicomweb";
     static final String ROLE_OPERATOR = "OPERATEUR";
     static final String ROLE_DICOMWEB = "DICOMWEB";
@@ -67,7 +68,8 @@ class SecurityConfiguration {
                 // Pas de jeton CSRF : sans session ni cookie, l'en-tête de la console en tient lieu.
                 .csrf(csrf -> csrf.disable())
                 .addFilterAfter(new ConsoleHeaderFilter(), BasicAuthenticationFilter.class)
-                .headers(Customizer.withDefaults())
+                // La console (servie sur « / ») ne charge rien d'extérieur ni aucun script en ligne.
+                .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY)))
                 .build();
     }
 

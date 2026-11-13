@@ -164,7 +164,12 @@ class LocalDirectoryTest {
         } finally {
             server.stop(0);
         }
-        assertThatThrownBy(client::fetch).isInstanceOf(DirectoryException.class).hasMessageContaining("injoignable");
+        assertThatThrownBy(client::fetch).isInstanceOf(DirectoryException.class).hasMessageContaining("injoignable")
+                .message().doesNotContain("null");
+        assertThat(DirectoryClient.reason(new java.net.ConnectException())).isEqualTo(
+                "connexion impossible (ConnectException)");
+        assertThat(DirectoryClient.reason(new java.io.IOException(" "))).contains("IOException");
+        assertThat(DirectoryClient.reason(new java.io.IOException("délai dépassé"))).isEqualTo("délai dépassé");
     }
 
     @Test

@@ -63,6 +63,27 @@ class SecurityWiringTest {
     }
 
     @Test
+    void theConsoleIsServedToTheOperatorOnlyWithAStrictContentSecurityPolicy() throws Exception {
+        HttpResponse<String> anonymous = send(request("/"));
+        assertThat(anonymous.statusCode()).as("console réservée au compte opérateur").isEqualTo(401);
+        HttpResponse<String> api = send(request("/api/v1/box")
+                .header("Authorization", basic("operateur", "mot-de-passe-de-test")));
+        assertThat(api.headers().firstValue("Content-Security-Policy")).hasValue(
+                SecurityConfiguration.CONTENT_SECURITY_POLICY);
+        // La console n'est dans le jar que s'il a été construit avec elle (sans -Dconsole.skip=true).
+        org.junit.jupiter.api.Assumptions.assumeTrue(getClass().getResource("/static/index.html") != null,
+                "box construite sans console");
+        HttpResponse<String> console = send(request("/")
+                .header("Authorization", basic("operateur", "mot-de-passe-de-test")));
+        assertThat(console.statusCode()).isEqualTo(200);
+        assertThat(console.headers().firstValue("Content-Type")).hasValueSatisfying(t -> assertThat(t).startsWith("text/html"));
+        assertThat(console.body()).contains("ImagUnity").contains("<script type=\"module\"");
+        assertThat(console.headers().firstValue("Content-Security-Policy")).hasValue(
+                SecurityConfiguration.CONTENT_SECURITY_POLICY);
+        assertThat(console.headers().firstValue("X-Frame-Options")).hasValue("DENY");
+    }
+
+    @Test
     void stateChangesRequireTheConsoleHeader() throws Exception {
         String operator = basic("operateur", "mot-de-passe-de-test");
         HttpResponse<String> withoutHeader = send(request("/api/v1/transfers/" + UUID.randomUUID() + "/retry")
