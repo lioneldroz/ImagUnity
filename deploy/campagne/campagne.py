@@ -748,6 +748,95 @@ def scenario_relais_coupe_pendant():
     return result
 
 
+# --- Relais réparti (compose.relais-reparti.yml) -----------------------------------
+
+def scenario_reparti():
+    """Relais réparti, nominal : deux instances derrière Traefik, morceaux sur le stockage S3 ; inspection du stockage
+    pendant que la box B est éteinte."""
+    events = {}
+
+    def during(transfer):
+        transfer.wait_for(lambda s: s == "ANNOUNCED", 600, "annonce")
+        wait(lambda: uploaded(transfer), 600, 0.5, "téléversement")
+        markers = {"nom du patient": PATIENT_NAME.encode(), "identifiant du patient": b"IU-CAMPAGNE-",
+                   "Study Instance UID": transfer.study_uid.encode(), "en-tête DICOM": b"DICM",
+                   "message ImagUnity": b"imagunity.transfer"}
+        events["inspectionStockage"] = inspect_volumes(["relay-s3-data", "relay-db-data"], markers)
+        compose("start", "box-b")
+
+    compose("stop", "box-b")
+    try:
+        result = full_transfer("reparti", 2, 50, during=during)
+    finally:
+        compose("start", "box-b")
+    result.update(events)
+    return result
+
+
+def inspect_volumes(names, markers):
+    """Cherche des données en clair dans des volumes Docker (stockage S3, base) ; entropie des gros fichiers."""
+    run("docker", "exec", container("relay-db"), "psql", "-U", "relais", "-d", "relais", "-c", "CHECKPOINT")
+    report = {"fichiers": 0, "octets": 0, "marqueursTrouves": {}, "volumes": names}
+    found = Counter()
+    entropies = []
+    for name in names:
+        root = Path(run("docker", "volume", "inspect", "-f", "{{.Mountpoint}}", f"{PROJECT}_{name}"))
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+            report["fichiers"] += 1
+            report["octets"] += len(data)
+            for label, marker in markers.items():
+                if marker in data:
+                    found[f"{label} dans {name}/{path.relative_to(root)}"] += 1
+            if name.endswith("s3-data") and len(data) > MO:
+                entropies.append(entropy(data[: 4 * MO]))
+    report["marqueursTrouves"] = dict(found)
+    if entropies:
+        report["entropieMin_bits"] = round(min(entropies), 4)
+    return report
+
+
+def scenario_instance_arretee():
+    """Une instance du relais arrêtée au milieu du dépôt (300 Mo) : Traefik la retire, l'autre continue."""
+    events = {}
+
+    def during(transfer):
+        transfer.wait_for(lambda s: s in ("PACKAGED", "ANNOUNCED"), 600, "empaquetage")
+        time.sleep(2)
+        events["arret_s"] = transfer.elapsed()
+        compose("stop", "relay-a")
+        log("[instance-arretee] instance relay-a arrêtée")
+
+    try:
+        result = full_transfer("instance-arretee", 4, 150, during=during)
+    finally:
+        compose("start", "relay-a")
+    result.update(events)
+    return result
+
+
+def scenario_redemarrage_tournant():
+    """Mise à jour simulée pendant un transfert de 300 Mo : relay-a redémarré, puis relay-b, l'un après l'autre."""
+    events = {}
+
+    def during(transfer):
+        transfer.wait_for(lambda s: s in ("PACKAGED", "ANNOUNCED"), 600, "empaquetage")
+        for instance in ("relay-a", "relay-b"):
+            events[f"{instance}_s"] = transfer.elapsed()
+            compose("restart", instance)
+            log(f"[redemarrage-tournant] {instance} redémarré")
+            wait(lambda: '"UP"' in run("docker", "exec", container("relay"), "wget", "-qO-",
+                                       f"http://{instance}:8443/actuator/health/readiness", check=False),
+                 120, 1, f"{instance} de nouveau disponible")
+            time.sleep(5)  # le répartiteur la réintègre à sa sonde suivante (toutes les 2 s)
+
+    result = full_transfer("redemarrage-tournant", 4, 150, during=during)
+    result.update(events)
+    return result
+
+
 SCENARIOS = {
     "nominal": scenario_nominal,
     "pare-feu": scenario_pare_feu,
@@ -762,9 +851,14 @@ SCENARIOS = {
     "relais-arrete-avant": scenario_relais_arrete_avant,
     "relais-arrete-apres-depot": scenario_relais_arrete_apres_depot,
     "relais-coupe-pendant": scenario_relais_coupe_pendant,
+    "reparti": scenario_reparti,
+    "instance-arretee": scenario_instance_arretee,
+    "redemarrage-tournant": scenario_redemarrage_tournant,
 }
 
-DEUX_RELAIS = {"deux-relais", "relais-arrete-avant", "relais-arrete-apres-depot", "relais-coupe-pendant"}
+DEUX_RELAIS = {"deux-relais", "relais-arrete-avant", "relais-arrete-apres-depot", "relais-coupe-pendant",
+               # relais réparti (compose.relais-reparti.yml)
+               "reparti", "instance-arretee", "redemarrage-tournant"}
 
 
 def main():
@@ -772,7 +866,8 @@ def main():
     parser.add_argument("scenarios", nargs="+", choices=[*SCENARIOS, "tout"])
     parser.add_argument("--sortie", type=Path, default=HERE / "resultats")
     args = parser.parse_args()
-    # « tout » : la pile à un relais ; les scénarios à deux relais demandent compose.deux-relais.yml.
+    # « tout » : la pile à un relais ; les scénarios à deux relais demandent compose.deux-relais.yml, ceux du relais
+    # réparti compose.relais-reparti.yml.
     names = [n for n in SCENARIOS if n not in DEUX_RELAIS] if "tout" in args.scenarios else args.scenarios
 
     ensure_paired()

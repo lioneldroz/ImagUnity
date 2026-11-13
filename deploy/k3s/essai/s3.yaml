@@ -1,0 +1,52 @@
+# Stockage S3 d'essai (SeaweedFS, une instance). En production : MinIO distribué, Garage ou un service S3 externe.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: relais-s3-comptes
+stringData:
+  s3.json: |
+    {"identities": [{"name": "relais",
+      "credentials": [{"accessKey": "relais-essai", "secretKey": "secret-synthetique-de-test"}],
+      "actions": ["Admin", "Read", "Write", "List"]}]}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: relais-s3
+spec:
+  serviceName: relais-s3
+  replicas: 1
+  selector:
+    matchLabels: {app: relais-s3}
+  template:
+    metadata:
+      labels: {app: relais-s3}
+    spec:
+      containers:
+        - name: s3
+          image: chrislusf/seaweedfs:3.97
+          args: [server, -dir=/data, -s3, -s3.port=8333, -s3.config=/config/s3.json, -master.volumeSizeLimitMB=64, -master.volumePreallocate=false]
+          ports:
+            - {containerPort: 8333}
+          volumeMounts:
+            - {name: donnees, mountPath: /data}
+            - {name: comptes, mountPath: /config, readOnly: true}
+      volumes:
+        - name: comptes
+          secret: {secretName: relais-s3-comptes}
+  volumeClaimTemplates:
+    - metadata:
+        name: donnees
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 5Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relais-s3
+spec:
+  selector: {app: relais-s3}
+  ports:
+    - {port: 8333}

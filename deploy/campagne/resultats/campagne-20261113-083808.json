@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-13T08:36:43+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.11.4",
+  "scenarios": [
+    {
+      "scenario": "redemarrage-tournant",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.82,
+        "RECEIVED": 7.73,
+        "PACKAGED": 8.91,
+        "ACKNOWLEDGED": 43.49,
+        "restored": 43.5
+      },
+      "debitBoutEnBout_Mo_s": 7.21,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "relay-a_s": 8.91,
+      "relay-b_s": 22.27
+    },
+    {
+      "scenario": "instance-arretee",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.78,
+        "RECEIVED": 7.12,
+        "PACKAGED": 8.29,
+        "ANNOUNCED": 11.6,
+        "ACKNOWLEDGED": 20.48,
+        "restored": 20.49
+      },
+      "debitBoutEnBout_Mo_s": 16.06,
+      "depotRelais_s": 3.31,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "arret_s": 10.29
+    }
+  ]
+}

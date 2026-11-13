@@ -72,6 +72,28 @@ public final class S3ChunkContents implements ChunkContents, AutoCloseable {
         }
     }
 
+    /**
+     * Comme {@link #ensureBucket()}, en attendant le service jusqu'à {@code patience} (démarrage simultané du relais et
+     * du stockage).
+     */
+    public void ensureBucket(java.time.Duration patience, java.time.Duration pause) throws IOException,
+            InterruptedException {
+        long deadline = System.nanoTime() + patience.toNanos();
+        while (true) {
+            try {
+                ensureBucket();
+                return;
+            } catch (IOException e) {
+                if (System.nanoTime() > deadline) {
+                    throw e;
+                }
+                System.getLogger(S3ChunkContents.class.getName()).log(System.Logger.Level.WARNING,
+                        "Stockage S3 pas encore prêt, nouvel essai : {0}", e.getMessage());
+                Thread.sleep(pause.toMillis());
+            }
+        }
+    }
+
     private void create() throws IOException {
         try {
             s3.createBucket(b -> b.bucket(bucket));

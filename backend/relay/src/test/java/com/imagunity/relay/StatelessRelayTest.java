@@ -158,6 +158,8 @@ class StatelessRelayTest {
                 "http://127.0.0.1:1"), "us-east-1", "essai", "secret", true), "b", null)) {
             assertThatThrownBy(unreachable::ensureBucket).isInstanceOf(IOException.class)
                     .hasMessageContaining("injoignable");
+            assertThatThrownBy(() -> unreachable.ensureBucket(Duration.ofMillis(300), Duration.ofMillis(100)))
+                    .isInstanceOf(IOException.class);
             assertThat(unreachable.key("x")).isEqualTo("x");
         }
     }
@@ -188,7 +190,7 @@ class StatelessRelayTest {
 
     private static RelayProperties.Storage storage(String type, URI endpoint, String access, String secret) {
         return new RelayProperties.Storage(type, endpoint, "us-east-1", "imagunity-relais", "morceaux/", access,
-                secret, true);
+                secret, true, Duration.ZERO);
     }
 
     private RelayProperties properties(RelayProperties.Storage storage) {

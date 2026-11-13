@@ -146,7 +146,12 @@ class RelayConfiguration {
         }
         S3ChunkContents s3 = new S3ChunkContents(S3ChunkContents.client(storage.endpoint(), storage.region(),
                 storage.accessKey(), storage.secretKey(), storage.pathStyle()), storage.bucket(), storage.prefix());
-        s3.ensureBucket();
+        try {
+            s3.ensureBucket(storage.startupPatience(), java.time.Duration.ofSeconds(2));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Démarrage interrompu", e);
+        }
         LOG.log(Level.INFO, "Morceaux sur le stockage {0} ({1})", s3, storage.endpoint());
         return s3;
     }

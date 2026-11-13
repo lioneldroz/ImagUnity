@@ -1,0 +1,101 @@
+{
+  "date": "2026-11-13T08:33:45+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.11.4",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.59,
+        "PACKAGED": 6.51,
+        "ANNOUNCED": 7.69,
+        "ACKNOWLEDGED": 11.89,
+        "restored": 11.89
+      },
+      "debitBoutEnBout_Mo_s": 4.43,
+      "depotRelais_s": 1.18,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "reparti",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.59,
+        "RECEIVED": 5.93,
+        "PACKAGED": 6.51,
+        "ANNOUNCED": 7.12,
+        "restored": 20.61,
+        "ACKNOWLEDGED": 21.2
+      },
+      "debitBoutEnBout_Mo_s": 2.5,
+      "depotRelais_s": 0.61,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      },
+      "inspectionStockage": {
+        "fichiers": 1407,
+        "octets": 184024386,
+        "marqueursTrouves": {},
+        "volumes": [
+          "relay-s3-data",
+          "relay-db-data"
+        ],
+        "entropieMin_bits": 8.0
+      }
+    },
+    {
+      "scenario": "instance-arretee",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.78,
+        "RECEIVED": 7.73,
+        "PACKAGED": 8.9,
+        "ANNOUNCED": 15.02,
+        "restored": 30.33,
+        "ACKNOWLEDGED": 30.93
+      },
+      "debitBoutEnBout_Mo_s": 10.52,
+      "depotRelais_s": 6.12,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "arret_s": 10.9
+    },
+    {
+      "scenario": "redemarrage-tournant",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.83,
+        "RECEIVED": 7.77,
+        "PACKAGED": 8.96,
+        "ACKNOWLEDGED": 35.6,
+        "restored": 35.61
+      },
+      "debitBoutEnBout_Mo_s": 8.9,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "relay-a_s": 8.96,
+      "relay-b_s": 19.19
+    }
+  ]
+}

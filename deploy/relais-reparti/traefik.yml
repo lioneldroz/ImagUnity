@@ -1,0 +1,28 @@
+# Répartiteur du relais réparti (configuration dynamique de Traefik, fournisseur « file »).
+http:
+  routers:
+    relais:
+      entryPoints: [relais]
+      rule: PathPrefix(`/`)
+      service: relais
+      middlewares: [reessai]
+  middlewares:
+    # Requête coupée par une instance qui s'arrête (erreur de connexion, avant toute réponse) : rejouée sur une
+    # autre. Les requêtes signées sont rejouables sans risque : l'anti-rejeu les refuse si la première a abouti.
+    reessai:
+      retry:
+        attempts: 3
+        initialInterval: 200ms
+  services:
+    relais:
+      loadBalancer:
+        servers:
+          - url: http://relay-a:8443
+          - url: http://relay-b:8443
+        # Une instance qui ne répond plus à sa sonde de disponibilité est retirée, puis réintégrée à son retour.
+        healthCheck:
+          path: /actuator/health/readiness
+          interval: 2s
+          timeout: 1s
+        # Pas de mise en tampon : les morceaux passent en flux.
+        passHostHeader: true

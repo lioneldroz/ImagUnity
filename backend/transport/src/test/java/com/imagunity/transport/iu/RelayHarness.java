@@ -77,11 +77,20 @@ final class RelayHarness {
      * relais. À refermer par l'essai (arrêt simulé d'un relais).
      */
     static ConfigurableApplicationContext relay(String name) throws Exception {
+        return relay(name, Files.createTempDirectory("relais"), name);
+    }
+
+    /**
+     * Instance de relais sur une base et un dossier de morceaux donnés : deux instances sur la même base et le même
+     * dossier simulent un relais réparti (spécification § 6.8).
+     */
+    static ConfigurableApplicationContext relay(String database, Path storage, String instance) throws Exception {
         ConfigurableApplicationContext context = new SpringApplicationBuilder(RelayApplication.class).run(
                 "--server.port=0", "--spring.jmx.enabled=false",
-                "--spring.datasource.url=jdbc:h2:mem:" + name + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                "--spring.datasource.url=jdbc:h2:mem:" + database + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
                 "--spring.datasource.username=sa",
-                "--imagunity.relay.storage-dir=" + Files.createTempDirectory("relais"),
+                "--imagunity.relay.instance-id=" + instance,
+                "--imagunity.relay.storage-dir=" + storage,
                 "--imagunity.relay.min-free-space=1MB",
                 "--imagunity.relay.max-wait=2s", "--imagunity.relay.max-queues-per-box=100",
                 "--imagunity.relay.directory.url=" + directoryUrl,

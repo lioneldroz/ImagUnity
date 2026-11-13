@@ -61,10 +61,12 @@ public record RelayProperties(
      * @param secretKey secret du compte S3 (à fournir par l'environnement, jamais dans un fichier versionné)
      * @param pathStyle adressage par chemin ({@code http://service/compartiment/objet}), requis par la plupart des
      *                  services autres qu'AWS
+     * @param startupPatience attente du service S3 au démarrage du relais
      */
     public record Storage(@DefaultValue("disk") String type, URI endpoint, @DefaultValue("us-east-1") String region,
                           @DefaultValue("imagunity-relais") String bucket, @DefaultValue("morceaux/") String prefix,
-                          String accessKey, String secretKey, @DefaultValue("true") boolean pathStyle) {
+                          String accessKey, String secretKey, @DefaultValue("true") boolean pathStyle,
+                          @DefaultValue("2m") java.time.Duration startupPatience) {
 
         public boolean s3() {
             return "s3".equalsIgnoreCase(type);
