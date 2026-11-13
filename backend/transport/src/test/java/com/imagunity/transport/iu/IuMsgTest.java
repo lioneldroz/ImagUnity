@@ -59,12 +59,12 @@ class IuMsgTest {
         IuMailbox.Queue queue = queueOfB();
         IuMessenger a = messengerOfA();
         // B est « éteinte » : A dépose quand même.
-        SignedMessage first = a.send(queue.address(), RelayHarness.B_KEM.publicKey(), "file.announce", "annonce 1");
-        a.send(queue.address(), RelayHarness.B_KEM.publicKey(), "file.announce", "annonce 2");
-        a.send(queue.address(), RelayHarness.B_KEM.publicKey(), "ping", "liaison");
+        SignedMessage first = a.send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "file.announce", "annonce 1");
+        a.send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "file.announce", "annonce 2");
+        a.send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "liaison");
 
         List<SignedMessage> delivered = new CopyOnWriteArrayList<>();
-        IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, DIRECTORY, delivered::add,
+        IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, delivered::add,
                 Clock.systemUTC());
         assertThat(mailbox.pollOnce(Duration.ZERO)).isEqualTo(3);
 
@@ -74,7 +74,7 @@ class IuMsgTest {
         assertThat(mailbox.pollOnce(Duration.ZERO)).as("acquittés : plus rien").isZero();
 
         // Même enveloppe déposée deux fois (rejeu) : remise une seule fois.
-        byte[] envelope = SignedMessage.of("file.ack", RelayHarness.A, "accusé", java.time.Instant.now())
+        byte[] envelope = SignedMessage.of("file.ack", RelayHarness.A, RelayHarness.B, "accusé", java.time.Instant.now())
                 .seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey());
         client.deposit(queue.address(), RelayHarness.A, RelayHarness.A_KEYS, envelope);
         client.deposit(queue.address(), RelayHarness.A, RelayHarness.A_KEYS, envelope);
@@ -86,18 +86,18 @@ class IuMsgTest {
     @Test
     void unknownSendersAreKeptBadMessagesDroppedAndFailedHandlingRetried() throws Exception {
         IuMailbox.Queue queue = queueOfB();
-        messengerOfA().send(queue.address(), RelayHarness.B_KEM.publicKey(), "ping", "un");
+        messengerOfA().send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "un");
 
         // Annuaire pas encore synchronisé : le message reste sur le relais.
         List<SignedMessage> delivered = new CopyOnWriteArrayList<>();
-        assertThat(new IuMailbox(client, queue, RelayHarness.B_KEM, id -> Optional.empty(), delivered::add,
+        assertThat(new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, id -> Optional.empty(), delivered::add,
                 Clock.systemUTC()).pollOnce(Duration.ZERO)).isZero();
         // Traitement en échec : pas d'acquittement, remis à la relève suivante.
-        IuMailbox failing = new IuMailbox(client, queue, RelayHarness.B_KEM, DIRECTORY, m -> {
+        IuMailbox failing = new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, m -> {
             throw new IllegalStateException("base indisponible");
         }, Clock.systemUTC());
         assertThatThrownBy(() -> failing.pollOnce(Duration.ZERO)).hasMessageContaining("base indisponible");
-        IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, DIRECTORY, delivered::add,
+        IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, delivered::add,
                 Clock.systemUTC());
         assertThat(mailbox.pollOnce(Duration.ZERO)).isEqualTo(1);
 
@@ -106,7 +106,7 @@ class IuMsgTest {
         client.deposit(queue.address(), RelayHarness.A, RelayHarness.A_KEYS,
                 MessageEnvelope.seal("x".getBytes(), HybridKemKeyPair.generate().publicKey()));
         client.deposit(queue.address(), RelayHarness.A, RelayHarness.A_KEYS,
-                SignedMessage.of("ping", RelayHarness.A, "falsifié", java.time.Instant.now())
+                SignedMessage.of("ping", RelayHarness.A, RelayHarness.B, "falsifié", java.time.Instant.now())
                         .seal(HybridKeyPair.generate(), RelayHarness.B_KEM.publicKey()));
         assertThat(mailbox.pollOnce(Duration.ZERO)).isZero();
         assertThat(client.receive(RelayHarness.relayUrl, queue.recvId(), queue.privateKey(), Duration.ZERO))
@@ -114,13 +114,48 @@ class IuMsgTest {
     }
 
     @Test
+    void unknownSendersCannotBlockTheQueueForever() throws Exception {
+        IuMailbox.Queue queue = queueOfB();
+        messengerOfA().send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "inconnu");
+        java.util.concurrent.atomic.AtomicReference<java.time.Instant> now =
+                new java.util.concurrent.atomic.AtomicReference<>(java.time.Instant.now());
+        Clock movable = new Clock() {
+            @Override
+            public java.time.ZoneId getZone() {
+                return java.time.ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public java.time.Instant instant() {
+                return now.get();
+            }
+        };
+        List<SignedMessage> delivered = new CopyOnWriteArrayList<>();
+        IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, id -> Optional.empty(),
+                delivered::add, movable);
+        assertThat(mailbox.pollOnce(Duration.ZERO)).isZero();
+        assertThat(client.receive(RelayHarness.relayUrl, queue.recvId(), queue.privateKey(), Duration.ZERO))
+                .as("gardé pour plus tard").hasSize(1);
+        now.set(now.get().plus(IuMailbox.UNKNOWN_SENDER_GRACE).plusSeconds(1));
+        assertThat(mailbox.pollOnce(Duration.ZERO)).isZero();
+        assertThat(client.receive(RelayHarness.relayUrl, queue.recvId(), queue.privateKey(), Duration.ZERO))
+                .as("écarté après le délai").isEmpty();
+        assertThat(delivered).isEmpty();
+    }
+
+    @Test
     void mailboxPollsContinuouslyUntilClosed() throws Exception {
         IuMailbox.Queue queue = queueOfB();
         List<SignedMessage> delivered = new CopyOnWriteArrayList<>();
-        try (IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, DIRECTORY, delivered::add,
+        try (IuMailbox mailbox = new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, delivered::add,
                 Clock.systemUTC())) {
             mailbox.start(d -> Thread.sleep(10));
-            messengerOfA().send(queue.address(), RelayHarness.B_KEM.publicKey(), "ping", "en direct");
+            messengerOfA().send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "en direct");
             for (int i = 0; i < 100 && delivered.isEmpty(); i++) {
                 Thread.sleep(50);
             }
@@ -129,12 +164,12 @@ class IuMsgTest {
 
         // Relève impossible (file inconnue) : la boucle réessaie sans s'arrêter, puis se ferme.
         IuMailbox.Queue unknown = new IuMailbox.Queue(queue.relay(), queue.sendId(), "x".repeat(43), queue.queueKey());
-        try (IuMailbox broken = new IuMailbox(client, unknown, RelayHarness.B_KEM, DIRECTORY, delivered::add,
+        try (IuMailbox broken = new IuMailbox(client, unknown, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, delivered::add,
                 Clock.systemUTC())) {
             broken.start(d -> Thread.sleep(5));
             Thread.sleep(100);
         }
-        new IuMailbox(client, queue, RelayHarness.B_KEM, DIRECTORY, delivered::add, Clock.systemUTC()).close();
+        new IuMailbox(client, queue, RelayHarness.B_KEM, RelayHarness.B, DIRECTORY, delivered::add, Clock.systemUTC()).close();
     }
 
     @Test
@@ -148,14 +183,14 @@ class IuMsgTest {
 
         IuMsgClient.Ids rotated = client.rotate(RelayHarness.relayUrl, queue.recvId(), queue.privateKey());
         assertThat(rotated.sendId()).isNotEqualTo(queue.sendId());
-        assertThatThrownBy(() -> messengerOfA().send(queue.address(), RelayHarness.B_KEM.publicKey(), "ping", "x"))
+        assertThatThrownBy(() -> messengerOfA().send(queue.address(), RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "x"))
                 .isInstanceOfSatisfying(RelayRefusedException.class, e -> assertThat(e.status()).isEqualTo(404));
         assertThatThrownBy(() -> client.ack(RelayHarness.relayUrl, rotated.recvId(), queue.privateKey(), "inconnu"))
                 .isInstanceOf(RelayRefusedException.class);
         IuMessenger stranger = new IuMessenger(client, UUID.randomUUID(), HybridKeyPair.generate(), Clock.systemUTC(),
                 quick);
         assertThatThrownBy(() -> stranger.send(new QueueAddress(RelayHarness.relayUrl, rotated.sendId()),
-                RelayHarness.B_KEM.publicKey(), "ping", "x"))
+                RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "x"))
                 .isInstanceOfSatisfying(RelayRefusedException.class, e -> assertThat(e.status()).isEqualTo(403));
         assertThatThrownBy(() -> client.receive(RelayHarness.relayUrl, rotated.recvId(),
                 HybridKeyPair.generate().ed25519().getPrivate(), Duration.ZERO)).isInstanceOf(RelayRefusedException.class);
@@ -182,7 +217,8 @@ class IuMsgTest {
             b.toString(), "--sortie", queue.toString()})).as(err.toString(StandardCharsets.UTF_8)).isZero();
         String address = out.toString(StandardCharsets.UTF_8).replaceAll("(?s).*annuaire : ", "").strip();
         assertThat(tool.run(new String[] {"message-envoyer", "--adresse", address, "--cles", a.toString(),
-            "--destinataire-chiffrement", b + ".chiffrement", "--type", "ping", "--corps", "bonjour B"}))
+            "--destinataire-box", RelayHarness.B.toString(), "--destinataire-chiffrement", b + ".chiffrement",
+            "--type", "ping", "--corps", "bonjour B"}))
                 .as(err.toString(StandardCharsets.UTF_8)).isZero();
         assertThat(tool.run(new String[] {"message-relever", "--file", queue.toString(), "--cles", b.toString(),
             "--annuaire", RelayHarness.directoryUrl.toString(), "--organisation", RelayHarness.organizationKey.toString(),

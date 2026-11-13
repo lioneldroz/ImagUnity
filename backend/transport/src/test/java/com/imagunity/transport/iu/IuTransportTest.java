@@ -190,6 +190,23 @@ class IuTransportTest {
     }
 
     @Test
+    void aMessageAlreadyHandledIsIgnoredAfterARestart() throws Exception {
+        Box a = a(true);
+        Box b = b(true);
+        PeerId[] peers = pair(a, b);
+        SignedMessage text = SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "une seule fois",
+                Instant.now());
+        b.transport().onMessage(text);
+        assertThat(b.await(TransportEvent.MessageReceived.class, m -> m.text().equals("une seule fois")).peer())
+                .isEqualTo(peers[1]);
+        b.transport().close();
+        Box restarted = b(false);
+        restarted.transport().onMessage(text); // redéposé par un relais après le redémarrage
+        Thread.sleep(200);
+        assertThat(restarted.all(TransportEvent.MessageReceived.class)).as("anti-rejeu gardé sur disque").isEmpty();
+    }
+
+    @Test
     void transfersResumeAfterARestartOfEitherBox() throws Exception {
         Box a = a(true);
         Box b = b(true);
@@ -298,10 +315,10 @@ class IuTransportTest {
         IuDirectory.Partner aEntry = entries.get(RelayHarness.A);
         entries.put(RelayHarness.A, new IuDirectory.Partner(aEntry.boxId(), aEntry.displayName(), false,
                 aEntry.signingKey(), aEntry.encryptionKey(), aEntry.address()));
-        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, "d'une box révoquée",
+        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "d'une box révoquée",
                 Instant.now()));
         entries.remove(RelayHarness.A);
-        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, "d'une box inconnue",
+        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "d'une box inconnue",
                 Instant.now()));
         entries.put(RelayHarness.A, aEntry);
         deposit(client, toB, "inconnu", "x");
@@ -331,7 +348,7 @@ class IuTransportTest {
     }
 
     private static void deposit(IuMsgClient client, QueueAddress to, String type, String body) throws Exception {
-        client.deposit(to, RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(type, RelayHarness.A, body,
+        client.deposit(to, RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(type, RelayHarness.A, RelayHarness.B, body,
                 Instant.now()).seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey()));
     }
 
@@ -351,7 +368,7 @@ class IuTransportTest {
         assertThat(json.length()).isGreaterThan(2 * IuTransport.FRAGMENT);
         String body = Codec.json().writeValueAsString(new IuTransport.Fragment("AAAAAAAAAAAAAAAAAAAAAA", 0, 9,
                 json.substring(0, IuTransport.FRAGMENT)));
-        byte[] sealed = SignedMessage.of(IuTransport.FILE, RelayHarness.A, body, Instant.now())
+        byte[] sealed = SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B, body, Instant.now())
                 .seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey());
         assertThat(MessageEnvelope.open(sealed, RelayHarness.B_KEM).length).isLessThan(MessageEnvelope.MAX_CONTENT);
     }

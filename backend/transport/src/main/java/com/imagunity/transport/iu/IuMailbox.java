@@ -41,7 +41,15 @@ public final class IuMailbox implements AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(IuMailbox.class.getName());
     /** Durée de mémoire des messages remis (au moins la durée de séjour sur le relais). */
-    static final Duration SEEN = Duration.ofDays(8);
+    /** Mémoire des messages vus : plus longue que l'âge maximal admis d'un message ({@link SignedMessage#MAX_AGE}). */
+    static final Duration SEEN = Duration.ofDays(9);
+    /**
+     * Message d'une box absente de l'annuaire : gardé ce délai sur le relais (son entrée peut arriver avec la lecture
+     * suivante de l'annuaire), puis écarté. Sans quoi une vingtaine de tels messages bloqueraient la relève.
+     */
+    static final Duration UNKNOWN_SENDER_GRACE = Duration.ofHours(1);
+    /** Pause quand un lot ne contient que des messages gardés pour plus tard. */
+    static final Duration HELD_PAUSE = Duration.ofSeconds(10);
 
     /**
      * File de réception de la box, à enregistrer (son identifiant de relève et sa clé sont secrets).
@@ -99,6 +107,10 @@ public final class IuMailbox implements AutoCloseable {
     private final Consumer<SignedMessage> handler;
     private final Clock clock;
     private final Map<String, Instant> seen = new LinkedHashMap<>();
+    /** Messages d'émetteurs inconnus gardés pour plus tard : identifiant du relais → première relève. */
+    private final Map<String, Instant> held = new LinkedHashMap<>();
+    private final UUID self;
+    private volatile boolean onlyHeld;
     private volatile Thread poller;
     private volatile boolean running;
 
@@ -107,9 +119,10 @@ public final class IuMailbox implements AutoCloseable {
      * @param directory clés de signature des box, d'après l'annuaire
      * @param handler   reçoit chaque message vérifié ; une exception laisse le message sur le relais
      */
-    public IuMailbox(IuMsgClient client, Queue queue, HybridKemKeyPair keys,
+    public IuMailbox(IuMsgClient client, Queue queue, HybridKemKeyPair keys, UUID self,
                      Function<UUID, Optional<HybridPublicKey>> directory, Consumer<SignedMessage> handler,
                      Clock clock) {
+        this.self = self;
         this.client = client;
         this.queue = queue;
         this.keys = keys;
@@ -129,16 +142,25 @@ public final class IuMailbox implements AutoCloseable {
         List<IuMsgClient.Received> received = client.receive(relay, queue.recvId(), queue.privateKey(), wait);
         forgetOld();
         int delivered = 0;
+        int kept = 0;
         for (IuMsgClient.Received message : received) {
             SignedMessage opened;
             try {
-                opened = SignedMessage.open(message.envelope(), keys, directory);
-            } catch (ProtocolException e) {
-                if (e.getMessage().contains("absente de l'annuaire")) {
+                opened = SignedMessage.open(message.envelope(), keys, directory, self, clock.instant());
+            } catch (SignedMessage.UnknownSender e) {
+                Instant first = held.computeIfAbsent(message.messageId(), id -> clock.instant());
+                if (clock.instant().isBefore(first.plus(UNKNOWN_SENDER_GRACE))) {
                     LOG.log(Level.WARNING, "Message d''une box absente de l''annuaire, gardé pour plus tard : {0}",
                             e.getMessage());
+                    kept++;
                     continue;
                 }
+                LOG.log(Level.WARNING, "Message d''une box toujours absente de l''annuaire, écarté : {0}",
+                        e.getMessage());
+                held.remove(message.messageId());
+                client.ack(relay, queue.recvId(), queue.privateKey(), message.messageId());
+                continue;
+            } catch (ProtocolException e) {
                 LOG.log(Level.WARNING, "Message écarté : {0}", e.getMessage());
                 client.ack(relay, queue.recvId(), queue.privateKey(), message.messageId());
                 continue;
@@ -152,6 +174,7 @@ public final class IuMailbox implements AutoCloseable {
             client.ack(relay, queue.recvId(), queue.privateKey(), message.messageId());
             delivered++;
         }
+        onlyHeld = kept > 0 && kept == received.size();
         return delivered;
     }
 
@@ -164,6 +187,14 @@ public final class IuMailbox implements AutoCloseable {
                 try {
                     pollOnce(Duration.ofSeconds(30));
                     pause = Duration.ofSeconds(1);
+                    if (onlyHeld) {
+                        // Lot entièrement gardé pour plus tard : le relais le rendrait aussitôt, sans attente.
+                        try {
+                            sleeper.sleep(HELD_PAUSE);
+                        } catch (InterruptedException interrupted) {
+                            return;
+                        }
+                    }
                 } catch (IOException | RuntimeException e) {
                     LOG.log(Level.WARNING, "Relève de la file impossible, nouvel essai : {0}", e.getMessage());
                     try {
@@ -183,6 +214,7 @@ public final class IuMailbox implements AutoCloseable {
     }
 
     private void forgetOld() {
+        held.values().removeIf(at -> at.isBefore(clock.instant().minus(SEEN)));
         Instant limit = clock.instant().minus(SEEN);
         for (Iterator<Instant> it = seen.values().iterator(); it.hasNext(); ) {
             if (it.next().isBefore(limit)) {

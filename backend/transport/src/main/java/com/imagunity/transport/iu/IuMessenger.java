@@ -30,11 +30,12 @@ public final class IuMessenger {
      * Envoie un message.
      *
      * @param to        adresse de la file du destinataire (annuaire)
+     * @param toBox     box destinataire
      * @param recipient clés de chiffrement du destinataire (annuaire)
      * @return le message signé envoyé
      */
-    public SignedMessage send(QueueAddress to, HybridKemPublicKey recipient, String type, String body) {
-        SignedMessage message = SignedMessage.of(type, boxId, body, clock.instant());
+    public SignedMessage send(QueueAddress to, UUID toBox, HybridKemPublicKey recipient, String type, String body) {
+        SignedMessage message = SignedMessage.of(type, boxId, toBox, body, clock.instant());
         byte[] envelope = message.seal(identity, recipient);
         retry.run("Dépôt du message " + type, () -> client.deposit(to, boxId, identity, envelope));
         return message;

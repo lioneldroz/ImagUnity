@@ -234,7 +234,7 @@ public final class IuTransport implements TransportPort {
         Duration pause = Duration.ofSeconds(1);
         while (!closed) {
             try {
-                IuMailbox box = new IuMailbox(messages, queue(relay, true), keys,
+                IuMailbox box = new IuMailbox(messages, queue(relay, true), keys, boxId,
                         id -> directory.partner(id).map(IuDirectory.Partner::signingKey), this::onMessage, clock);
                 if (closed) {
                     return;
@@ -421,7 +421,7 @@ public final class IuTransport implements TransportPort {
     private byte[] seal(UUID to, String type, String body) {
         IuDirectory.Partner partner = sendable(to);
         try {
-            return SignedMessage.of(type, boxId, body, clock.instant()).seal(identity, partner.encryptionKey());
+            return SignedMessage.of(type, boxId, to, body, clock.instant()).seal(identity, partner.encryptionKey());
         } catch (ProtocolException e) {
             throw new TransportException("Message pour « " + partner.displayName() + " » : " + e.getMessage(), e);
         }
@@ -451,17 +451,27 @@ public final class IuTransport implements TransportPort {
      * files de cette box sur plusieurs relais, n'est remis qu'une fois.
      */
     synchronized void onMessage(SignedMessage message) {
+        if (!deliveredLoaded) {
+            delivered.putAll(store.seenMessages());
+            deliveredLoaded = true;
+        }
         forgetDelivered();
         if (delivered.containsKey(message.messageId())) {
             return;
         }
         handle(message);
         delivered.put(message.messageId(), clock.instant());
+        // Gardé sur disque : un relais qui redépose un message déjà traité est ignoré, même après un redémarrage.
+        store.markSeen(message.messageId(), clock.instant());
     }
+
+    private boolean deliveredLoaded;
 
     private void forgetDelivered() {
         Instant limit = clock.instant().minus(IuMailbox.SEEN);
-        delivered.values().removeIf(at -> at.isBefore(limit));
+        if (delivered.values().removeIf(at -> at.isBefore(limit))) {
+            store.forgetSeenBefore(limit);
+        }
     }
 
     private void handle(SignedMessage message) {

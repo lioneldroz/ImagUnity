@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * recevoir --description &lt;f&gt; --sortie &lt;f&gt; [--fait &lt;f&gt;]
  *
  * file-creer       --relais &lt;url&gt; --cles &lt;identité&gt; --sortie &lt;file.json&gt;
- * message-envoyer  --adresse &lt;adresse de file&gt; --cles &lt;identité&gt; --destinataire-chiffrement &lt;clés&gt;
+ * message-envoyer  --adresse &lt;adresse de file&gt; --cles &lt;identité&gt; --destinataire-box &lt;uuid&gt; --destinataire-chiffrement &lt;clés&gt;
  *                  --type &lt;type&gt; --corps &lt;texte&gt;
  * message-relever  --file &lt;file.json&gt; --cles &lt;identité&gt; --annuaire &lt;url&gt; --organisation &lt;.pub.json&gt;
  *                  [--attente 30]
@@ -159,7 +159,7 @@ public final class IuFileTool {
         IuMessenger messenger = new IuMessenger(new IuMsgClient(http, Clock.systemUTC()), boxId(keys),
                 identity(keys), Clock.systemUTC(), retry);
         com.imagunity.protocol.SignedMessage sent = messenger.send(QueueAddress.parse(require(o, "adresse")),
-                recipient, require(o, "type"), require(o, "corps"));
+                UUID.fromString(require(o, "destinataire-box")), recipient, require(o, "type"), require(o, "corps"));
         out.println("Message " + sent.type() + " déposé (" + sent.messageId() + ")");
         return 0;
     }
@@ -186,7 +186,7 @@ public final class IuFileTool {
         directory.synchronize(new com.imagunity.directory.DirectoryClient(URI.create(require(o, "annuaire")),
                 Duration.ofSeconds(10))::fetch);
         IuMailbox mailbox = new IuMailbox(new IuMsgClient(http, Clock.systemUTC()), queue,
-                KeyFiles.readEncryptionPrivate(Path.of(keys + ".chiffrement"), phrase()),
+                KeyFiles.readEncryptionPrivate(Path.of(keys + ".chiffrement"), phrase()), boxId(keys),
                 id -> directory.entry(id).map(com.imagunity.directory.BoxEntry::signingKey),
                 message -> out.println("Reçu de " + message.boxId() + " : " + message.type() + " « " + message.body()
                         + " » (émis " + message.createdAt() + ")"), Clock.systemUTC());
@@ -234,7 +234,7 @@ public final class IuFileTool {
                            [--morceau-mio 4] [--duree-heures 72]
                   recevoir --description <f> --sortie <f> [--fait <f>]
                   file-creer       --relais <url> --cles <identité> --sortie <file.json>
-                  message-envoyer  --adresse <adresse> --cles <identité> --destinataire-chiffrement <clés>
+                  message-envoyer  --adresse <adresse> --cles <identité> --destinataire-box <uuid> --destinataire-chiffrement <clés>
                                    --type <type> --corps <texte>
                   message-relever  --file <file.json> --cles <identité> --annuaire <url> --organisation <.pub.json>
                                    [--attente 30]""");

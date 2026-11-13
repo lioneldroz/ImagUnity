@@ -110,7 +110,7 @@ class IuTransportEarlyTest {
                 RelayHarness.A_KEYS.publicKey(), RelayHarness.A_KEM.publicKey(), RelayHarness.relayUrl
                 + "/iu/v1/queues/" + "a".repeat(43)));
         new IuMsgClient(http, Clock.systemUTC()).deposit(QueueAddress.parse(entries.get(RelayHarness.B).address()),
-                RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(IuTransport.FILE, RelayHarness.A,
+                RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B,
                         Codec.json().writeValueAsString(new IuTransport.Fragment(state.transferId(), 0, 1,
                                 early.toJson())), Instant.now())
                         .seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey()));
@@ -173,7 +173,7 @@ class IuTransportEarlyTest {
                 RelayHarness.A_KEYS.publicKey(), RelayHarness.A_KEM.publicKey(), RelayHarness.relayUrl
                 + "/iu/v1/queues/" + "a".repeat(43)));
         new IuMsgClient(http, Clock.systemUTC()).deposit(QueueAddress.parse(entries.get(RelayHarness.B).address()),
-                RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(IuTransport.FILE, RelayHarness.A,
+                RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B,
                         Codec.json().writeValueAsString(new IuTransport.Fragment(state.transferId(), 0, 1,
                                 IuFileUploader.description(state, true).toJson())), Instant.now())
                         .seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey()));

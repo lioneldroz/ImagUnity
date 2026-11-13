@@ -102,12 +102,15 @@ class VectorsTest {
                 v.get("senderSigningKeys").get("ed25519").asString(),
                 v.get("senderSigningKeys").get("mlDsa65").asString()));
         UUID senderId = UUID.fromString(v.get("senderBoxId").asString());
+        UUID recipientId = UUID.fromString(v.get("recipientBoxId").asString());
         SignedMessage message = SignedMessage.open(b64(v.get("signedMessage")), keys,
-                id -> id.equals(senderId) ? Optional.of(sender) : Optional.empty());
+                id -> id.equals(senderId) ? Optional.of(sender) : Optional.empty(), recipientId,
+                java.time.Instant.parse(v.get("createdAt").asString()));
         assertThat(message.messageId()).isEqualTo(v.get("messageId").asString());
         assertThat(message.type()).isEqualTo(v.get("type").asString());
         assertThat(message.body()).isEqualTo(v.get("body").asString());
         assertThat(message.createdAt()).hasToString(v.get("createdAt").asString());
         assertThat(message.boxId()).isEqualTo(senderId);
+        assertThat(message.to()).isEqualTo(recipientId);
     }
 }

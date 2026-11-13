@@ -178,7 +178,7 @@ class IuTransportEdgeTest {
                     new IuTransport.Fragment("t", 0, IuTransport.MAX_FRAGMENTS + 1, "x"),
                     new IuTransport.Fragment("t", -1, 2, "x"), new IuTransport.Fragment(known.transferId(), 0, 1,
                             "rejoué"))) {
-                b.onMessage(SignedMessage.of(IuTransport.FILE, RelayHarness.A, Codec.json().writeValueAsString(bad),
+                b.onMessage(SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B, Codec.json().writeValueAsString(bad),
                         Instant.now()));
             }
             assertThat(b.store().incoming()).hasSize(before);
