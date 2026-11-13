@@ -44,13 +44,14 @@ Une version est valide si :
 R="java -jar backend/release/target/imagunity-release.jar"
 $R cle-creer --editeur "ImagUnity" --cles editeur.json          # + editeur.json.pub.json, empreinte affichée
 $R empreinte --cle-publique editeur.json.pub.json
-$R signer    --cles editeur.json --artefact imagunity-box.jar --version 0.2.0 --sequence 2
+$R signer    --cles editeur.json --artefact imagunity-box.jar --registre deploy/livraison/registre-versions.json
+$R signer    --cles editeur.json --artefact imagunity-box.jar --version 0.2.0 --sequence 2     # sans registre
 $R verifier  --cle-publique editeur.json.pub.json --manifeste imagunity-box.jar.manifeste.json --artefact imagunity-box.jar
 ```
 
 - La phrase de passe vient de `IMAGUNITY_PHRASE_EDITEUR`. Sinon, elle est saisie au terminal, deux fois à la création. `--sans-phrase` crée une clé en clair, sur choix explicite (déconseillé).
 - `signer` écrit le manifeste à côté de l'artefact (`--sortie` pour un autre emplacement).
-- L'éditeur tient le registre des numéros : chaque version reçoit le numéro suivant.
+- Avec `--registre`, la version est lue dans le jar et le numéro est le suivant du registre des versions, mis à jour au passage ; sans registre, l'éditeur donne lui-même `--version` et `--sequence`. Procédure complète : [livrer une version](livraison.md).
 
 ## 4. Dans la box
 

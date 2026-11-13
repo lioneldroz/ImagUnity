@@ -1,23 +1,30 @@
 #!/bin/sh
-# Prépare l'archive d'installation d'une box (éditeur) : lanceur, version de la box signée, scripts et services.
-#   1. construire : (cd backend && ./mvnw -DskipTests package)
-#   2. signer :     java -jar backend/release/target/imagunity-release.jar signer --cles editeur.json \
-#                     --artefact backend/app/target/imagunity-box.jar --version <v> --sequence <n>
-#   3. archiver :   sh deploy/box-systemd/construire-archive.sh <v>
+# Prépare l'archive d'installation d'une box (éditeur), à partir d'une version livrée et signée :
+#   sh deploy/box-systemd/construire-archive.sh <dossier>
+# <dossier> contient imagunity-box.jar, son manifeste signé (imagunity-box.jar.manifeste.json) et
+# imagunity-release.jar : en général le dossier « box » de la livraison (docs/livraison.md), après signature.
+# Sans argument : les jars construits dans backend/*/target. La version est lue dans le manifeste signé.
 set -eu
-VERSION=${1:?version, par exemple 0.14.0}
 ICI=$(cd "$(dirname "$0")" && pwd)
 RACINE=$(cd "$ICI/../.." && pwd)
-BOX="$RACINE/backend/app/target/imagunity-box.jar"
-for f in "$BOX" "$BOX.manifeste.json" "$RACINE/backend/release/target/imagunity-release.jar"; do
-    [ -f "$f" ] || { echo "Absent : $f (construire, puis signer la version)" >&2; exit 1; }
+if [ $# -ge 1 ]; then
+    SOURCE=$(cd "$1" && pwd)
+    BOX="$SOURCE/imagunity-box.jar"
+    LANCEUR="$SOURCE/imagunity-release.jar"
+else
+    BOX="$RACINE/backend/app/target/imagunity-box.jar"
+    LANCEUR="$RACINE/backend/release/target/imagunity-release.jar"
+fi
+for f in "$BOX" "$BOX.manifeste.json" "$LANCEUR"; do
+    [ -f "$f" ] || { echo "Absent : $f (la version doit être construite, puis signée)" >&2; exit 1; }
 done
-grep -q "\"version\\\\\":\\\\\"$VERSION\\\\\"" "$BOX.manifeste.json" || {
-    echo "Le manifeste signé ne porte pas la version $VERSION" >&2; exit 1; }
+# Version signée : champ « version » du manifeste (charge utile JSON échappée dans le document signé).
+VERSION=$(sed -n 's/.*\\"version\\":\\"\([^\\]*\)\\".*/\1/p' "$BOX.manifeste.json")
+[ -n "$VERSION" ] || { echo "Version introuvable dans $BOX.manifeste.json" >&2; exit 1; }
 NOM="imagunity-box-$VERSION"
 TRAVAIL=$(mktemp -d)
 mkdir -p "$TRAVAIL/$NOM"
-cp "$BOX" "$BOX.manifeste.json" "$RACINE/backend/release/target/imagunity-release.jar" "$TRAVAIL/$NOM/"
+cp "$BOX" "$BOX.manifeste.json" "$LANCEUR" "$TRAVAIL/$NOM/"
 cp -r "$ICI/bin" "$ICI/systemd" "$ICI/polkit" "$ICI/installer.sh" "$ICI/box.env.exemple" "$TRAVAIL/$NOM/"
 tar -C "$TRAVAIL" -czf "$RACINE/$NOM.tar.gz" "$NOM"
 rm -r "$TRAVAIL"

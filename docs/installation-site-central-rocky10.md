@@ -116,6 +116,8 @@ Dans `/opt/imagunity/deploy/site-central/.env` :
 | `RESEAU_ADMIN` | Adresses autorisées pour l'interface d'administration et le dépôt des entrées, en CIDR séparés par des espaces (par exemple `192.168.1.0/24 10.0.5.12/32`) |
 | `TLS_INTERNE` | Vide : certificats Let's Encrypt. `local_certs` : autorité interne de Caddy (§ 7) |
 | `EMPREINTE_RESPONSABLE` | Empreinte du § 4 |
+| `EMPREINTE_EDITEUR` | Empreinte de la clé de l'éditeur, vérifiée de vive voix ; sa clé publique va dans `config/editeur.pub.json` (§ 9) |
+| `IMAGUNITY_VERSION` | Version des images chargées depuis une livraison (§ 12) ; vide : images construites sur cette machine |
 | `RELAIS_DB_MOT_DE_PASSE`, `ANNUAIRE_DB_MOT_DE_PASSE`, `ANNUAIRE_MOT_DE_PASSE` | Chacun tiré au hasard : `openssl rand -base64 24` |
 | `RELAIS_QUOTA_PAR_BOX` | Volume de morceaux en attente par box (par défaut `100GB`) |
 
@@ -188,23 +190,14 @@ Les box se mettent à jour seules : chaque nuit, elles interrogent `https://<ann
 
 Deux canaux permettent un déploiement progressif : `pilote` pour quelques box choisies, `general` pour toutes les autres.
 
-L'éditeur signe la version sur son poste hors ligne ([mises à jour signées](mises-a-jour-signees.md)) :
+L'éditeur signe la version sur son poste hors ligne, en inscrivant son numéro au registre du dépôt ([livrer une version](livraison.md)). On la publie ici avec `publier-version.sh`. Le script vérifie l'empreinte de la clé de l'éditeur (`EMPREINTE_EDITEUR` du `.env`, clé publique dans `config/editeur.pub.json`), la signature et la présence au registre. Il dépose ensuite **le jar d'abord, le manifeste ensuite** :
 
 ```bash
-java -jar imagunity-release.jar signer --cles editeur.json --artefact imagunity-box.jar \
-    --version 0.15.0 --sequence 28 --sortie latest.json
-```
-
-Puis on dépose, **le jar d'abord, le manifeste ensuite** :
-
-```bash
-cp imagunity-box.jar /opt/imagunity/deploy/site-central/mises-a-jour/pilote/
-cp latest.json       /opt/imagunity/deploy/site-central/mises-a-jour/pilote/
+cd /opt/imagunity && git pull                                       # registre à jour
+sh deploy/site-central/publier-version.sh /chemin/box pilote        # dossier « box » de la livraison signée
 # Après quelques jours sans incident sur les box pilotes :
-cp mises-a-jour/pilote/imagunity-box.jar mises-a-jour/pilote/latest.json mises-a-jour/general/
+sh deploy/site-central/publier-version.sh deploy/site-central/mises-a-jour/pilote general
 ```
-
-Le nom du jar déposé doit être celui que porte le manifeste (`artifact.name`), c'est-à-dire le nom du fichier au moment de la signature.
 
 **Une version défectueuse ne se retire pas** : les box refusent tout retour en arrière. On publie une version corrigée de numéro supérieur.
 
@@ -250,6 +243,16 @@ systemctl daemon-reload && systemctl enable --now imagunity-sauvegarde.timer
 Copier ensuite `/srv/sauvegardes` hors de la machine. Pour restaurer une base : `docker compose exec -T directory-db pg_restore -U annuaire -d annuaire --clean < annuaire-<date>.dump`, et de même pour `relay-db`.
 
 ## 12. Mettre à jour le site central
+
+Depuis une livraison, sans rien construire ici ([livrer une version, § 6](livraison.md)) :
+
+```bash
+gunzip -c images.tar.gz | docker load          # images imagunity/relay:X.Y.Z et imagunity/directory:X.Y.Z
+# dans .env : IMAGUNITY_VERSION=X.Y.Z
+cd /opt/imagunity && git pull && cd deploy/site-central && docker compose up -d --no-build
+```
+
+Ou en construisant à partir des sources (`IMAGUNITY_VERSION` vide) :
 
 ```bash
 cd /opt/imagunity && git pull
