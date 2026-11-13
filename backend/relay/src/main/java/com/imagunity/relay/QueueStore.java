@@ -60,6 +60,11 @@ public final class QueueStore {
         return jdbc.sql("SELECT * FROM queue WHERE send_id = ?").param(sendId).query(QueueStore::queue).optional();
     }
 
+    /** Remplace la clé de relève d'une file (nouvelle demande de création par la box qui la possède). */
+    public void updateKey(String sendId, String queueKey) {
+        jdbc.sql("UPDATE queue SET queue_key = ? WHERE send_id = ?").params(queueKey, sendId).update();
+    }
+
     public int countOf(UUID boxId) {
         return jdbc.sql("SELECT COUNT(*) FROM queue WHERE box_id = ?").param(boxId).query(Integer.class).single();
     }

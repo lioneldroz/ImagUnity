@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 
@@ -79,6 +80,15 @@ public final class QueueService {
             throw new RelayException(HttpStatus.BAD_REQUEST, "Suite non prise en charge");
         }
         RequestAuthenticator.publicKey(request.queueKey());
+        if (request.sendId() != null) {
+            Optional<QueueStore.Queue> existing = store.bySendId(request.sendId());
+            if (existing.isPresent() && existing.get().boxId().equals(boxId)) {
+                // Même box, même adresse réservée : demande répétée (réponse perdue, ou box arrêtée avant d'avoir
+                // enregistré sa file). La file et ses messages sont gardés ; seule sa clé de relève est remplacée.
+                store.updateKey(request.sendId(), request.queueKey());
+                return new Ids(existing.get().sendId(), existing.get().recvId());
+            }
+        }
         if (store.countOf(boxId) >= properties.maxQueuesPerBox()) {
             throw new RelayException(HttpStatus.INSUFFICIENT_STORAGE, "Nombre maximal de files de cette box atteint");
         }

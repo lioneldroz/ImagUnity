@@ -116,6 +116,36 @@ class TpmSealTest {
     }
 
     @Test
+    void aSwitchInterruptedByAPowerCutNeverMixesTwoSealedPairs() throws IOException {
+        FakeTpm tpm = new FakeTpm("tpm-b");
+        Path base = dir.resolve("identite.json");
+        Path pub = Path.of(base + ".tpm.pub");
+        Path priv = Path.of(base + ".tpm.priv");
+        TpmSeal seal = new TpmSeal(base, "", tpm);
+        seal.seal("ancien".getBytes(StandardCharsets.UTF_8));
+        // Paire d'un nouveau secret, scellée ailleurs.
+        Path other = dir.resolve("autre.json");
+        new TpmSeal(other, "", tpm).seal("nouveau".getBytes(StandardCharsets.UTF_8));
+        byte[] newPub = Files.readAllBytes(Path.of(other + ".tpm.pub"));
+        byte[] newPriv = Files.readAllBytes(Path.of(other + ".tpm.priv"));
+
+        // Coupure après le marqueur et le premier renommage : le remplacement est terminé.
+        Files.write(pub, newPub);
+        Files.write(Path.of(priv + ".nouveau"), newPriv);
+        Files.write(Path.of(pub + ".pret"), new byte[0]);
+        assertThat(new String(seal.unseal(), StandardCharsets.UTF_8)).isEqualTo("nouveau");
+        assertThat(Path.of(priv + ".nouveau")).doesNotExist();
+        assertThat(Path.of(pub + ".pret")).doesNotExist();
+
+        // Coupure avant le marqueur : la nouvelle paire, peut-être incomplète, est abandonnée ; l'ancienne reste.
+        seal.seal("ancien".getBytes(StandardCharsets.UTF_8));
+        Files.write(Path.of(pub + ".nouveau"), newPub);
+        assertThat(seal.exists()).isTrue();
+        assertThat(Path.of(pub + ".nouveau")).doesNotExist();
+        assertThat(new String(seal.unseal(), StandardCharsets.UTF_8)).isEqualTo("ancien");
+    }
+
+    @Test
     void secretSealedByAnEarlierVersionIsResealedOutsideLockoutProtection() throws IOException {
         FakeTpm tpm = new FakeTpm("tpm-b");
         Path base = dir.resolve("ancienne.json");

@@ -373,6 +373,9 @@ public final class ReceiveOrchestrator {
                                                   TransferAnnouncement.Part part, InboundFile file) {
         Path work = inboxDir.resolve(transfer.peerName()).resolve("restore-" + transfer.transferId() + "-"
                 + part.index());
+        // Restes d'une restitution interrompue (arrêt de la box pendant le dépaquetage) : on repart de zéro, sinon
+        // le dépaquetage refuserait d'écraser les fichiers déjà extraits et le transfert échouerait.
+        deleteRecursively(work);
         InboundTransfer progressed;
         try {
             if (Files.size(file.file()) != part.size() || !sha256(file.file()).equals(part.sha256())) {

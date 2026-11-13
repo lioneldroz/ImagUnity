@@ -210,7 +210,9 @@ L'interface `https://<annuaire>/admin/` n'est ouverte que depuis `RESEAU_ADMIN`,
 À sauvegarder :
 - les bases de l'annuaire et du relais ;
 - `.env`, `config/` et le `Caddyfile` ;
-- le volume `caddy-data`, si l'autorité interne est utilisée.
+- le volume `caddy-data` (certificats, et surtout l'autorité interne si elle est utilisée).
+
+Le script ci-dessous sauvegarde les trois.
 
 Les morceaux du relais sont chiffrés et temporaires : ils ne se sauvegardent pas. La clé du responsable se sauvegarde **hors de cette machine**.
 
@@ -240,7 +242,7 @@ EOF
 systemctl daemon-reload && systemctl enable --now imagunity-sauvegarde.timer
 ```
 
-Copier ensuite `/srv/sauvegardes` hors de la machine. Pour restaurer une base : `docker compose exec -T directory-db pg_restore -U annuaire -d annuaire --clean < annuaire-<date>.dump`, et de même pour `relay-db`.
+Copier ensuite `/srv/sauvegardes` hors de la machine. Pour restaurer une base : `docker compose exec -T directory-db pg_restore -U annuaire -d annuaire --clean < annuaire-<date>.dump`, et de même pour `relay-db`. Pour les données de Caddy : `docker compose stop caddy`, puis `docker compose run --rm --no-deps -T --entrypoint tar caddy -xzf - -C /data < caddy-<date>.tar.gz`, puis `docker compose start caddy`.
 
 ## 12. Mettre à jour le site central
 

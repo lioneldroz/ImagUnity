@@ -304,7 +304,8 @@ public final class IuTransport implements TransportPort {
     }
 
     private IuMailbox.Queue createQueue(URI relay, boolean patient, String sendId) {
-        Retry.Call<IuMailbox.Queue> create = () -> IuMailbox.create(messages, relay, boxId, identity, sendId);
+        java.security.KeyPair key = IuMailbox.newQueueKey();
+        Retry.Call<IuMailbox.Queue> create = () -> IuMailbox.create(messages, relay, boxId, identity, sendId, key);
         if (patient) {
             return retry.run("Création de la file de réception", create);
         }

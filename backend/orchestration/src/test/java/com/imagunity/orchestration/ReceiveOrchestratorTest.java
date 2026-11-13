@@ -162,6 +162,25 @@ class ReceiveOrchestratorTest {
     }
 
     @Test
+    void leftoversOfAnInterruptedRestoreDoNotFailTheTransfer() throws IOException {
+        List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
+        TransferAnnouncement a = announcement(parts);
+        announce(a);
+        long fileId = offer(parts.getFirst());
+        // Box arrêtée pendant le dépaquetage du paquet : des fichiers déjà extraits restent dans le dossier de travail.
+        Path work = dir.resolve("inbox/box-a/restore-" + a.transferId() + "-1");
+        Files.write(Files.createDirectories(work.resolve("paquet/" + STUDY + ".1")).resolve(STUDY + ".1.1.dcm"),
+                "à moitié écrit".getBytes());
+        Files.createDirectories(work.resolve("clair"));
+
+        download(fileId, parts.getFirst());
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(restored).singleElement().satisfies(instances -> assertThat(instances).hasSize(2));
+        assertThat(work).doesNotExist();
+    }
+
+    @Test
     void unpairedSenderIsIgnored() throws IOException {
         PackagePart part = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE).getFirst();
         PeerId stranger = new PeerId(66);

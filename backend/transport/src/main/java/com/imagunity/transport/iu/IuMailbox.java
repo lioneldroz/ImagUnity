@@ -89,12 +89,24 @@ public final class IuMailbox implements AutoCloseable {
      */
     public static Queue create(IuMsgClient client, URI relay, UUID boxId, HybridKeyPair identity, String sendId)
             throws IOException {
-        KeyPair key;
+        return create(client, relay, boxId, identity, sendId, newQueueKey());
+    }
+
+    /** Clé de relève d'une nouvelle file, tirée une fois pour toutes les tentatives de création. */
+    static KeyPair newQueueKey() {
         try {
-            key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+            return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * Crée la file avec la clé de relève donnée : une demande répétée pour la même adresse réservée (réponse perdue)
+     * rend la même file, dont la clé de relève devient celle-ci.
+     */
+    static Queue create(IuMsgClient client, URI relay, UUID boxId, HybridKeyPair identity, String sendId, KeyPair key)
+            throws IOException {
         IuMsgClient.Ids ids = client.createQueue(relay, boxId, identity, key.getPublic(), sendId);
         return new Queue(relay.toString().replaceAll("/+$", ""), ids.sendId(), ids.recvId(),
                 Codec.base64Url(key.getPrivate().getEncoded()));

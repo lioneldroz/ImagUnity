@@ -189,6 +189,30 @@ class DicomRestorerTest {
     }
 
     @Test
+    void aPacsThatStopsAnsweringDoesNotBlockTheRestore() throws Exception {
+        StudyRestorer.Instance instance = instance(STUDY + ".1", STUDY + ".1.1");
+        // Accepte la connexion TCP puis ne répond jamais (PACS figé, connexion à moitié ouverte).
+        try (ServerSocket silent = new ServerSocket(0)) {
+            Thread accepting = Thread.ofVirtual().start(() -> {
+                try {
+                    silent.accept();
+                } catch (IOException ignored) {
+                    // fermé à la fin du test
+                }
+            });
+            Duration shortWait = Duration.ofMillis(300);
+            DicomRestorer frozen = new DicomRestorer(new RestoreConfig("127.0.0.1", silent.getLocalPort(),
+                    "ORTHANC_B", "IMAGUNITY_B"), new DicomRestorer.Timeouts(shortWait, shortWait, shortWait, shortWait));
+
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(20), () ->
+                    assertThatThrownBy(() -> frozen.restore(STUDY, List.of(instance)))
+                            .isInstanceOf(IOException.class).hasMessageContaining("injoignable"));
+            accepting.interrupt();
+        }
+        assertThat(DicomRestorer.Timeouts.DEFAULT.response()).isEqualTo(Duration.ofMinutes(5));
+    }
+
+    @Test
     void reportsInstancesRejectedByThePacs() throws Exception {
         pacs.stop();
         pacs = pacs(Long.MAX_VALUE); // « disque plein » : le PACS refuse chaque instance

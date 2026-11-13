@@ -36,7 +36,8 @@ public final class IuFileDownloader {
     private final HttpClient http;
     private final Clock clock;
     private final Retry retry;
-    private final Map<String, IuFileClient> clients = new HashMap<>();
+    /** Partagé par les réceptions menées en parallèle : table sûre en accès concurrent. */
+    private final Map<String, IuFileClient> clients = new java.util.concurrent.ConcurrentHashMap<>();
     /** Relais en échec récent : essayés en dernier. */
     private final Map<String, java.time.Instant> failing = new java.util.concurrent.ConcurrentHashMap<>();
     static final Duration FAILING_FOR = Duration.ofMinutes(1);
