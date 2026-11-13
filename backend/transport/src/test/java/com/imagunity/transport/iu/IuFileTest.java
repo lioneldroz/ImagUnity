@@ -66,18 +66,19 @@ class IuFileTest {
     void anInterruptedPreparationRemovesTheChunksAlreadyCreated() throws Exception {
         // Relais simulé : accepte la création du premier morceau, refuse la suivante.
         java.util.List<String> requests = new java.util.concurrent.CopyOnWriteArrayList<>();
+        int[] deleteStatus = {204};
         com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
                 new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/iu/v1/chunks", exchange -> {
             exchange.getRequestBody().readAllBytes();
             requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
             long creations = requests.stream().filter(r -> r.startsWith("POST")).count();
-            if (exchange.getRequestMethod().equals("POST") && creations == 1) {
+            if (exchange.getRequestMethod().equals("POST") && creations % 3 == 1) {
                 byte[] body = "{\"senderId\":\"premier\",\"recipientIds\":[\"r1\"]}".getBytes();
                 exchange.sendResponseHeaders(201, body.length);
                 exchange.getResponseBody().write(body);
             } else {
-                exchange.sendResponseHeaders(exchange.getRequestMethod().equals("DELETE") ? 204 : 400, -1);
+                exchange.sendResponseHeaders(exchange.getRequestMethod().equals("DELETE") ? deleteStatus[0] : 400, -1);
             }
             exchange.close();
         });
@@ -90,6 +91,15 @@ class IuFileTest {
                     .isInstanceOf(RelayRefusedException.class);
 
             assertThat(requests).as("morceau déjà créé supprimé du relais").contains("DELETE /iu/v1/chunks/premier");
+
+            // Copie sur ce relais d'un envoi préparé ailleurs : même nettoyage ; et une suppression refusée (500)
+            // n'empêche pas de signaler l'échec d'origine.
+            requests.clear();
+            deleteStatus[0] = 500;
+            IuFileUploader.UploadState prepared = uploader().prepare(packet(600 * 1024), 256 * 1024,
+                    Duration.ofHours(1));
+            assertThatThrownBy(() -> flaky.prepareCopy(prepared)).isInstanceOf(RelayRefusedException.class);
+            assertThat(requests).contains("DELETE /iu/v1/chunks/premier");
         } finally {
             server.stop(0);
         }
