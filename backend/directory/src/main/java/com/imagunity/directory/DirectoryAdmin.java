@@ -46,6 +46,12 @@ public final class DirectoryAdmin {
     @FunctionalInterface
     interface Prompt {
         char[] ask(String label);
+
+        /** Réponse visible (confirmation) ; par défaut comme {@link #ask}. */
+        default String answer(String label) {
+            char[] answer = ask(label);
+            return answer == null ? null : new String(answer);
+        }
     }
 
     private final PrintStream out;
@@ -68,7 +74,17 @@ public final class DirectoryAdmin {
 
     public static void main(String[] args) {
         java.io.Console console = System.console();
-        Prompt prompt = console == null ? label -> null : label -> console.readPassword("%s : ", label);
+        Prompt prompt = console == null ? label -> null : new Prompt() {
+            @Override
+            public char[] ask(String label) {
+                return console.readPassword("%s : ", label);
+            }
+
+            @Override
+            public String answer(String label) {
+                return console.readLine("%s : ", label);
+            }
+        };
         System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC(), System.getenv(), prompt).run(args));
     }
 
@@ -250,6 +266,18 @@ public final class DirectoryAdmin {
             out.println("Routage : règles " + draft.routing().rules().stream().map(r -> r.name() + " → " + r.to())
                     .toList());
         }
+        // Le brouillon vient de l'interface d'administration, qui peut être compromise : le responsable relit le
+        // document exact qu'il va signer, pas seulement son résumé.
+        out.println("Document exact à signer :");
+        out.println(tools.jackson.databind.json.JsonMapper.builder().build().readTree(draft.toJson())
+                .toPrettyString());
+        if (!o.containsKey("confirmer")) {
+            String answer = prompt.answer("Signer ce document ? Tapez « oui » pour confirmer");
+            if (answer == null || !answer.strip().equalsIgnoreCase("oui")) {
+                err.println("Signature abandonnée");
+                return 1;
+            }
+        }
         SignedDocument signed = organization.signConfiguration(draft);
         write(Path.of(require(o, "sortie")), signed);
         out.println("Configuration signée : à publier (configuration-publier)");
@@ -392,7 +420,7 @@ public final class DirectoryAdmin {
                   verifier           --cle-publique <fichier> --entree <fichier>
                   publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]
                   proteger           --cles <fichier> [--box]
-                  configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier>
+                  configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier> [--confirmer]
                   configuration-publier --annuaire <url> --configuration <fichier> [--compte <utilisateur:mot de passe>]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
@@ -400,7 +428,7 @@ public final class DirectoryAdmin {
     }
 
     /** Options {@code --nom valeur} et drapeaux sans valeur ({@code --sans-phrase}, {@code --box}). */
-    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box");
+    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box", "confirmer");
 
     private static Map<String, String> options(String[] args) {
         Map<String, String> options = new HashMap<>();

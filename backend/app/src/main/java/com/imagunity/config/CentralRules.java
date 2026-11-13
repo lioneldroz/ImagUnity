@@ -46,16 +46,27 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
     /** Compte rendu renvoyé au moins à cet intervalle, même sans changement. */
     static final Duration REPORT_EVERY = Duration.ofHours(1);
 
-    /** Document appliqué, tel que gardé sur disque. */
     /**
      * État gardé sur disque.
      *
      * @param document  document appliqué, ou {@code null} (configuration locale)
      * @param appliedAt date d'application
      * @param floor     plus haute version déjà appliquée : aucun document de numéro inférieur ou égal ne sera appliqué
+     * @param seen      documents vérifiés déjà vus (les {@value #REMEMBERED} plus récents), pour le repli
      */
-    record Stored(String document, Instant appliedAt, Long floor) {
+    record Stored(String document, Instant appliedAt, Long floor, List<String> seen) {
+
+        Stored(String document, Instant appliedAt, Long floor) {
+            this(document, appliedAt, floor, null);
+        }
     }
+
+    /**
+     * Documents vérifiés gardés en mémoire : quand la box n'est plus visée par le document appliqué, elle se replie
+     * sur le plus récent de ceux qu'elle a déjà vus et qui la visent encore, et un service d'annuaire compromis ne
+     * peut pas lui en faire appliquer un plus ancien en cachant les autres.
+     */
+    static final int REMEMBERED = 32;
 
     /** Version appliquée. */
     record Applied(CentralConfiguration configuration, RuleSet rules, Instant appliedAt) {
@@ -87,6 +98,11 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
     private final Path file;
     private final Clock clock;
     private volatile Applied applied;
+    /** Document appliqué (JSON signé), ou {@code null}. */
+    private String appliedDocument;
+    private Instant storedAt;
+    /** Documents vérifiés déjà vus, par numéro. */
+    private final java.util.TreeMap<Long, Candidate> seen = new java.util.TreeMap<>();
     private volatile long refused;
     private volatile String refusal;
     private volatile Instant checkedAt;
@@ -124,6 +140,14 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         try {
             Stored stored = JSON.readValue(Files.readString(file, StandardCharsets.UTF_8), Stored.class);
             floor = stored.floor() == null ? 0 : stored.floor();
+            storedAt = stored.appliedAt();
+            for (String json : stored.seen() == null ? List.<String>of() : stored.seen()) {
+                try {
+                    verified(SignedDocument.fromJson(json)).ifPresent(this::remember);
+                } catch (RuntimeException e) {
+                    LOG.warn("Document de configuration gardé illisible : écarté ({})", e.getMessage());
+                }
+            }
             if (stored.document() == null) {
                 return;
             }
@@ -131,6 +155,7 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
             CentralConfiguration configuration = CentralConfiguration.verify(document, organization, organizationKey,
                     clock);
             applied = new Applied(configuration, compile(configuration), stored.appliedAt());
+            appliedDocument = stored.document();
             floor = Math.max(floor, configuration.sequence());
             LOG.info("Configuration centrale {} en vigueur (appliquée le {})", configuration.describe(),
                     stored.appliedAt());
@@ -157,12 +182,22 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
             LOG.info("Configuration centrale n° {} : cette box n'est plus visée (groupes {})",
                     current0.configuration().sequence(), boxGroups);
             applied = null;
+            appliedDocument = null;
             dropped = true;
         }
         // Sinon, seuls les documents plus récents que tout ce qui a déjà été appliqué comptent (pas de retour en
         // arrière, même après un redémarrage).
         long current = dropped ? 0 : floor;
-        List<Candidate> candidates = documents.stream().map(this::verified).flatMap(Optional::stream)
+        List<Candidate> published = documents.stream().map(this::verified).flatMap(Optional::stream).toList();
+        boolean learned = false;
+        for (Candidate candidate : published) {
+            learned |= remember(candidate);
+        }
+        // Au repli, les documents déjà vus comptent aussi : l'annuaire ne choisit pas en les cachant.
+        java.util.Map<Long, Candidate> pool = new java.util.HashMap<>();
+        (dropped ? seen.values() : published).forEach(c -> pool.putIfAbsent(c.configuration().sequence(), c));
+        published.forEach(c -> pool.putIfAbsent(c.configuration().sequence(), c));
+        List<Candidate> candidates = pool.values().stream()
                 .filter(c -> c.configuration().target().includes(boxId, boxGroups))
                 .filter(c -> c.configuration().sequence() > current)
                 .sorted(Comparator.comparingLong((Candidate c) -> c.configuration().sequence()).reversed()).toList();
@@ -182,8 +217,9 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
             }
             Instant now = clock.instant();
             applied = new Applied(candidate, rules, now);
+            appliedDocument = found.document().toJson();
             floor = Math.max(floor, candidate.sequence());
-            save(found.document(), now);
+            save(now);
             LOG.info("Configuration centrale {} appliquée{}", candidate.describe(), candidate.author() == null ? ""
                     : " (par " + candidate.author() + (candidate.comment() == null ? "" : " : " + candidate.comment())
                     + ")");
@@ -191,8 +227,11 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         }
         if (dropped) {
             LOG.info("Aucune autre configuration centrale ne vise cette box : configuration locale en vigueur");
-            save(null, clock.instant());
+            save(clock.instant());
             return true;
+        }
+        if (learned) {
+            save(storedAt);
         }
         return false;
     }
@@ -226,12 +265,26 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         return rules.stream().map(r -> new RuleSet.Spec(r.name(), r.priority(), r.and(), r.or(), r.to())).toList();
     }
 
-    private void save(SignedDocument document, Instant at) {
+    /** Retient un document vérifié ; @return vrai s'il est nouveau et gardé */
+    private boolean remember(Candidate candidate) {
+        long sequence = candidate.configuration().sequence();
+        if (seen.containsKey(sequence) || seen.size() >= REMEMBERED && sequence < seen.firstKey()) {
+            return false;
+        }
+        seen.put(sequence, candidate);
+        while (seen.size() > REMEMBERED) {
+            seen.pollFirstEntry();
+        }
+        return true;
+    }
+
+    private void save(Instant at) {
+        storedAt = at;
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temp, JSON.writeValueAsString(new Stored(document == null ? null : document.toJson(), at,
-                    floor)), StandardCharsets.UTF_8);
+            Files.writeString(temp, JSON.writeValueAsString(new Stored(appliedDocument, at, floor,
+                    seen.values().stream().map(c -> c.document().toJson()).toList())), StandardCharsets.UTF_8);
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             LOG.warn("Configuration centrale non enregistrée ({}) : elle sera relue à la prochaine lecture de "

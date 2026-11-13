@@ -80,6 +80,8 @@ class CentralConfigurationTest {
         assertThatThrownBy(() -> new CentralConfiguration.Target(true, List.of(BOX))).hasMessageContaining("à la fois");
         assertThatThrownBy(() -> CentralConfiguration.Target.of(List.of(BOX, BOX))).hasMessageContaining("double");
         assertThatThrownBy(() -> draft(some, 0)).hasMessageContaining("numéro");
+        assertThatThrownBy(() -> draft(some, CentralConfiguration.MAX_SEQUENCE + 1)).hasMessageContaining("numéro");
+        assertThat(draft(some, CentralConfiguration.MAX_SEQUENCE).sequence()).isEqualTo(CentralConfiguration.MAX_SEQUENCE);
         assertThatThrownBy(() -> CentralConfiguration.draft("chu-exemple", some, 1, NOW, null, null, null, null))
                 .hasMessageContaining("vide");
         assertThatThrownBy(() -> CentralConfiguration.draft("chu-exemple", some, 1, NOW, null, null,
@@ -151,12 +153,20 @@ class CentralConfigurationTest {
                         List.of()), null).toJson());
         out.reset();
         assertThat(admin.run(new String[] {"configuration-signer", "--cles", keys, "--brouillon",
+                dir.resolve("brouillon.json").toString(), "--sortie", dir.resolve("refus.json").toString()}))
+                .as("sans confirmation").isEqualTo(1);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("abandonnée");
+        assertThat(dir.resolve("refus.json")).doesNotExist();
+        DirectoryAdmin confirming = new DirectoryAdmin(new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8), CLOCK, environment,
+                label -> label.startsWith("Signer") ? " OUI ".toCharArray() : null);
+        assertThat(confirming.run(new String[] {"configuration-signer", "--cles", keys, "--brouillon",
                 dir.resolve("brouillon.json").toString(), "--sortie", dir.resolve("config.json").toString()})).isZero();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("n° 7").contains("1 box").contains("thorax (1)")
-                .contains("chu → [box-b]");
+                .contains("chu → [box-b]").contains("Document exact").contains("\"InstitutionName\"");
         assertThat(admin.run(new String[] {"configuration-signer", "--cles", keys, "--brouillon",
-                dir.resolve("brouillon-tous.json").toString(), "--sortie", dir.resolve("tous.json").toString()}))
-                .isZero();
+                dir.resolve("brouillon-tous.json").toString(), "--sortie", dir.resolve("tous.json").toString(),
+                "--confirmer"})).isZero();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("toute l'organisation").contains("par défaut 5");
         KeyFiles.OrganizationPublicKey key = KeyFiles.readOrganizationPublic(Path.of(keys + ".pub.json"));
         SignedDocument signed = SignedDocument.fromJson(Files.readString(dir.resolve("config.json")));

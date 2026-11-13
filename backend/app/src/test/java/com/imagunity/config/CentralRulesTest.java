@@ -256,4 +256,45 @@ class CentralRulesTest {
         assertThat(restarted.synchronize(List.of(nord, nord7))).isTrue();
         assertThat(restarted.snapshot().sequence()).isEqualTo(7);
     }
+
+    @Test
+    void theFallbackUsesTheDocumentsAlreadySeenEvenIfTheDirectoryHidesThem() {
+        java.util.concurrent.atomic.AtomicReference<java.util.Collection<String>> groups =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of("imagerie-nord"));
+        Path file = dir.resolve("repli.json");
+        CentralRules rules = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), file, clock, groups::get);
+        SignedDocument old = document(2, CentralConfiguration.Target.everyone(), "Modality", false);
+        SignedDocument recent = document(3, CentralConfiguration.Target.everyone(), "BodyPartExamined", false);
+        SignedDocument nord = document(5, CentralConfiguration.Target.groups(List.of("imagerie-nord")), "Modality",
+                true);
+        assertThat(rules.synchronize(List.of(old, recent, nord))).isTrue();
+        assertThat(rules.snapshot().sequence()).isEqualTo(5);
+
+        // Box retirée du groupe ; l'annuaire (compromis) cache la n° 3 pour imposer la n° 2. Après un redémarrage.
+        CentralRules restarted = new CentralRules(BOX, "chu-exemple", ORG.publicKey(), file, clock, groups::get);
+        restarted.load();
+        groups.set(List.of());
+        assertThat(restarted.synchronize(List.of(old, nord))).isTrue();
+        assertThat(restarted.snapshot().sequence()).as("la plus récente déjà vue qui vise la box").isEqualTo(3);
+    }
+
+    @Test
+    void onlyTheMostRecentDocumentsAreRemembered() throws Exception {
+        CentralRules rules = rules();
+        List<SignedDocument> documents = new java.util.ArrayList<>();
+        for (int i = 1; i <= CentralRules.REMEMBERED + 3; i++) {
+            documents.add(document(i, CentralConfiguration.Target.of(List.of(UUID.randomUUID())), "Modality",
+                    false));
+        }
+        assertThat(rules.synchronize(documents)).as("aucun ne vise cette box").isFalse();
+        assertThat(rules.synchronize(documents.subList(0, 2))).as("trop anciens pour être gardés").isFalse();
+        tools.jackson.databind.JsonNode stored = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(java.nio.file.Files.readString(dir.resolve("configuration-centrale.json")));
+        assertThat(stored.get("seen")).hasSize(CentralRules.REMEMBERED);
+        java.nio.file.Files.writeString(dir.resolve("configuration-centrale.json"),
+                "{\"floor\":0,\"seen\":[\"illisible\"]}");
+        CentralRules reloaded = rules();
+        reloaded.load();
+        assertThat(reloaded.snapshot().sequence()).isZero();
+    }
 }
