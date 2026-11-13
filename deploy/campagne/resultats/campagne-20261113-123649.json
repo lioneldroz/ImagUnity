@@ -1,0 +1,224 @@
+{
+  "date": "2026-11-13T12:24:53+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.14.0",
+  "scenarios": [
+    {
+      "scenario": "nominal",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.63,
+        "RECEIVED": 6.04,
+        "PACKAGED": 6.65,
+        "ANNOUNCED": 7.85,
+        "restored": 10.82,
+        "ACKNOWLEDGED": 11.4
+      },
+      "debitBoutEnBout_Mo_s": 4.91,
+      "depotRelais_s": 1.2,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "pare-feu",
+      "scanAvant": {
+        "net-a": {
+          "ip": "172.30.0.6",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.2",
+          "ports": []
+        }
+      },
+      "scanApres": {
+        "net-a": {
+          "ip": "172.30.0.6",
+          "ports": []
+        },
+        "net-b": {
+          "ip": "172.30.0.2",
+          "ports": []
+        }
+      },
+      "transfert": {
+        "scenario": "pare-feu",
+        "instances": 100,
+        "tailleMo": 50.1,
+        "etatFinal": "ACKNOWLEDGED",
+        "chronologie_s": {
+          "cstore": 0.59,
+          "PACKAGED": 6.57,
+          "ANNOUNCED": 7.77,
+          "restored": 10.77,
+          "ACKNOWLEDGED": 11.37
+        },
+        "debitBoutEnBout_Mo_s": 4.92,
+        "depotRelais_s": 1.2,
+        "verification": {
+          "instancesA": 100,
+          "instancesB": 100,
+          "identiques": 100
+        }
+      }
+    },
+    {
+      "scenario": "coupure-reseau",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.82,
+        "RECEIVED": 7.18,
+        "PACKAGED": 8.37,
+        "ANNOUNCED": 14.57,
+        "ACKNOWLEDGED": 134.68,
+        "restored": 134.69
+      },
+      "debitBoutEnBout_Mo_s": 2.26,
+      "depotRelais_s": 6.2,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "coupure_s": 11.37,
+      "retablissement_s": 73.53,
+      "annonceApresRetablissement_s": -58.96
+    },
+    {
+      "scenario": "destinataire-eteint",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.62,
+        "PACKAGED": 5.94,
+        "ANNOUNCED": 7.1,
+        "ACKNOWLEDGED": 107.43,
+        "restored": 107.44
+      },
+      "debitBoutEnBout_Mo_s": 0.47,
+      "depotRelais_s": 1.16,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      },
+      "annonce_s": 7.1,
+      "inspectionRelais": {
+        "fichiers": 1326,
+        "octets": 67045917,
+        "marqueursTrouves": {},
+        "entropieMin_bits": null,
+        "volumes": [
+          "imagunity_relay-data",
+          "imagunity_relay-db-data"
+        ],
+        "morceaux": 0
+      },
+      "rallumage_s": 97.1,
+      "restitutionApresRallumage_s": 10.34
+    },
+    {
+      "scenario": "reparti",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.6,
+        "PACKAGED": 6.51,
+        "ANNOUNCED": 7.09,
+        "ACKNOWLEDGED": 24.33,
+        "restored": 24.34
+      },
+      "debitBoutEnBout_Mo_s": 2.11,
+      "depotRelais_s": 0.58,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      },
+      "inspectionStockage": {
+        "fichiers": 1446,
+        "octets": 1014356853,
+        "marqueursTrouves": {},
+        "volumes": [
+          "relay-s3-data",
+          "relay-db-data"
+        ],
+        "entropieMin_bits": 8.0
+      }
+    },
+    {
+      "scenario": "instance-arretee",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.8,
+        "RECEIVED": 7.71,
+        "PACKAGED": 8.89,
+        "ANNOUNCED": 12.4,
+        "restored": 28.42,
+        "ACKNOWLEDGED": 29.0
+      },
+      "debitBoutEnBout_Mo_s": 11.29,
+      "depotRelais_s": 3.51,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "arret_s": 10.89
+    },
+    {
+      "scenario": "redemarrage-tournant",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 1.81,
+        "RECEIVED": 7.14,
+        "PACKAGED": 7.73,
+        "ACKNOWLEDGED": 42.35,
+        "restored": 42.36
+      },
+      "debitBoutEnBout_Mo_s": 7.41,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "relay-a_s": 7.73,
+      "relay-b_s": 20.85
+    },
+    {
+      "scenario": "priorite",
+      "instances": 190,
+      "tailleMo": 95.2,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.59,
+        "PACKAGED": 6.54,
+        "ANNOUNCED": 7.12,
+        "restored": 94.04,
+        "ACKNOWLEDGED": 94.71
+      },
+      "debitBoutEnBout_Mo_s": 1.02,
+      "depotRelais_s": 0.58,
+      "verification": {
+        "instancesA": 190,
+        "instancesB": 190,
+        "identiques": 190
+      },
+      "serieThorax_s": 94.05,
+      "reglesPriorite": []
+    }
+  ]
+}

@@ -143,6 +143,34 @@ Ces points ont été vérifiés par la revue, sans constat. Ils restent dans le 
 - **Chemins de fichiers** : construits à partir d'identifiants validés (UID DICOM, AET, noms de partenaires), sans traversée de dossier.
 - **Relais** : il ne voit en clair ni le contenu ni les métadonnées DICOM. L'inspection octet par octet de la campagne d'essais l'a confirmé.
 
-## 5. Suites
+## 5. Vérification en conditions réelles
+
+Images reconstruites après les corrections (box 0.14.0, n° 26, signée par l'éditeur), puis campagne rejouée sur la pile Compose complète. La pile comprenait :
+
+- le relais réparti : deux instances derrière Traefik, PostgreSQL et stockage S3 ;
+- un TPM logiciel par box ;
+- les mises à jour signées et le routage.
+
+Les deux box ont été mises à jour ensemble, comme l'exige le champ destinataire des messages. Résultats bruts : [campagne-20261113-123649.json](../../deploy/campagne/resultats/campagne-20261113-123649.json).
+
+| Scénario | Instances arrivées et identiques | Remarque |
+|---|---|---|
+| nominal | 100/100 | 11,4 s de bout en bout |
+| pare-feu | 100/100 | aucun port ouvert côté Internet, avant comme après |
+| coupure-reseau | 600/600 | coupure de 60 s pendant le dépôt |
+| destinataire-eteint | 100/100 | aucun marqueur en clair dans les volumes du relais |
+| reparti | 100/100 | stockage S3 : aucun marqueur en clair, entropie minimale de 8,0 bits par octet |
+| instance-arretee | 600/600 | une instance arrêtée pendant le dépôt |
+| redemarrage-tournant | 600/600 | les deux instances redémarrées l'une après l'autre |
+| priorite | 190/190 | configuration centrale n° 2 en vigueur (sans règle de priorité), donc pas de série en avance, comme lors de l'essai précédent avec la même configuration |
+
+Constaté aussi au démarrage :
+
+- les migrations de base (`V7` sur les box, `V4` sur le relais) se sont appliquées ;
+- l'avertissement sur le lien PCR (`sha256:7` seul, constat C4) s'affiche.
+
+Dans les journaux, aucun message n'a été refusé comme destiné à une autre box, venu d'un émetteur inconnu ou trop ancien.
+
+## 6. Suites
 
 Les constats marqués « Reste », « Reporté » ou « Accepté » sont signalés à l'auditeur ([dossier § 9 et § 10](dossier-audit.md)). Ceux qu'il jugera prioritaires seront corrigés avant la mise en pilote.
