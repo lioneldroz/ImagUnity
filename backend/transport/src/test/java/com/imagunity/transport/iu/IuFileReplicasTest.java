@@ -131,6 +131,40 @@ class IuFileReplicasTest {
     }
 
     @Test
+    void aRelayThatFallsSilentMidChunkIsLeftForTheNextReplica() throws Exception {
+        com.sun.net.httpserver.HttpServer silent = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        silent.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+        silent.createContext("/iu/v1/chunks", exchange -> {
+            exchange.sendResponseHeaders(200, 256 * ChunkLayout.KIB);
+            exchange.getResponseBody().write(new byte[1000]);
+            exchange.getResponseBody().flush();
+            try {
+                Thread.sleep(10_000); // relais disparu sans fermer la connexion
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        silent.start();
+        Duration before = IuFileClient.idleTimeout;
+        IuFileClient.idleTimeout = Duration.ofMillis(400);
+        try {
+            Path packet = packet("paquet.iu1", 5);
+            IuFileUploader uploader = uploader();
+            IuFileUploader.UploadState first = uploader.upload(packet,
+                    uploader.prepare(packet, 256 * ChunkLayout.KIB, Duration.ofHours(1)), s -> { }, n -> { });
+            URI silentUrl = URI.create("http://127.0.0.1:" + silent.getAddress().getPort());
+            long start = System.nanoTime();
+            assertThat(Files.mismatch(packet, download(List.of(elsewhere(first, silentUrl), first)))).isEqualTo(-1);
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(8));
+        } finally {
+            IuFileClient.idleTimeout = before;
+            silent.stop(0);
+        }
+    }
+
+    @Test
     void theDownloadFailsOnceNoReplicaIsLeftOrPatienceRunsOut() throws Exception {
         Path packet = packet("paquet.iu1", 4);
         IuFileUploader uploader = uploader();

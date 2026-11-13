@@ -65,7 +65,9 @@ public final class IuTransport implements TransportPort {
     static final int FRAGMENT = 20_000;
     static final int MAX_FRAGMENTS = 2_000;
     /** Avec plusieurs relais : patience pour créer les morceaux sur l'un d'eux avant de l'écarter de l'envoi. */
-    static final Duration PICK_PATIENCE = Duration.ofSeconds(30);
+    static final Duration PICK_PATIENCE = Duration.ofSeconds(5);
+    /** Relais écarté d'un envoi : essayé une seule fois par envoi pendant cette durée. */
+    static final Duration UNREACHABLE_FOR = Duration.ofMinutes(1);
 
     /**
      * Réglages.
@@ -151,6 +153,9 @@ public final class IuTransport implements TransportPort {
     /** Un envoyeur de morceaux par relais. */
     private final java.util.Map<URI, IuFileUploader> uploaders = new java.util.LinkedHashMap<>();
     private final java.util.Map<URI, Object> queueLocks = new ConcurrentHashMap<>();
+    /** Mêmes relais, un seul essai : relais écartés récemment. */
+    private final java.util.Map<URI, IuFileUploader> onceUploaders = new java.util.LinkedHashMap<>();
+    private final java.util.Map<URI, Instant> unreachable = new ConcurrentHashMap<>();
     /** Mêmes relais, patience courte : choix des relais d'un envoi. */
     private final java.util.Map<URI, IuFileUploader> quickUploaders = new java.util.LinkedHashMap<>();
     private final IuFileDownloader downloader;
@@ -187,6 +192,8 @@ public final class IuTransport implements TransportPort {
             uploaders.put(relay, new IuFileUploader(client, boxId, identity, clock, retry));
             quickUploaders.put(relay, new IuFileUploader(client, boxId, identity, clock,
                     new Retry(PICK_PATIENCE, retry.maxDelay(), retry.sleeper())));
+            onceUploaders.put(relay, new IuFileUploader(client, boxId, identity, clock,
+                    new Retry(Duration.ZERO, retry.maxDelay(), retry.sleeper())));
         }
         this.downloader = new IuFileDownloader(http, clock, retry);
         this.patientDownloader = new IuFileDownloader(http, clock,
@@ -499,6 +506,14 @@ public final class IuTransport implements TransportPort {
         Path file = Path.of(outgoing.path());
         try {
             transfers.acquire();
+            // Rendu dès qu'une copie est complète : une copie qui traîne (relais en panne) ne retient pas les envois
+            // suivants.
+            java.util.concurrent.atomic.AtomicBoolean held = new java.util.concurrent.atomic.AtomicBoolean(true);
+            Runnable release = () -> {
+                if (held.compareAndSet(true, false)) {
+                    transfers.release();
+                }
+            };
             try {
                 long size = Files.size(file);
                 if (outgoing.state() == null) {
@@ -514,14 +529,14 @@ public final class IuTransport implements TransportPort {
                     outgoing = outgoing.describedNow();
                     store.save(outgoing);
                 }
-                outgoing = uploadCopies(file, size, outgoing);
+                outgoing = uploadCopies(file, size, outgoing, release);
                 if (!outgoing.described()) {
                     announceFile(outgoing, false);
                     emit(new TransportEvent.FileSent(new PeerId(outgoing.peerId()), outgoing.fileId()));
                 }
                 store.save(outgoing.announcedNow());
             } finally {
-                transfers.release();
+                release.run();
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -550,14 +565,18 @@ public final class IuTransport implements TransportPort {
             if (copies.size() >= settings.copies()) {
                 break;
             }
-            IuFileUploader uploader = several ? quickUploaders.get(relay) : uploaders.get(relay);
+            boolean down = unreachable.getOrDefault(relay, Instant.MIN).isAfter(clock.instant());
+            IuFileUploader uploader = !several ? uploaders.get(relay)
+                    : down ? onceUploaders.get(relay) : quickUploaders.get(relay);
             try {
                 copies.add(copies.isEmpty() ? uploader.prepare(file, chunkSize, settings.ttl())
                         : uploader.prepareCopy(copies.getFirst()));
+                unreachable.remove(relay);
             } catch (TransportException | IOException e) {
                 if (!several) {
                     throw e;
                 }
+                unreachable.put(relay, clock.instant().plus(UNREACHABLE_FOR));
                 LOG.log(Level.WARNING, "Relais {0} écarté pour cet envoi : {1}", relay, e.getMessage());
             }
         }
@@ -575,7 +594,7 @@ public final class IuTransport implements TransportPort {
      * sinon après toutes ; une copie en échec est retirée de son relais et oubliée, l'envoi n'échoue que si toutes
      * échouent.
      */
-    private IuStore.Outgoing uploadCopies(Path file, long size, IuStore.Outgoing outgoing)
+    private IuStore.Outgoing uploadCopies(Path file, long size, IuStore.Outgoing outgoing, Runnable firstComplete)
             throws InterruptedException {
         List<IuFileUploader.UploadState> initial = outgoing.all();
         IuFileUploader.UploadState[] current = initial.toArray(new IuFileUploader.UploadState[0]);
@@ -629,6 +648,7 @@ public final class IuTransport implements TransportPort {
                         first = base.described() && !sent[0];
                         sent[0] = true;
                     }
+                    firstComplete.run();
                     if (first) {
                         emit(new TransportEvent.FileSent(new PeerId(base.peerId()), base.fileId()));
                     }

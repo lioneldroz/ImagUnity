@@ -6,9 +6,7 @@ import java.io.IOException;
 import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -71,12 +69,38 @@ final class IuOutbox implements AutoCloseable {
      * @return vrai si tout a été déposé (ou abandonné), faux s'il en reste pour plus tard
      */
     boolean flush() {
-        Set<String> blocked = new HashSet<>();
+        // Une suite par file du destinataire (box, rang de la file), dans l'ordre d'enregistrement : chaque suite est
+        // déposée sur son propre fil, un relais injoignable (attente de connexion) ne retarde pas les autres.
+        java.util.Map<String, List<IuStore.Pending>> files = new java.util.LinkedHashMap<>();
         for (IuStore.Pending pending : store.pending()) {
-            String file = pending.to() + "#" + pending.slot();
-            if (blocked.contains(file)) {
-                continue;
+            files.computeIfAbsent(pending.to() + "#" + pending.slot(), k -> new java.util.ArrayList<>()).add(pending);
+        }
+        if (files.size() <= 1) {
+            return files.values().stream().allMatch(this::flush);
+        }
+        List<java.util.concurrent.Future<Boolean>> results = new java.util.ArrayList<>();
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            for (List<IuStore.Pending> file : files.values()) {
+                results.add(executor.submit(() -> flush(file)));
             }
+        }
+        boolean done = true;
+        for (java.util.concurrent.Future<Boolean> result : results) {
+            try {
+                done &= result.get();
+            } catch (java.util.concurrent.ExecutionException e) {
+                throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return done;
+    }
+
+    /** Dépose dans l'ordre les messages d'une même file ; s'arrête au premier à réessayer. */
+    private boolean flush(List<IuStore.Pending> file) {
+        for (IuStore.Pending pending : file) {
             if (pending.createdAt().plus(maxAge).isBefore(clock.instant())) {
                 LOG.log(Level.WARNING, "Message pour la box {0} jamais déposé depuis {1} : abandonné", pending.to(),
                         pending.createdAt());
@@ -87,8 +111,7 @@ final class IuOutbox implements AutoCloseable {
             if (addresses.isEmpty()) {
                 LOG.log(Level.WARNING, "Box {0} sans adresse IU-T active dans l''annuaire : message gardé",
                         pending.to());
-                blocked.add(file);
-                continue;
+                return false;
             }
             if (pending.slot() >= addresses.size()) {
                 LOG.log(Level.INFO, "Box {0} : file n° {1} retirée de l''entrée, exemplaire abandonné", pending.to(),
@@ -107,14 +130,14 @@ final class IuOutbox implements AutoCloseable {
                     store.removePending(pending.seq());
                 } else {
                     LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), e.getMessage());
-                    blocked.add(file);
+                    return false;
                 }
             } catch (IOException e) {
-                LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), e.getMessage());
-                blocked.add(file);
+                LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), Retry.reason(e));
+                return false;
             }
         }
-        return blocked.isEmpty();
+        return true;
     }
 
     /** Dépose en continu sur un fil virtuel, jusqu'à {@link #close()}. */

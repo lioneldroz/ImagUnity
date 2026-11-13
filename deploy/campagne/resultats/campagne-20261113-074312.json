@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-13T07:41:27+00:00",
+  "transport": "IU-T",
+  "versionBox": "0.11.2",
+  "scenarios": [
+    {
+      "scenario": "relais-arrete-avant",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.6,
+        "RECEIVED": 6.69,
+        "PACKAGED": 7.28,
+        "ANNOUNCED": 8.49,
+        "ACKNOWLEDGED": 18.28,
+        "restored": 18.28
+      },
+      "debitBoutEnBout_Mo_s": 2.83,
+      "depotRelais_s": 1.21,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      }
+    },
+    {
+      "scenario": "relais-coupe-pendant",
+      "instances": 600,
+      "tailleMo": 300.5,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 27.86,
+        "ACKNOWLEDGED": 27.94,
+        "restored": 27.95
+      },
+      "debitBoutEnBout_Mo_s": 3338.73,
+      "verification": {
+        "instancesA": 600,
+        "instancesB": 600,
+        "identiques": 600
+      },
+      "arret_s": 17.31
+    },
+    {
+      "scenario": "relais-arrete-apres-depot",
+      "instances": 100,
+      "tailleMo": 50.1,
+      "etatFinal": "ACKNOWLEDGED",
+      "chronologie_s": {
+        "cstore": 0.66,
+        "RECEIVED": 5.51,
+        "PACKAGED": 6.09,
+        "ANNOUNCED": 6.68,
+        "ACKNOWLEDGED": 31.14,
+        "restored": 31.15
+      },
+      "debitBoutEnBout_Mo_s": 1.64,
+      "depotRelais_s": 0.59,
+      "verification": {
+        "instancesA": 100,
+        "instancesB": 100,
+        "identiques": 100
+      },
+      "depotTermine_s": 7.58,
+      "rallumage_s": 18.12,
+      "restitutionApresRallumage_s": 13.03
+    }
+  ]
+}

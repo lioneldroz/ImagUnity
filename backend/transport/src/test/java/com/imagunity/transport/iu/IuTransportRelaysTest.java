@@ -228,6 +228,11 @@ class IuTransportRelaysTest {
         TransportEvent.FileOffered offered = b.await(TransportEvent.FileOffered.class);
         b.transport().receiveFile(offered.fileId(), dir.resolve("recu/paquet-3.iu1"));
         assertThat(Files.mismatch(packet, b.await(TransportEvent.FileReceived.class).path())).isEqualTo(-1);
+
+        // Envoi suivant : le relais écarté n'est plus essayé qu'une fois.
+        long next = a.transport().sendFile(peers[0], packet);
+        assertThat(uploaded(a, next).all()).extracting(IuFileUploader.UploadState::relay)
+                .containsExactly(r2.toString());
     }
 
     /** Relais qui crée les morceaux mais refuse leur contenu : la copie qu'il porte échoue. */

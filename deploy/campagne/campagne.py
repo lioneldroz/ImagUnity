@@ -733,8 +733,9 @@ def scenario_relais_coupe_pendant():
     events = {}
 
     def during(transfer):
-        transfer.wait_for(lambda s: s in ("PACKAGED", "ANNOUNCED"), 600, "empaquetage")
-        time.sleep(3)  # dépôt commencé
+        # Premiers morceaux téléversés sur le relais principal : le dépôt est en cours.
+        before = relay_chunks("relay")
+        wait(lambda: relay_chunks("relay") >= before + 3, 600, 0.2, "dépôt commencé sur le relais principal")
         events["arret_s"] = transfer.elapsed()
         compose("stop", "relay")
         log("[relais-coupe-pendant] relais principal arrêté pendant le dépôt")

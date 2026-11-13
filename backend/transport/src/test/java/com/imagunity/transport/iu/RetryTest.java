@@ -44,6 +44,9 @@ class RetryTest {
         assertThatThrownBy(() -> retry.run("Dépôt", () -> {
             throw new IOException("relais injoignable");
         })).isInstanceOf(TransportException.class).hasMessageContaining("Dépôt impossible : relais injoignable");
+        assertThatThrownBy(() -> retry.run("Dépôt", () -> {
+            throw new java.net.ConnectException();
+        })).hasMessageContaining("Dépôt impossible : ConnectException");
         Retry interrupted = new Retry(Duration.ofSeconds(2), Duration.ofSeconds(1), d -> {
             throw new InterruptedException();
         });

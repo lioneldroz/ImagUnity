@@ -36,6 +36,9 @@ public final class IuFileDownloader {
     private final Clock clock;
     private final Retry retry;
     private final Map<String, IuFileClient> clients = new HashMap<>();
+    /** Relais en échec récent : essayés en dernier. */
+    private final Map<String, java.time.Instant> failing = new java.util.concurrent.ConcurrentHashMap<>();
+    static final Duration FAILING_FOR = Duration.ofMinutes(1);
 
     public IuFileDownloader(HttpClient http, Clock clock, Retry retry) {
         this.http = http;
@@ -88,6 +91,10 @@ public final class IuFileDownloader {
     private Fetched fetch(FileDescription description, ChunkLayout layout, FileDescription.Chunk chunk, Path target)
             throws IOException {
         java.util.List<FileDescription.Replica> replicas = new java.util.ArrayList<>(chunk.replicas());
+        java.time.Instant now = clock.instant();
+        // Stable : l'ordre de la description est gardé, les relais en échec récent passent après les autres.
+        replicas.sort(java.util.Comparator.comparing(r -> failing.getOrDefault(r.relay(), java.time.Instant.MIN)
+                .isAfter(now)));
         Duration waited = Duration.ZERO;
         Duration delay = Duration.ofSeconds(1);
         RuntimeException refused = null;
@@ -103,10 +110,14 @@ public final class IuFileDownloader {
                             layout.chunkSize(), WAIT);
                 } catch (IOException e) {
                     failure = e;
+                    failing.put(replica.relay(), clock.instant().plus(FAILING_FOR));
                     continue;
                 } catch (RelayRefusedException e) {
                     if (e.retryable()) {
                         failure = e;
+                        if (e.status() != 425) {
+                            failing.put(replica.relay(), clock.instant().plus(FAILING_FOR));
+                        }
                     } else {
                         refused = e;
                         it.remove();
@@ -115,6 +126,7 @@ public final class IuFileDownloader {
                 }
                 try {
                     Chunks.write(target, layout, chunk.index(), content, chunk.digest());
+                    failing.remove(replica.relay());
                     return new Fetched(client, replica);
                 } catch (ProtocolException e) {
                     refused = new TransportException("Paquet " + description.fileName() + " : " + e.getMessage(), e);
@@ -126,7 +138,7 @@ public final class IuFileDownloader {
             }
             if (waited.compareTo(retry.patience()) >= 0) {
                 throw new TransportException("Téléchargement du morceau " + chunk.index() + " impossible : "
-                        + (failure == null ? "aucune réplique" : failure.getMessage()), failure);
+                        + (failure == null ? "aucune réplique" : Retry.reason(failure)), failure);
             }
             try {
                 retry.sleeper().sleep(delay);
