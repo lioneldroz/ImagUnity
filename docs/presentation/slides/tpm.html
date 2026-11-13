@@ -1,0 +1,27 @@
+<section id="tpm" data-transition="fade" style="background:#F6F7F4;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Protection des clés · TPM</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Les clés de la box restent dans la box</h2>
+</div>
+<p style="font-size:30px;color:#4A5568">Chaque box a ses clés secrètes : l’une signe ses messages, l’autre ouvre les examens qu’elle reçoit. Que se passe-t-il si quelqu’un copie son disque ?</p>
+<div style="display:flex;flex-direction:row;gap:28px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFDFB;border-top:8px solid #6B7480;border-radius:20px;padding:36px">
+<x-icon name="KeyRound" style="color:#6B7480;width:52px;height:52px"></x-icon>
+<h3 style="font-size:36px;font-weight:700">Sans TPM : une phrase de passe</h3>
+<p style="font-size:28px;color:#4A5568">Les clés sont chiffrées par une phrase de passe, réservée à l’administrateur, mais rangée sur la même machine.</p>
+<p style="font-size:28px;font-weight:600;color:#1B2433">Une copie complète du disque emporte les deux.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFDFB;border-top:8px solid #B84A12;border-radius:20px;padding:36px">
+<x-icon name="Cpu" style="color:#B84A12;width:52px;height:52px"></x-icon>
+<h3 style="font-size:36px;font-weight:700">Avec le TPM : une puce de la machine</h3>
+<p style="font-size:28px;color:#4A5568">Le secret qui chiffre les clés est scellé par une puce de sécurité soudée sur la carte mère. Il n’en sort jamais.</p>
+<p style="font-size:28px;font-weight:600;color:#B84A12">Copiés ailleurs, les fichiers de clés ne s’ouvrent pas.</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:20px;background:#3A4556;border-radius:16px;padding:22px 28px">
+<x-icon name="Lock" style="color:#F3F4EE;width:44px;height:44px"></x-icon>
+<p style="font-size:28px;color:#F3F4EE">Un disque volé, une sauvegarde égarée ou une machine clonée ne permettent pas de se faire passer pour la box, ni de lire ses examens.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Clés protégées par le TPM · présent sur la plupart des PC et serveurs récents</p>
+<aside>Le TPM, pour Trusted Platform Module, est une petite puce de sécurité présente sur presque tous les PC et serveurs récents ; Windows 11 l’exige, par exemple. Elle sait garder un secret sans jamais le laisser sortir : on lui confie le secret, elle le « scelle », c’est-à-dire qu’elle le chiffre avec une clé qui ne quitte jamais la puce. Seul ce TPM, sur cette machine, peut le rendre. Pourquoi c’est utile pour ImagUnity : chaque box possède des clés secrètes, l’une pour signer ses messages, l’autre pour déchiffrer les examens qui lui sont destinés. Sans TPM, ces clés sont chiffrées par une phrase de passe que seul l’administrateur peut lire, mais qui est rangée sur la même machine : une copie complète du disque emporte les clés et leur phrase de passe. Avec le TPM, le secret qui chiffre les clés est scellé dans la puce : un disque volé, une sauvegarde égarée ou une machine clonée ne donnent rien d’utilisable. Une box qui fonctionnait avec une phrase de passe passe au TPM en une fois, au démarrage suivant, sans changer d’identité.</aside>
+</section>

@@ -1,6 +1,6 @@
 # Présentation « ImagUnity — le voyage d’un examen »
 
-Présentation de 19 diapositives qui explique simplement le fonctionnement d’ImagUnity, en suivant un examen (données synthétiques) du PACS de l’hôpital A jusqu’au PACS de l’hôpital B. Public visé : non technique ; les détails sont dans les notes du présentateur.
+Présentation de 21 diapositives qui explique simplement le fonctionnement d’ImagUnity, en suivant un examen (données synthétiques) du PACS de l’hôpital A jusqu’au PACS de l’hôpital B. Public visé : non technique ; les détails sont dans les notes du présentateur.
 
 - **À voir et à présenter** : [artefact Claude Slides](https://claude.ai/artifact/NdNbNfzQsYiio1NWJok3oq) (privé : à partager depuis le menu Partager de la page). Export PowerPoint ou PDF depuis ce même menu.
 - **Sources** (ce dossier) : `deck.json` (titre, ordre, sections, polices) et une diapositive par fichier dans `slides/`, au format HTML de Claude Slides. Elles servent à suivre les modifications et à reconstruire la présentation ; ouvertes seules dans un navigateur, les formes et icônes (`x-shape`, `x-icon`) ne s’affichent pas.
@@ -25,7 +25,9 @@ Présentation de 19 diapositives qui explique simplement le fonctionnement d’I
 | 15 | La box choisit le destinataire d’après l’examen (routage) | `slides/routage.html` |
 | 16 | Les règles se décident une fois, pour tout le réseau (configuration centralisée) | `slides/centrale.html` |
 | 17 | Si un relais tombe, l’examen passe quand même (redondance) | `slides/relais.html` |
-| 18 | Ce que la campagne de tests a montré | `slides/preuves.html` |
-| 19 | Avant le pilote : un audit de sécurité indépendant | `slides/audit.html` |
+| 18 | Les clés de la box restent dans la box (TPM) | `slides/tpm.html` |
+| 19 | Comment le TPM protège les clés, démarrage après démarrage | `slides/tpm-demarrage.html` |
+| 20 | Ce que la campagne de tests a montré | `slides/preuves.html` |
+| 21 | Avant le pilote : un audit de sécurité indépendant | `slides/audit.html` |
 
-Les chiffres viennent de la [campagne de tests](../historique/phase8-campagne.md), de la [priorité des séries](../reference/priorite-dicom.md), du [routage DICOM](../reference/routage-dicom.md), de la [configuration centralisée](../reference/configuration-centralisee.md), de la [spécification IU-T](../reference/specification-protocole.md) (§ 13.4, relais multiples et réparti) et du [pré-audit](../audit/pre-audit.md). Les diapositives qui décrivaient SimpleX sont passées au transport IU-T.
+Les chiffres viennent de la [campagne de tests](../historique/phase8-campagne.md), de la [priorité des séries](../reference/priorite-dicom.md), du [routage DICOM](../reference/routage-dicom.md), de la [configuration centralisée](../reference/configuration-centralisee.md), de la [spécification IU-T](../reference/specification-protocole.md) (§ 13.4, relais multiples et réparti), des [clés protégées par le TPM](../reference/cles-tpm.md) et du [pré-audit](../audit/pre-audit.md). Les diapositives qui décrivaient SimpleX sont passées au transport IU-T.

@@ -1,0 +1,38 @@
+<section id="tpm-demarrage" data-transition="fade" style="background:#EAF0F5;color:#1B2433;font-family:Inter, Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<div style="display:flex;flex-direction:column;gap:12px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2563A8">Protection des clés · TPM</p>
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1">Comment le TPM protège les clés, démarrage après démarrage</h2>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:14px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#DCE8F5;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#2563A8">1 · Premier démarrage</p>
+<p style="font-size:26px;color:#1B2433">La box tire un secret au hasard, le fait sceller par le TPM, et chiffre ses clés avec</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#2563A8"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#DCE8F5;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#2563A8">2 · Chaque démarrage</p>
+<p style="font-size:26px;color:#1B2433">Le TPM rend le secret à cette machine ; la box rouvre ses clés</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px;height:24px;background:#B84A12"></x-shape>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FBE3D3;border-radius:16px;padding:24px">
+<p style="font-size:26px;font-weight:700;color:#B84A12">3 · Disque copié ailleurs</p>
+<p style="font-size:26px;color:#1B2433">L’autre machine n’a pas la puce : le secret reste scellé</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:row;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">En option : lié au démarrage</h3>
+<p style="font-size:28px;color:#4A5568">Le TPM mesure le démarrage de la machine. Démarrée sur une clé USB ou modifiée, elle n’obtient plus le secret.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700">Ce qu’il ne protège pas</h3>
+<p style="font-size:28px;color:#4A5568">Une box en marche et compromise : ses clés sont alors en mémoire. On la révoque dans l’annuaire.</p>
+</div>
+<div style="width:420px;display:flex;flex-direction:column;gap:8px;background:#FDFDFB;border-top:8px solid #B84A12;border-radius:16px;padding:28px">
+<h3 style="font-size:32px;font-weight:700;color:#B84A12">À vérifier</h3>
+<p style="font-size:28px;color:#4A5568">Essayé avec un TPM simulé ; reste l’essai sur une vraie puce</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#6B7480">ImagUnity · Clés protégées par le TPM · option activée à l’installation de la box</p>
+<aside>Le fonctionnement en trois temps. Au premier démarrage, la box tire un secret au hasard, le confie au TPM qui le scelle, et chiffre ses fichiers de clés avec ce secret. À chaque démarrage suivant, elle demande au TPM de desceller le secret, ce qu’il ne fait que sur cette machine, puis elle rouvre ses clés. Si quelqu’un copie le disque sur une autre machine, l’autre TPM refuse : les fichiers restent illisibles. En option, on peut lier le secret à l’état de démarrage de la machine : le TPM enregistre une empreinte du micrologiciel et du démarrage sécurisé, et ne rend le secret que si elles n’ont pas changé. Une machine démarrée sur une clé USB, ou dont le micrologiciel a été modifié, n’obtient plus rien. Contrepartie : une mise à jour du BIOS change aussi ces mesures, il faut alors suivre la procédure du guide d’installation. Le TPM ne protège pas une box en marche qui serait compromise, puisque ses clés sont alors en mémoire : dans ce cas, le responsable révoque la box dans l’annuaire, et les autres box refusent aussitôt ses messages. Les objets d’ImagUnity sont aussi exclus du verrouillage anti-acharnement du TPM, pour qu’une erreur d’un autre logiciel ne bloque pas la box, et une coupure de courant pendant le remplacement du secret ne peut pas rendre les clés irrécupérables. État : tout a été essayé avec un TPM simulé et un TPM logiciel ; l’essai sur une vraie puce reste à faire, lors de la première installation sur une machine physique.</aside>
+</section>
