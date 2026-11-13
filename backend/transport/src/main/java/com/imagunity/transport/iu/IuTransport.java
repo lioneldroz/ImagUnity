@@ -34,7 +34,7 @@ import java.util.function.Consumer;
 
 /**
  * Transport IU-T (spécification {@code docs/specification-protocole.md}, § 13.2) : adaptateur du {@link TransportPort}
- * sur un relais IU-FILE + IU-MSG de l'organisation, à la place de simplex-chat.
+ * sur un relais IU-FILE + IU-MSG de l'organisation.
  *
  * <ul>
  *   <li><b>Appairage par l'annuaire</b> : l'adresse de la file de chaque box est publiée dans son entrée signée. La
@@ -392,25 +392,6 @@ public final class IuTransport implements TransportPort {
         IuStore.Contact contact = store.addContact(partner.boxId(), created);
         outbox.enqueue(partner.boxId(), envelope);
         emit(new TransportEvent.PeerConnected(new PeerId(contact.peerId()), partner.displayName()));
-    }
-
-    /**
-     * Reprise d'un partenaire d'avant la bascule (appairé par SimpleX et lié à une box de l'annuaire) : son contact
-     * IU-T, créé au besoin.
-     *
-     * @return l'identifiant local du contact, à enregistrer pour ce partenaire
-     */
-    public long adopt(UUID box) {
-        return store.addContact(box, new boolean[1]).peerId();
-    }
-
-    /** Vrai une fois les partenaires d'avant la bascule repris ({@link #markPeersMigrated()}). */
-    public boolean peersMigrated() {
-        return store.peersMigrated();
-    }
-
-    public void markPeersMigrated() {
-        store.markPeersMigrated();
     }
 
     // --- Messages ---

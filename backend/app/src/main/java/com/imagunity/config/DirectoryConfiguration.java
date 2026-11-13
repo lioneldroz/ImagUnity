@@ -38,6 +38,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 /**
  * Annuaire signé (activé par {@code imagunity.directory.enabled=true}) : clé épinglée du responsable, identité de la
@@ -240,14 +241,23 @@ class DirectoryConfiguration {
         return new MessageSigner(identity, directory);
     }
 
-    /** Paquets chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire. */
+    /** Ancien réglage qui permettait des paquets en clair, le temps de migrer un parc. */
+    static final String ENCRYPTION_REQUIRED = "imagunity.directory.encryption-required";
+
+    /**
+     * Paquets chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire. Le chiffrement
+     * est obligatoire : une box encore réglée pour accepter les paquets en clair refuse de démarrer, plutôt que
+     * d'ignorer ce réglage en silence.
+     */
     @Bean
-    PacketEncryption packetEncryption(LocalDirectory directory, BoxIdentity identity, DirectoryProperties properties) {
-        if (!properties.encryptionRequired()) {
-            LOG.warn("Chiffrement applicatif NON exigé (IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED=false) : réservé à la "
-                    + "migration d'un parc");
+    PacketEncryption packetEncryption(LocalDirectory directory, BoxIdentity identity, Environment environment) {
+        String required = environment.getProperty(ENCRYPTION_REQUIRED);
+        if (required != null && !Boolean.parseBoolean(required.strip())) {
+            throw new IllegalStateException("IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED=" + required + " n'est plus "
+                    + "possible : le chiffrement applicatif des paquets est obligatoire. Retirer ce réglage, et faire "
+                    + "réémettre l'entrée d'annuaire des box qui ne publient pas de clés de chiffrement");
         }
-        return new DirectoryPacketEncryption(directory, identity, properties.encryptionRequired());
+        return new DirectoryPacketEncryption(directory, identity);
     }
 
     @Bean

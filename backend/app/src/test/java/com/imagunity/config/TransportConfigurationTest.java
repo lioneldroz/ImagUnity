@@ -11,8 +11,6 @@ import com.imagunity.directory.LocalDirectory;
 import com.imagunity.directory.Organization;
 import com.imagunity.directory.SerialMemory;
 import com.imagunity.directory.SignedDocument;
-import com.imagunity.domain.peer.Peer;
-import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.transport.DisabledTransport;
 import com.imagunity.transport.TransportPort;
@@ -24,9 +22,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeMap;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -115,72 +110,5 @@ class TransportConfigurationTest {
     void disabledTransportWithoutRelay() {
         assertThat(transport(NO_RELAY)).isInstanceOf(DisabledTransport.class);
     }
-
-    /** Partenaires en mémoire : un même nom ou identifiant de transport est remplacé, comme en base. */
-    private static final class Peers implements PeerRepository {
-        final Map<String, Peer> byName = new TreeMap<>();
-
-        @Override
-        public void save(Peer peer) {
-            byName.values().removeIf(p -> p.transportPeerId() == peer.transportPeerId());
-            byName.put(peer.name(), peer);
-        }
-
-        @Override
-        public Optional<Peer> findByName(String name) {
-            return Optional.ofNullable(byName.get(name));
-        }
-
-        @Override
-        public Optional<Peer> findByTransportPeerId(long transportPeerId) {
-            return byName.values().stream().filter(p -> p.transportPeerId() == transportPeerId).findFirst();
-        }
-
-        @Override
-        public List<Peer> findAll() {
-            return List.copyOf(byName.values());
-        }
-
-        @Override
-        public void delete(String name) {
-            byName.remove(name);
-        }
-    }
-
-    @Test
-    void switchingToIuKeepsVerifiedPartnersUnderTheirNames() {
-        var iu = new IuTransportProperties(URI.create("http://relais:8443"), dir, Duration.ofHours(72), 2,
-                Duration.ofDays(8), true, "auto");
-        BoxIdentity identity = new BoxIdentity(UUID.randomUUID(), HybridKeyPair.generate(),
-                HybridKemKeyPair.generate());
-        UUID boxB = UUID.randomUUID();
-        Instant pairedAt = Instant.parse("2026-11-01T10:00:00Z");
-        Peers peers = new Peers();
-        peers.save(new Peer("box-b", 2, "B", pairedAt, boxB));
-        peers.save(new Peer("attente-1", 1, "inconnu", pairedAt));
-
-        try (TransportPort transport = configuration.transport(iu, provider(BoxIdentity.class, identity),
-                provider(LocalDirectory.class, emptyDirectory()), Clock.systemUTC())) {
-            SmartLifecycle migration = configuration.iuPeerMigration(transport, peers);
-            assertThat(migration.getPhase()).as("avant l'orchestration").isLessThan(OrchestrationConfiguration.PHASE);
-            migration.start();
-            assertThat(migration.isRunning()).isTrue();
-            Peer kept = peers.findByName("box-b").orElseThrow();
-            assertThat(kept.boxId()).isEqualTo(boxB);
-            assertThat(kept.transportPeerId()).as("contact IU-T, loin des identifiants SimpleX")
-                    .isGreaterThanOrEqualTo(1_000_000);
-            assertThat(kept.pairedAt()).isEqualTo(pairedAt);
-            assertThat(peers.findByName("attente-1")).isEmpty();
-
-            // Une seule fois : un partenaire appairé ensuite n'est plus touché.
-            peers.save(new Peer("box-c", 5, "C", pairedAt));
-            migration.stop();
-            assertThat(migration.isRunning()).isFalse();
-            migration.start();
-            assertThat(peers.findByName("box-c")).isPresent();
-        }
-        configuration.iuPeerMigration(new DisabledTransport(), peers).start();
-        assertThat(peers.findByName("box-c")).isPresent();
-    }
-
 }
+

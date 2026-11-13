@@ -49,6 +49,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -194,14 +195,14 @@ class DirectoryWiringTest {
 
         Path phraseFile = Files.writeString(dir.resolve("phrase.txt"), "phrase de la box de test\n");
         assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "ignorée",
-                phraseFile.toString(), true).passphrase()).isEqualTo(phrase);
-        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "directe", "", true)
+                phraseFile.toString()).passphrase()).isEqualTo(phrase);
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "directe", "")
                 .passphrase()).isEqualTo("directe".toCharArray());
-        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "", null, true)
+        assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), "", null)
                 .passphrase()).isNull();
         Path emptyFile = Files.writeString(dir.resolve("vide.txt"), "\n");
         assertThat(new DirectoryProperties(true, null, null, null, keys, Duration.ofMinutes(5), null,
-                emptyFile.toString(), true).passphrase()).isNull();
+                emptyFile.toString()).passphrase()).isNull();
     }
 
     @Test
@@ -230,8 +231,13 @@ class DirectoryWiringTest {
                 .isEqualTo(after.encryption().publicKey().fingerprint());
 
         DirectoryConfiguration configuration = new DirectoryConfiguration();
-        assertThat(configuration.packetEncryption(null, created, new DirectoryProperties(true, null, null, null,
-                fresh, Duration.ofMinutes(5), null, null, false))).isNotNull();
+        assertThat(configuration.packetEncryption(null, created, new MockEnvironment())).isNotNull();
+        assertThat(configuration.packetEncryption(null, created, new MockEnvironment()
+                .withProperty(DirectoryConfiguration.ENCRYPTION_REQUIRED, "true"))).isNotNull();
+        // Ancien mode « paquets en clair » : la box refuse de démarrer.
+        assertThatThrownBy(() -> configuration.packetEncryption(null, created, new MockEnvironment()
+                .withProperty(DirectoryConfiguration.ENCRYPTION_REQUIRED, "false")))
+                .hasMessageContaining("IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED").hasMessageContaining("obligatoire");
     }
 
     @Test
