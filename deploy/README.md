@@ -1,12 +1,17 @@
-# Environnement de test
+# Déploiement
 
-Environnement Docker Compose de la preuve de concept : deux établissements, deux box, le relais IU-T et l'annuaire de l'organisation, sans aucun chemin réseau direct entre les sites.
+## Installer ImagUnity
 
-Installation pas à pas sur une machine Rocky Linux (Docker CE, enrôlement, appairage, envoi d'essai) : [docs/installation-rocky-linux.md](../docs/installation-rocky-linux.md).
+Deux guides, sous Rocky Linux 10 :
 
-Installation sur des machines séparées, en pré-production, sous Rocky Linux 10 :
-- site central (relais, annuaire, serveur de mises à jour) sous Docker : [docs/installation-site-central-rocky10.md](../docs/installation-site-central-rocky10.md), fichiers dans [`site-central/`](site-central/) ;
-- box sous systemd, avec mises à jour automatiques : [docs/installation-box-rocky10.md](../docs/installation-box-rocky10.md), fichiers dans [`box-systemd/`](box-systemd/).
+| Quoi | Guide | Fichiers |
+|---|---|---|
+| Site central : relais IU-T, annuaire, serveur de mises à jour (Docker) | [installation du site central](../docs/installation-site-central-rocky10.md) | [`site-central/`](site-central/), plus [`relay/`](relay/) et [`directory/`](directory/) (images) |
+| Box d'un établissement (systemd, sans root, mises à jour automatiques) | [installation d'une box](../docs/installation-box-rocky10.md) | [`box-systemd/`](box-systemd/) |
+
+## Banc d'essai (Docker Compose)
+
+Le reste de ce dossier n'est **pas une installation** : c'est le banc d'essai de la campagne de tests ([phase 8](../docs/phase8-campagne.md)) et de l'audit. Il rassemble sur une seule machine deux établissements, deux box, le relais IU-T et l'annuaire de l'organisation, sans aucun chemin réseau direct entre les sites. Ses mots de passe sont des mots de passe d'essai et ses liaisons sont en HTTP : données synthétiques uniquement.
 
 ```
  site-a                        relais (« Internet »)               site-b
@@ -20,7 +25,7 @@ Installation sur des machines séparées, en pré-production, sous Rocky Linux 1
 
 Les box ne font que des connexions sortantes vers le relais et l'annuaire ([transport IU-T](../docs/specification-protocole.md)) ; le relais ne prend les dépôts que des box enrôlées et actives de l'annuaire.
 
-## Premier démarrage
+### Mise en route du banc
 
 1. **Clé du responsable** : la créer, puis copier sa clé publique dans `annuaire/organisation.pub.json` ([annuaire signé](../docs/annuaire-signe.md)). Son empreinte, vérifiée hors bande, est exigée par les box et le relais.
 2. **Phrases de passe des box** (secrets Docker, hors du volume de données, non versionnés) :
@@ -32,7 +37,7 @@ for b in a b; do head -c 24 /dev/urandom | base64 > annuaire/phrase-box-$b.txt; 
 docker compose up -d --build
 ```
 
-3. **Enrôlement** : chaque box crée son identité, ses clés de chiffrement et réserve l'adresse de sa future file au premier démarrage. Télécharger sa demande d'enrôlement (console, onglet Annuaire), la faire signer par le responsable puis publier l'entrée :
+3. **Enrôlement** : chaque box crée son identité, ses clés de chiffrement et réserve l'adresse de sa future file au premier démarrage. Télécharger sa demande d'enrôlement (`GET /api/v1/directory/enrollment-request`), la faire signer par le responsable puis publier l'entrée :
 
 ```bash
 java -cp … com.imagunity.directory.DirectoryAdmin enroler --cles organisation.json --demande demande-a.json --sortie entree-a.json
@@ -40,14 +45,14 @@ java -cp … com.imagunity.directory.DirectoryAdmin publier --annuaire http://lo
 ```
 
    Une fois l'entrée publiée (et lue par le relais), la box crée sa file d'elle-même.
-4. **Appairage** : dans la console de la box A, onglet Annuaire, appairer la box B sous le nom `box-b` (ou `POST /api/v1/directory/boxes/{id}/pair`) ; la box B crée le contact à la réception et la poignée de main signée le lie à la box A de l'annuaire. Faire de même dans l'autre sens si besoin (`box-a`).
+4. **Appairage** : depuis l'API de la box A, appairer la box B sous le nom `box-b` (`POST /api/v1/directory/boxes/{id}/pair`, corps `{"name":"box-b"}`, en-tête `X-ImagUnity-Console: 1`) ; la box B crée le contact à la réception et la poignée de main signée le lie à la box A de l'annuaire. Faire de même dans l'autre sens si besoin (`box-a`).
 
 Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vite), la campagne fournit une variante construite à partir d'artefacts préparés : voir [phase 8](../docs/phase8-campagne.md).
 
 | Service | URL |
 |---|---|
-| Console box A | http://localhost:8081 (API : `/api/v1/box`) ; compte `operateur` / `essai-synthetique` (test uniquement) |
-| Console box B | http://localhost:8082 |
+| API de la box A | http://localhost:8081/api/v1/box ; compte `operateur` / `essai-synthetique` (test uniquement) |
+| API de la box B | http://localhost:8082/api/v1/box |
 | Orthanc A (émetteur) | http://localhost:8042 |
 | Orthanc B (destinataire) | http://localhost:8043 |
 | Annuaire | http://localhost:8090 |
@@ -55,7 +60,7 @@ Sans accès à GitHub ou à Maven pendant la construction (ou pour aller plus vi
 
 Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors empaqueté, chiffré pour la box B, déposé sur le relais, vérifié, puis restitué à Orthanc B (http://localhost:8043), et inversement depuis Orthanc B vers `imagunity-a`.
 
-## Points d'attention
+### Points d'attention
 
 - Chaque box écoute (console 8080, entrée DICOM 11112) sur son adresse du réseau de son site seulement (`SERVER_ADDRESS`, `IMAGUNITY_DICOM_BIND_ADDRESS` = 172.31.1.10 et 172.31.2.10) : rien n'est joignable depuis le réseau des relais. Le réseau du site est prioritaire (`gw_priority`) pour que la console publiée sur l'hôte y arrive.
 - La pile réseau de chaque box est celle d'un petit conteneur `net-x` (comme dans un pod) : la box, et son TPM logiciel dans les essais, peuvent redémarrer sans perdre le réseau.
@@ -63,10 +68,6 @@ Un examen envoyé depuis Orthanc A vers la destination `imagunity-b` est alors e
 - Les paquets sont chiffrés pour la box destinataire, avec les clés de chiffrement de son entrée d'annuaire ([chiffrement applicatif](../docs/chiffrement-applicatif.md)). Pour mettre à jour un parc existant : d'abord le service d'annuaire, puis le relais, puis les box, puis réémettre chaque entrée qui doit changer à partir d'une nouvelle demande d'enrôlement (`--serie` supérieure).
 - La dégradation de la liaison (débit, latence, pertes), le pare-feu et les coupures sont appliqués par la campagne de tests ([phase 8](../docs/phase8-campagne.md), dossier [campagne](campagne/)) avec `tc` et `iptables`.
 - **Données de test uniquement** : jeux publics ou anonymisés, jamais de patient réel.
-
-### Bascule d'un parc SimpleX
-
-Jusqu'à l'étape 5 de la [spécification](../docs/specification-protocole.md), les box passaient par simplex-chat et les relais SMP et XFTP. Au premier démarrage d'une box sur IU-T, ses partenaires liés à une box de l'annuaire sont repris sous leur nom (les routes DICOM restent valables), ses contacts jamais vérifiés sont oubliés et sa file est créée ; télécharger alors sa nouvelle demande d'enrôlement, qui porte l'adresse IU, et faire réémettre son entrée (`enroler --serie <n+1>`, puis `publier`). À faire sans transfert en cours.
 
 ### Mises à jour signées
 
@@ -121,7 +122,7 @@ Avec un mot de passe `IMAGUNITY_DICOMWEB_PASSWORD` (compte `pacs` par défaut, d
 
 `IuFileTool` (module `transport`) envoie et reçoit un fichier par le relais (`envoyer`, `recevoir`), ouvre une file et y échange des messages (`file-creer`, `message-envoyer`, `message-relever`), sans box. Chaque box ouvre au plus 4 files (`IMAGUNITY_RELAY_MAX_QUEUES_PER_BOX`).
 
-## Réinitialisation
+### Réinitialisation
 
 ```bash
 docker compose down -v
