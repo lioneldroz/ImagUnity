@@ -40,16 +40,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetch() {
-        HttpResponse<String> response;
-        try {
-            response = http.send(HttpRequest.newBuilder(entries).timeout(timeout).build(),
-                    HttpResponse.BodyHandlers.ofString());
-        } catch (IOException e) {
-            throw new DirectoryException("Annuaire injoignable : " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new DirectoryException("Lecture de l'annuaire interrompue", e);
-        }
+        Reply response = send(HttpRequest.newBuilder(entries).timeout(timeout).build(), "Lecture de l'annuaire");
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode());
         }
@@ -64,7 +55,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetchConfigurations() {
-        HttpResponse<String> response = send(HttpRequest.newBuilder(configurations).timeout(timeout).build(),
+        Reply response = send(HttpRequest.newBuilder(configurations).timeout(timeout).build(),
                 "Lecture des configurations");
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
@@ -81,7 +72,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou refuse le compte rendu
      */
     public void report(SignedDocument report) {
-        HttpResponse<String> response = send(HttpRequest.newBuilder(reports).timeout(timeout)
+        Reply response = send(HttpRequest.newBuilder(reports).timeout(timeout)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(report.toJson())).build(), "Compte rendu");
         if (response.statusCode() != 200 && response.statusCode() != 201) {
@@ -90,9 +81,26 @@ public final class DirectoryClient {
         }
     }
 
-    private HttpResponse<String> send(HttpRequest request, String what) {
+    /** Réponse lue avec une limite. */
+    private record Reply(int statusCode, String body) {
+    }
+
+    /**
+     * Plus longue réponse lue : un annuaire compromis ou un intermédiaire ne peut pas épuiser la mémoire de la box
+     * (une entrée fait quelques kilo-octets : de quoi lire plusieurs milliers de box).
+     */
+    static final int MAX_RESPONSE = 32 * 1024 * 1024;
+
+    private Reply send(HttpRequest request, String what) {
         try {
-            return http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<java.io.InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                byte[] body = in.readNBytes(MAX_RESPONSE + 1);
+                if (body.length > MAX_RESPONSE) {
+                    throw new DirectoryException(what + " : réponse de l'annuaire trop longue");
+                }
+                return new Reply(response.statusCode(), new String(body, java.nio.charset.StandardCharsets.UTF_8));
+            }
         } catch (IOException e) {
             throw new DirectoryException("Annuaire injoignable : " + e.getMessage(), e);
         } catch (InterruptedException e) {

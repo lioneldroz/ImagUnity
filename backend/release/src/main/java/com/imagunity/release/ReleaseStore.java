@@ -133,12 +133,19 @@ public final class ReleaseStore {
     public void fetch(URI base, HttpClient http, long knownSequence) {
         String root = base.toString().replaceAll("/+$", "");
         try {
-            HttpResponse<String> latest = http.send(request(root + "/" + LATEST),
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (latest.statusCode() != 200) {
-                throw new IOException("HTTP " + latest.statusCode() + " pour " + LATEST);
+            HttpResponse<InputStream> latest = http.send(request(root + "/" + LATEST),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            byte[] latestBody;
+            try (InputStream body = latest.body()) {
+                if (latest.statusCode() != 200) {
+                    throw new IOException("HTTP " + latest.statusCode() + " pour " + LATEST);
+                }
+                latestBody = body.readNBytes(MAX_MANIFEST + 1);
             }
-            SignedDocument document = SignedDocument.fromJson(latest.body());
+            if (latestBody.length > MAX_MANIFEST) {
+                throw new IOException(LATEST + " trop long");
+            }
+            SignedDocument document = SignedDocument.fromJson(new String(latestBody, StandardCharsets.UTF_8));
             ReleaseManifest manifest = verifier.verifyManifest(document);
             if (manifest.sequence() <= Math.max(knownSequence, highestInstalled())) {
                 log.accept("Serveur de mises à jour : pas de version plus récente que n° "
@@ -153,10 +160,36 @@ public final class ReleaseStore {
                 if (artifact.statusCode() != 200) {
                     throw new IOException("HTTP " + artifact.statusCode() + " pour " + manifest.artifact().name());
                 }
-                Files.copy(body, download, StandardCopyOption.REPLACE_EXISTING);
+                // Pas plus que la taille signée dans le manifeste : un serveur compromis ne remplit pas le disque.
+                long expected = manifest.artifact().size();
+                long copied;
+                try (java.io.OutputStream out = Files.newOutputStream(download)) {
+                    copied = body.transferTo(new java.io.FilterOutputStream(out) {
+                        private long written;
+
+                        @Override
+                        public void write(int b) throws IOException {
+                            write(new byte[] {(byte) b}, 0, 1);
+                        }
+
+                        @Override
+                        public void write(byte[] bytes, int offset, int length) throws IOException {
+                            written += length;
+                            if (written > expected) {
+                                throw new IOException("Artefact plus long que la taille signée (" + expected
+                                        + " octets) : téléchargement abandonné");
+                            }
+                            out.write(bytes, offset, length);
+                        }
+                    });
+                }
+                if (copied != expected) {
+                    throw new IOException("Artefact tronqué : " + copied + " octets sur " + expected);
+                }
+                install(document, download);
+            } finally {
+                Files.deleteIfExists(download);
             }
-            install(document, download);
-            Files.delete(download);
             log.accept("Version " + manifest.label() + " téléchargée : installée");
         } catch (IOException | ReleaseException | DirectoryException | IllegalArgumentException e) {
             log.accept("Mise à jour par le serveur impossible : " + e.getMessage());
@@ -165,6 +198,9 @@ public final class ReleaseStore {
             log.accept("Mise à jour par le serveur interrompue");
         }
     }
+
+    /** Plus long manifeste lu. */
+    static final int MAX_MANIFEST = 1024 * 1024;
 
     private static HttpRequest request(String url) {
         return HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMinutes(10)).GET().build();

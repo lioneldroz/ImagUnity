@@ -78,7 +78,7 @@ class DirectoryController {
         return history;
     }
 
-    @PostMapping("/entries")
+    @PostMapping(path = "/entries", consumes = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Void> publish(@RequestBody String body) {
         SignedDocument document;
         try {

@@ -120,7 +120,9 @@ public class ConfigurationService {
     }
 
     private Optional<HybridPublicKey> signingKey(UUID boxId) {
-        return entries.current(boxId).flatMap(this::entry).filter(e -> !e.revoked())
+        // Seule une box active rend compte : ni une box révoquée, ni une box dont l'entrée a expiré.
+        return entries.current(boxId).flatMap(this::entry)
+                .filter(e -> e.statusAt(clock.instant()) == BoxEntry.Status.ACTIVE)
                 .map(e -> HybridPublicKey.decode(e.signingKeys()));
     }
 
