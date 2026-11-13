@@ -42,6 +42,15 @@ public interface TransportPort extends AutoCloseable {
      */
     void connect(String contactAddress);
 
+    /**
+     * Box authentifiée par le transport pour ce contact (IU-T : la box dont les messages signés arrivent de ce
+     * contact), si le transport en connaît une. La poignée de main et l'appairage exigent qu'elle corresponde à la box
+     * annoncée : une box ne peut pas se faire enregistrer sous l'identité d'une autre.
+     */
+    default java.util.Optional<java.util.UUID> authenticatedBox(PeerId peer) {
+        return java.util.Optional.empty();
+    }
+
     /** Envoie un petit message de signalisation (quelques Ko au plus). */
     void sendMessage(PeerId peer, String text);
 

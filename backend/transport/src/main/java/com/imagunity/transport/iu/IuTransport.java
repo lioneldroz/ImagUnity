@@ -361,6 +361,11 @@ public final class IuTransport implements TransportPort {
      * crée à son tour à la réception.
      */
     @Override
+    public Optional<UUID> authenticatedBox(PeerId peer) {
+        return store.contact(peer.value()).map(IuStore.Contact::boxId);
+    }
+
+    @Override
     public void connect(String contactAddress) {
         String address;
         try {

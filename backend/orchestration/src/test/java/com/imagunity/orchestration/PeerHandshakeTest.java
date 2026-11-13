@@ -85,6 +85,19 @@ class PeerHandshakeTest {
     }
 
     @Test
+    void aProofRelayedByAnotherBoxIsRefused() {
+        // Le transport de B authentifie ce contact comme une troisième box : elle relaie la preuve signée par A.
+        transportB.authenticated.put(A_SEEN_BY_B.value(), UUID.randomUUID());
+        transportA.authenticated.put(B_SEEN_BY_A.value(), boxB.boxId());
+        handshakeA.start();
+        handshakeB.start();
+
+        relay();
+
+        assertThat(peersB.findByName("box-a").orElseThrow().boxId()).as("pas lié à A").isNull();
+    }
+
+    @Test
     void connectionTriggersTheHandshake() {
         handshakeA.start();
         handshakeB.start();
