@@ -101,7 +101,7 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 
 | Composant | Entrées | Authentification | Code |
 |---|---|---|---|
-| Box — entrée DICOM | C-STORE (port 11112), sur le réseau du site | AET appelant autorisé (liste) | `dicom/DicomStoreScp` |
+| Box — entrée DICOM | C-STORE (port 11112), sur le réseau du site | AET appelant autorisé (liste) ; adresses sources admises (liste facultative) ; délais, associations et taille d'instance plafonnés | `dicom/DicomStoreScp` |
 | Box — STOW-RS | `POST /dicomweb/{aet}/studies[/{study}]` | compte d'opérateur | `api`, `dicom/StowService` |
 | Box — console et API | `/api/v1/**`, fichiers de la console | compte d'opérateur (HTTP Basic), en-tête anti-CSRF `X-ImagUnity-Console` | `api`, `app/config` |
 | Box — données reçues | messages IU-MSG (enveloppes chiffrées et signées), descriptions de fichiers, morceaux, paquets | signature de la box émettrice d'après l'annuaire ; chiffrement pour la box | `transport/iu`, `orchestration`, `packaging` |
@@ -109,7 +109,7 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 | Box — mises à jour | manifeste et artefact | signature de l'éditeur | `release` |
 | Relais — IU-FILE | `POST/PUT/GET/DELETE /iu/v1/chunks…` | dépôt : identité de la box enrôlée ; accès : capacité Ed25519 | `relay/ChunkController`, `RequestAuthenticator` |
 | Relais — IU-MSG | `/iu/v1/queues…` | dépôt : identité ; relève : capacité de la file | `relay/QueueController` |
-| Relais — sondes | `/actuator/health/**` | aucune | `relay` |
+| Relais — sondes | `/actuator/health/**` | aucune ; non routées par l'entrée K3s (seul `/iu/` l'est) | `relay` |
 | Répartiteur (Traefik) | port 8443 (HTTP derrière un proxy TLS) | — | `deploy/relais-reparti`, `deploy/k3s` |
 | Annuaire — lecture | `GET /directory/v1/**` | aucune (documents signés) | `directory-server` |
 | Annuaire — dépôt | `POST /directory/v1/entries`, `/configurations` | compte du responsable (HTTP Basic) ; le service revérifie les signatures | `directory-server` |
@@ -131,8 +131,16 @@ Pile Docker complète (deux sites avec Orthanc, deux box, relais, annuaire), dé
 - Tests automatisés sur chaque module, couverture minimale imposée (95 % des lignes, 75 % des branches), vecteurs de test pour les documents signés.
 - Analyse des dépendances à chaque intégration (OSV-Scanner sur la nomenclature CycloneDX, exceptions datées).
 - Campagne d'essais réels : aucune donnée en clair sur le relais ni sur le stockage S3 (inspection octet par octet, entropie des morceaux 8,0 bits/octet).
-- Journaux : jamais de valeur lue dans les instances DICOM (noms de règles, identifiants techniques seulement).
-- Pré-audit interne (§ 10).
+- Journaux : jamais de valeur lue dans les instances DICOM (noms de règles, identifiants techniques seulement) ; valeurs venues du réseau (AET, motifs d'échec) assainies.
+- Corrections du pré-audit (§ 10), entre autres :
+  - messages signés liés à la box destinataire, avec un âge borné et un anti-rejeu conservé sur disque ;
+  - appairage lié à la box authentifiée ;
+  - relais : signature vérifiée avant toute écriture en base, et réponse sans détail à une requête non signée ;
+  - lectures bornées partout où un pair, le relais, l'annuaire ou le serveur de mises à jour répond ;
+  - une autre entrée sous un numéro déjà vu est refusée ;
+  - repli de la configuration centrale sur les documents déjà vus ;
+  - relecture du document exact avant que le responsable ne le signe ;
+  - mots de passe générés jamais journalisés.
 
 ## 9. Limites connues et choix assumés
 
@@ -143,11 +151,31 @@ Pile Docker complète (deux sites avec Orthanc, deux box, relais, annuaire), dé
 - **Relais réparti** : PostgreSQL et le stockage S3 deviennent les points critiques du site relais ; leur redondance relève de l'exploitation.
 - **Interface d'administration** : HTTP Basic du compte du responsable ; pas encore de comptes distincts ni de rôles.
 - **Clés de la box** : en fichier chiffré (ML-DSA et ML-KEM pas encore pris en charge par les TPM) ; le TPM scelle le secret qui les protège.
-- **Box antérieures** : refusent les champs inconnus des documents signés ; d'où un ordre de mise à jour imposé (annuaire, relais, box) avant d'utiliser les groupes de box.
+- **Box antérieures** : refusent les champs inconnus des documents signés ; d'où un ordre de mise à jour imposé (annuaire, relais, box) avant d'utiliser les groupes de box. Les messages signés nomment leur destinataire depuis le pré-audit : les box d'une organisation se mettent à jour ensemble.
+- **Rétention par un annuaire compromis** : il peut retenir une révocation jusqu'à la fin de validité de l'entrée connue (90 jours par défaut) ; pas encore de liste de révocation signée et datée (constat C2).
+- **Lien TPM** : facultatif. Il n'est utile que s'il mesure aussi le chargeur et le noyau (constat C4), et la box avertit au démarrage dans le cas contraire.
+- **Entrée DICOM** : l'AET appelant n'authentifie pas le poste. La liste d'adresses sources et la séparation réseau du site restent la protection ; DICOM TLS n'est pas proposé (constat L1).
+- **Conteneurs** : ils tournent encore en root, et `/app` est modifiable (constat D3).
+- **Séparation de domaine des documents signés** : elle tient aux champs disjoints et au refus des champs inconnus, pas à un préfixe signé (constat C8).
+- Autres constats reportés ou acceptés : [pre-audit.md § 3](pre-audit.md).
 
 ## 10. Pré-audit interne
 
-Revue systématique faite avant l'audit, par zone : cryptographie et documents signés ; relais ; données reçues par la box ; console, API et entrée DICOM ; service d'annuaire, mises à jour et déploiement. Constats et suites données : [pre-audit.md](pre-audit.md).
+Revue systématique faite avant l'audit, par zone :
+
+- cryptographie et documents signés ;
+- relais ;
+- données reçues par la box ;
+- console, API et entrée DICOM ;
+- service d'annuaire, mises à jour et déploiement.
+
+Elle a relevé 57 constats, dont 8 de gravité élevée et aucun défaut de primitive cryptographique. Bilan :
+
+- 33 corrigés, avec des tests ;
+- 9 corrigés en partie, avec le reste décrit ;
+- 15 acceptés ou reportés, et documentés.
+
+Le détail et les suites données sont dans [pre-audit.md](pre-audit.md).
 
 ## 11. Attendus
 

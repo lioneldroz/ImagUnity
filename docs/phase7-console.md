@@ -24,7 +24,7 @@ Les erreurs suivent le format `ProblemDetail` (RFC 9457) ; la console affiche le
 
 **Accès.** La console et l'API demandent un compte opérateur, en HTTP Basic et sans session :
 
-- compte réglé par `IMAGUNITY_CONSOLE_USER` (par défaut `operateur`) et `IMAGUNITY_CONSOLE_PASSWORD`, en clair ou haché avec son préfixe (`{bcrypt}$2a$...`) ; sans mot de passe, la box en génère un à chaque démarrage et le journalise ;
+- compte réglé par `IMAGUNITY_CONSOLE_USER` (par défaut `operateur`) et `IMAGUNITY_CONSOLE_PASSWORD`, en clair ou haché avec son préfixe (`{bcrypt}$2a$...`) ; sans mot de passe, la box en génère un à chaque démarrage et l'écrit dans `<données>/mot-de-passe-console.txt` (`imagunity.console.generated-password-file`), lisible du seul compte de la box, jamais dans les journaux ;
 - les requêtes qui modifient l'état (relance, appairage) doivent porter l'en-tête `X-ImagUnity-Console` : un site tiers ne peut pas l'ajouter (CORS fermé), ce qui protège des requêtes intersites qu'un navigateur authentifié enverrait de lui-même. La console l'ajoute ;
 - `/actuator/health` reste libre, pour la supervision ;
 - le navigateur demande le compte lui-même (réponse 401 `WWW-Authenticate: Basic`) ;

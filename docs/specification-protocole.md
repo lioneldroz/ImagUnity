@@ -213,14 +213,14 @@ La signature porte sur la chaîne canonique :
 
 (chaque élément séparé par un saut de ligne ; empreinte en hexadécimal). Requêtes de **capacité** : signature Ed25519 de la clé du morceau ou de la file. Requêtes de **dépôt** : double signature d'identité de la box (Ed25519 + ML-DSA-65, les deux valides), comme les messages signés de l'annuaire.
 
-Le relais refuse une requête dont l'horodatage s'écarte de plus de 5 minutes, ou dont le `IU-Request-Id` a déjà été vu dans cette fenêtre (anti-rejeu). Une variante par défi (le relais fournit un nonce) est à étudier si l'horloge des box n'est pas fiable (§ 12, question 2).
+Le relais refuse une requête dont l'horodatage s'écarte de plus de 5 minutes, ou dont le `IU-Request-Id` a déjà été vu dans cette fenêtre (anti-rejeu). L'identifiant n'est enregistré qu'**après** la vérification de la signature : une requête non signée n'écrit rien en base. Une box inconnue et une signature invalide reçoivent la même réponse (`401`, sans détail) ; l'état d'une box (révoquée, expirée : `403`) n'est donné qu'à une requête correctement signée par elle. Une variante par défi (le relais fournit un nonce) est à étudier si l'horloge des box n'est pas fiable (§ 12, question 2).
 
 ### 6.4 Réserver le dépôt aux box enrôlées
 
 - **Dépôt** (création de morceau, création de file, dépôt de message) : réservé aux **box enrôlées et actives**. La requête est signée par l'identité de la box (§ 6.3) ; le relais vérifie la signature d'après l'**entrée d'annuaire** de la box. Il épingle la clé du responsable de chaque organisation qu'il sert et lit l'annuaire comme une box (même bibliothèque, mêmes règles : signature du responsable, validité, révocation, pas de retour en arrière). Une box révoquée ne peut plus rien déposer. **Décision v0.3** : pas de certificats clients TLS, donc pas d'infrastructure de certificats à construire.
 - **Retrait** : **aucun contrôle d'identité**, uniquement la capacité (identifiant + signature). Un contrôle d'identité au retrait obligerait le relais à savoir qui récupère quoi, ce que la note proscrit.
 
-Le relais applique des limites de débit et de volume par box déposante (protection contre la saturation par une box malveillante).
+Le relais applique des limites de volume par box déposante (protection contre la saturation par une box malveillante) : quota d'octets de morceaux par box, et au plus 2 000 messages en attente d'une même box dans une file (sur 10 000 : `429` au-delà), pour qu'une box ne remplisse pas la file d'une autre. Corps de création de morceau limité à 16 Kio, lu avant toute vérification. Des limites de **débit** (requêtes par minute) restent à ajouter (pré-audit, constat R4).
 
 ### 6.5 Reprise
 
@@ -318,7 +318,7 @@ Chaque box crée une **file de réception** sur un relais de son organisation. L
 - `sendId` : permet de **déposer** un message ; publié dans l'entrée d'annuaire de la box (§ 9) ;
 - `recvId` : permet de **relever** les messages ; connu de la box seule, protégé par la clé de file.
 
-La box relève sa file par connexions sortantes (attente longue). Aucune connexion entrante n'est nécessaire. Comme l'adresse de la file est dans l'annuaire signé, **l'appairage passe par l'annuaire** : plus de lien d'invitation ni de poignée de main sur un canal anonyme.
+La box relève sa file par connexions sortantes (attente longue). Aucune connexion entrante n'est nécessaire. Comme l'adresse de la file est dans l'annuaire signé, **l'appairage passe par l'annuaire** : plus de lien d'invitation ni de poignée de main sur un canal anonyme. Le nom choisi par l'opérateur ne va qu'à la box désignée dans l'annuaire : une preuve d'identité reçue d'une autre box que celle qui la signe est écartée, et un appairage en attente ne peut pas être pris par une autre box qui se présenterait entre-temps.
 
 ### 8.2 API
 
@@ -344,7 +344,14 @@ Une enveloppe déposée est un **document chiffré pour le destinataire** avec l
 "IU1M" ‖ version ‖ en-tête (destinataire, encapsulations) ‖ AES-256-GCM(clé dérivée, contenu signé ‖ remplissage)
 ```
 
-Le **contenu signé** est un message signé de l'annuaire (version 2 : type, identifiant de la box émettrice, corps, double signature Ed25519 + ML-DSA-65), complété d'un **identifiant de message unique** et d'un **horodatage**. Le destinataire vérifie la signature d'après l'annuaire et rejette les messages déjà vus (anti-rejeu par identifiant de message, gardé pendant la durée de séjour).
+Le **contenu signé** est un message signé de l'annuaire (version 2 : type, identifiant de la box émettrice, corps, double signature Ed25519 + ML-DSA-65), complété d'un **identifiant de message unique**, d'un **horodatage** et de l'**identifiant de la box destinataire** (`to`). Le destinataire vérifie :
+
+- la signature, d'après l'entrée d'annuaire de l'émetteur ;
+- que le message lui est destiné (`to` = son identifiant) : une box qui a reçu un message ne peut pas le faire suivre à une troisième, qui le prendrait pour un message de l'émetteur ;
+- son âge : refusé s'il a plus de 8 jours, ou s'il est daté de plus de 10 minutes dans le futur ;
+- qu'il n'est pas déjà vu : identifiants gardés **sur disque** 9 jours (plus que l'âge admis), donc aussi après un redémarrage.
+
+Un message d'une box encore absente de l'annuaire local (entrée publiée mais pas encore lue) reste dans la file ; la box le reprend aux relèves suivantes et ne l'acquitte, sans le traiter, qu'au bout d'une heure : une box ne peut pas bloquer la file d'une autre en y déposant des messages qui ne s'ouvrent pas. Les box qui ajoutent `to` (pré-audit) refusent les messages sans ce champ : **toutes les box d'une organisation se mettent à jour ensemble.**
 
 Le relais ne voit ni le type, ni le contenu ; il sait quelle box dépose et dans quelle file (§ 3.3).
 

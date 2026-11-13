@@ -120,7 +120,7 @@ Module `directory-server` : une application Spring Boot autonome, sur **PostgreS
 - **Le service revérifie** chaque dépôt avec la clé publique de l'organisation (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`). C'est une défense en profondeur : les box revérifient tout, le service n'étant pas de confiance.
 - **Historique** : chaque entrée publiée est gardée, une ligne par box et par numéro.
 - **Lecture libre** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. Les réserver aux box enrôlées est possible plus tard (signature des requêtes, § 6.4 de la spécification).
-- **Compte de dépôt** : `IMAGUNITY_DIRECTORY_PUBLISHER_USER` (par défaut `responsable`) et `IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD`, en clair ou haché `{bcrypt}`. Sans mot de passe, il est généré et journalisé au démarrage.
+- **Compte de dépôt** : `IMAGUNITY_DIRECTORY_PUBLISHER_USER` (par défaut `responsable`) et `IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD`, en clair ou haché `{bcrypt}`. Sans mot de passe, il est généré au démarrage et écrit dans `IMAGUNITY_DIRECTORY_GENERATED_PASSWORD_FILE` (par défaut `./mot-de-passe-depot.txt`), lisible du seul compte du service ; jamais dans les journaux.
 - **Publication** depuis l'outil du responsable : `publier --annuaire <url> --entree <fichier>`. Le compte passe par `IMAGUNITY_ANNUAIRE_COMPTE=utilisateur:mot-de-passe`, plutôt que par l'option `--compte` qui est visible dans la liste des processus.
 - **Compose** : services `directory` et `directory-db` du Compose de base, avec la clé publique de l'organisation dans `deploy/annuaire/organisation.pub.json`.
 
