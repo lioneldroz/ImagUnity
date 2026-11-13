@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.imagunity</groupId>
+        <artifactId>imagunity-parent</artifactId>
+        <version>0.15.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>imagunity-rules</artifactId>
+    <name>ImagUnity — rules</name>
+    <description>Moteur de règles DICOM : conditions par champ, règles de priorité et de routage (dcm4che-core seul)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.dcm4che</groupId>
+            <artifactId>dcm4che-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

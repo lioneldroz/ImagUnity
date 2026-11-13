@@ -1,7 +1,7 @@
 package com.imagunity.config;
 
 import com.imagunity.dicom.DicomInputConfig;
-import com.imagunity.dicom.RoutingRule;
+import com.imagunity.rules.RoutingRule;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -52,7 +52,7 @@ public record DicomProperties(
     }
 
     /**
-     * Règle de routage par champ DICOM ({@link com.imagunity.dicom.DicomCondition}).
+     * Règle de routage par champ DICOM ({@link com.imagunity.rules.DicomCondition}).
      *
      * @param name nom de la règle (journaux)
      * @param and  champs qui doivent tous correspondre : mot-clé DICOM → motif ({@code *}, {@code ?}, {@code |},
@@ -73,7 +73,7 @@ public record DicomProperties(
             this(name, null, null, when, to);
         }
 
-        com.imagunity.dicom.DicomCondition condition() {
+        com.imagunity.rules.DicomCondition condition() {
             Map<String, String> all = new LinkedHashMap<>();
             if (when != null) {
                 all.putAll(when);
@@ -81,7 +81,7 @@ public record DicomProperties(
             if (and != null) {
                 all.putAll(and);
             }
-            return new com.imagunity.dicom.DicomCondition(all, or);
+            return new com.imagunity.rules.DicomCondition(all, or);
         }
     }
 

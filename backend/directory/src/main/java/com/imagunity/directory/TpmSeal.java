@@ -1,4 +1,4 @@
-package com.imagunity.config;
+package com.imagunity.directory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,11 +31,11 @@ import java.util.stream.Stream;
  * politique PCR, qui reste obligatoire ({@code userwithauth} absent). Un secret scellé par une version antérieure
  * (sans {@code noda}) est descellé avec l'ancien modèle, puis scellé de nouveau.
  */
-final class TpmSeal {
+public final class TpmSeal {
 
     /** Exécute une commande ; renvoie sa sortie standard, ou échoue avec son message d'erreur. */
     @FunctionalInterface
-    interface Runner {
+    public interface Runner {
         byte[] run(List<String> command, byte[] input) throws IOException;
     }
 
@@ -53,7 +53,7 @@ final class TpmSeal {
      * @param base fichier de référence (identité de la box) : le secret scellé est à côté
      * @param pcrs registres PCR auxquels lier le secret, par exemple {@code sha256:0,7} ({@code null} ou vide : aucun)
      */
-    TpmSeal(Path base, String pcrs, Runner runner) {
+    public TpmSeal(Path base, String pcrs, Runner runner) {
         this.publicPart = Path.of(base + ".tpm.pub");
         this.privatePart = Path.of(base + ".tpm.priv");
         this.pcrs = pcrs == null || pcrs.isBlank() ? null : pcrs.strip();
@@ -85,16 +85,16 @@ final class TpmSeal {
         return null;
     }
 
-    TpmSeal(Path base, String pcrs) {
+    public TpmSeal(Path base, String pcrs) {
         this(base, pcrs, TpmSeal::exec);
     }
 
-    boolean exists() {
+    public boolean exists() {
         return Files.exists(publicPart) && Files.exists(privatePart);
     }
 
     /** Scelle ce secret (le secret scellé précédent est remplacé d'un coup). */
-    void seal(byte[] secret) throws IOException {
+    public void seal(byte[] secret) throws IOException {
         Path work = workDir();
         try {
             Path primary = work.resolve("primaire.ctx");
@@ -133,7 +133,7 @@ final class TpmSeal {
      *
      * @throws IOException si le TPM refuse (autre TPM, état de démarrage différent) ou ne répond pas
      */
-    byte[] unseal() throws IOException {
+    public byte[] unseal() throws IOException {
         IOException current;
         try {
             return unseal(false);
@@ -215,7 +215,7 @@ final class TpmSeal {
     }
 
     /** Lance une commande tpm2-tools (60 s au plus). */
-    static byte[] exec(List<String> command, byte[] input) throws IOException {
+    public static byte[] exec(List<String> command, byte[] input) throws IOException {
         Process process;
         try {
             process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.PIPE).start();

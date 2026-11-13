@@ -1,9 +1,9 @@
-package com.imagunity.config;
+package com.imagunity.configuration;
 
-import com.imagunity.dicom.DicomCondition;
-import com.imagunity.dicom.PriorityRule;
-import com.imagunity.dicom.PriorityRules;
-import com.imagunity.dicom.PrioritySource;
+import com.imagunity.rules.DicomCondition;
+import com.imagunity.rules.PriorityRule;
+import com.imagunity.rules.PriorityRules;
+import com.imagunity.rules.PrioritySource;
 import com.imagunity.domain.exam.ReceivedInstance;
 import com.imagunity.domain.exam.SeriesPriority;
 import java.io.IOException;
@@ -68,29 +68,24 @@ public final class ReloadablePriority implements SeriesPriority, PrioritySource 
     }
 
     /**
-     * Règles d'après la configuration ; refuse de démarrer sur une règle ou un fichier invalide.
+     * Règles d'un fichier JSON, relu dès qu'il change ; refuse de démarrer sur un fichier illisible ou invalide.
      *
-     * @throws IllegalArgumentException si une règle est invalide (mot-clé inconnu, priorité hors de 1 à 9…)
+     * @throws IllegalArgumentException si le fichier est illisible ou une règle invalide
      */
-    static ReloadablePriority of(PriorityProperties properties, Clock clock) {
-        if (properties.file() != null && !properties.file().toString().isBlank()) {
-            ReloadablePriority priority = new ReloadablePriority(properties.file(), PriorityRules.NONE,
-                    "fichier " + properties.file(), clock);
-            try {
-                priority.reload(true);
-            } catch (IOException e) {
-                throw new IllegalArgumentException("Règles de priorité illisibles (" + properties.file() + ") : "
-                        + e.getMessage(), e);
-            }
-            return priority;
+    public static ReloadablePriority fromFile(Path file, Clock clock) {
+        ReloadablePriority priority = new ReloadablePriority(file, PriorityRules.NONE, "fichier " + file, clock);
+        try {
+            priority.reload(true);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Règles de priorité illisibles (" + file + ") : " + e.getMessage(), e);
         }
-        List<PriorityRule> rules = new ArrayList<>();
-        for (PriorityProperties.Rule rule : properties.rules()) {
-            rules.add(new PriorityRule(rule.name(), rule.priority(), new DicomCondition(rule.and(), rule.or())));
-        }
-        PriorityRules built = new PriorityRules(properties.defaultPriority(), rules);
-        ReloadablePriority priority = new ReloadablePriority(null, built,
-                rules.isEmpty() ? "aucune règle" : "configuration", clock);
+        return priority;
+    }
+
+    /** Règles fixées au démarrage (propriétés de la box). */
+    public static ReloadablePriority fixed(PriorityRules rules, Clock clock) {
+        ReloadablePriority priority = new ReloadablePriority(null, rules,
+                rules.rules().isEmpty() ? "aucune règle" : "configuration", clock);
         priority.logRules();
         return priority;
     }

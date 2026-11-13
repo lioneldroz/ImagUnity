@@ -1,7 +1,6 @@
 package com.imagunity.api;
 
-import java.time.Instant;
-import java.util.List;
+import com.imagunity.configuration.CentralConfigurationStatus;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,32 +17,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class CentralConfigurationController {
 
-    /** État de la configuration centralisée, fourni par la box. */
-    public interface Status {
+    private final ObjectProvider<CentralConfigurationStatus> status;
 
-        /**
-         * @param sequence     version appliquée, ou 0 (configuration locale)
-         * @param routingRules règles de routage centrales (noms et partenaires), vide si le routage reste local
-         * @param groups       groupes de la box, d'après son entrée d'annuaire
-         */
-        record View(boolean enabled, long sequence, Instant issuedAt, String author, String comment,
-                    Instant appliedAt, boolean priority, boolean routing, List<String> routingRules, long refused,
-                    String refusal, Instant checkedAt, String error, List<String> groups) {
-        }
-
-        View status();
-    }
-
-    private final ObjectProvider<Status> status;
-
-    public CentralConfigurationController(ObjectProvider<Status> status) {
+    public CentralConfigurationController(ObjectProvider<CentralConfigurationStatus> status) {
         this.status = status;
     }
 
     @GetMapping("/api/v1/configuration")
-    public Status.View configuration() {
-        Status current = status.getIfAvailable();
-        return current == null ? new Status.View(false, 0, null, null, null, null, false, false, List.of(), 0, null,
-                null, null, List.of()) : current.status();
+    public CentralConfigurationStatus.View configuration() {
+        CentralConfigurationStatus current = status.getIfAvailable();
+        return current == null ? CentralConfigurationStatus.View.disabled() : current.status();
     }
 }

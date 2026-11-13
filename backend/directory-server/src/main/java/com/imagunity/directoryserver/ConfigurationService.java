@@ -1,6 +1,6 @@
 package com.imagunity.directoryserver;
 
-import com.imagunity.dicom.RuleSet;
+import com.imagunity.rules.RuleSet;
 import com.imagunity.directory.BoxEntry;
 import com.imagunity.directory.CentralConfiguration;
 import com.imagunity.directory.ConfigurationReport;

@@ -54,7 +54,7 @@ class DicomInputConfigurationTest {
                 .bind("imagunity.dicom", DicomProperties.class).get();
 
         var rules = properties.toConfig().rules();
-        assertThat(rules).extracting(com.imagunity.dicom.RoutingRule::describe).containsExactly(
+        assertThat(rules).extracting(com.imagunity.rules.RoutingRule::describe).containsExactly(
                 "scanner-ou-irm (InstitutionName=CHU*, ou (Modality=CT|MR | BodyPartExamined=CHEST)) → box-b",
                 "ancien (Modality=SR) → box-c");
         assertThat(rules.getFirst().condition().or()).containsOnlyKeys("Modality", "BodyPartExamined");

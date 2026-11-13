@@ -1,4 +1,4 @@
-package com.imagunity.dicom;
+package com.imagunity.rules;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +16,8 @@ import org.dcm4che3.data.Attributes;
 public record RoutingRule(String name, DicomCondition condition, List<String> destinations) {
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}");
+    /** Nom de partenaire (comme les contacts appairés) : sert aussi de nom de dossier. */
+    private static final Pattern DESTINATION = Pattern.compile("[A-Za-z0-9_\\-]{1,64}");
 
     public RoutingRule {
         if (name == null || !NAME.matcher(name).matches()) {
@@ -28,7 +30,7 @@ public record RoutingRule(String name, DicomCondition condition, List<String> de
             throw new IllegalArgumentException("Règle de routage " + name + " sans destinataire");
         }
         for (String destination : destinations) {
-            DicomInputConfig.requireDestination(destination, "Règle de routage " + name);
+            requireDestination(destination, "Règle de routage " + name);
         }
         if (destinations.stream().distinct().count() != destinations.size()) {
             throw new IllegalArgumentException("Règle de routage " + name + " : destinataire en double");
@@ -48,5 +50,17 @@ public record RoutingRule(String name, DicomCondition condition, List<String> de
     /** Résumé lisible, sans valeur de patient : {@code nom (Modality=CT, …) → box-b, box-c}. */
     public String describe() {
         return name + " (" + condition.describe() + ") → " + String.join(", ", destinations);
+    }
+
+    /**
+     * Vérifie un nom de partenaire désigné par une destination ou une règle.
+     *
+     * @throws IllegalArgumentException si le nom est invalide
+     */
+    public static void requireDestination(String destination, String what) {
+        if (destination == null || !DESTINATION.matcher(destination).matches()) {
+            throw new IllegalArgumentException(what + " : partenaire invalide « " + destination
+                    + " » (1 à 64 caractères parmi A-Z, a-z, 0-9, _ et -)");
+        }
     }
 }

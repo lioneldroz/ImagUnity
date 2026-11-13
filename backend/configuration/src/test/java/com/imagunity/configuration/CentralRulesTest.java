@@ -1,4 +1,4 @@
-package com.imagunity.config;
+package com.imagunity.configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,7 +8,7 @@ import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.Organization;
 import com.imagunity.directory.SignedDocument;
-import com.imagunity.orchestration.BoxIdentity;
+import com.imagunity.rules.PriorityRules;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -161,7 +161,7 @@ class CentralRulesTest {
 
     @Test
     void centralPriorityRulesOverrideTheLocalOnes() {
-        ReloadablePriority priority = ReloadablePriority.of(new PriorityProperties(6, null, List.of()), clock);
+        ReloadablePriority priority = ReloadablePriority.fixed(new PriorityRules(6, List.of()), clock);
         CentralRules rules = rules();
         priority.central(rules::priority);
         assertThat(priority.snapshot().source()).isEqualTo("aucune règle");
@@ -173,7 +173,6 @@ class CentralRulesTest {
     @Test
     void theDirectoryLoopReadsAppliesAndReports() throws Exception {
         HybridKeyPair boxKeys = HybridKeyPair.generate();
-        BoxIdentity identity = new BoxIdentity(BOX, boxKeys);
         String published = "{\"organization\":\"chu-exemple\",\"configurations\":["
                 + document(6, CentralConfiguration.Target.everyone(), "Modality", true).toJson() + "]}";
         List<String> reports = new CopyOnWriteArrayList<>();
@@ -195,19 +194,19 @@ class CentralRulesTest {
                 Duration.ofSeconds(5));
         CentralRules rules = rules();
         try {
-            DirectoryConfiguration.synchronizeConfiguration(rules, client, identity);
+            rules.synchronizeWith(client, boxKeys);
             assertThat(rules.snapshot().sequence()).isEqualTo(6);
             assertThat(reports).hasSize(1);
-            DirectoryConfiguration.synchronizeConfiguration(rules, client, identity);
+            rules.synchronizeWith(client, boxKeys);
             assertThat(reports).as("rien de neuf : pas de nouveau compte rendu").hasSize(1);
             clock.now.set(clock.instant().plus(Duration.ofHours(2)));
             reportStatus[0] = 503;
-            DirectoryConfiguration.synchronizeConfiguration(rules, client, identity);
+            rules.synchronizeWith(client, boxKeys);
             assertThat(reports).hasSize(2);
         } finally {
             server.stop(0);
         }
-        DirectoryConfiguration.synchronizeConfiguration(rules, client, identity);
+        rules.synchronizeWith(client, boxKeys);
         assertThat(rules.snapshot().error()).contains("injoignable");
         assertThat(rules.snapshot().sequence()).isEqualTo(6);
     }

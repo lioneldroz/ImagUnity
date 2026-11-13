@@ -1,4 +1,4 @@
-package com.imagunity.dicom;
+package com.imagunity.rules;
 
 import com.imagunity.domain.exam.ReceivedInstance;
 import com.imagunity.domain.exam.SeriesPriority;

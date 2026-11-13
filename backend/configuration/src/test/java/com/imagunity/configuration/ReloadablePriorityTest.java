@@ -1,8 +1,11 @@
-package com.imagunity.config;
+package com.imagunity.configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.imagunity.rules.DicomCondition;
+import com.imagunity.rules.PriorityRule;
+import com.imagunity.rules.PriorityRules;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -35,27 +38,23 @@ class ReloadablePriorityTest {
 
     @Test
     void rulesFromThePropertiesAreFixed() {
-        ReloadablePriority none = ReloadablePriority.of(new PriorityProperties(5, null, List.of()), clock);
+        ReloadablePriority none = ReloadablePriority.fixed(new PriorityRules(5, List.of()), clock);
         assertThat(none.state().source()).isEqualTo("aucune règle");
         assertThat(none.state().rules().rules()).isEmpty();
         assertThat(none.of(List.of())).isEqualTo(5);
 
-        ReloadablePriority configured = ReloadablePriority.of(new PriorityProperties(6, Path.of(" "), List.of(
-                new PriorityProperties.Rule("irm", 2, Map.of("Modality", "MR"), null))), clock);
+        ReloadablePriority configured = ReloadablePriority.fixed(new PriorityRules(6, List.of(
+                new PriorityRule("irm", 2, new DicomCondition(Map.of("Modality", "MR"), null)))), clock);
         assertThat(configured.state().source()).isEqualTo("configuration");
         assertThat(configured.state().rules().defaultPriority()).isEqualTo(6);
         assertThat(configured.state().error()).isNull();
-
-        assertThatThrownBy(() -> ReloadablePriority.of(new PriorityProperties(5, null, List.of(
-                new PriorityProperties.Rule("x", 1, Map.of("Modalite", "MR"), null))), clock))
-                .hasMessageContaining("Modalite");
     }
 
     @Test
     void aFileIsReloadedWhenItChangesAndAnInvalidChangeIsRefused() throws Exception {
         Path file = dir.resolve("priorite.json");
         write(file, THORAX, 0);
-        ReloadablePriority priority = ReloadablePriority.of(new PriorityProperties(5, file, List.of()), clock);
+        ReloadablePriority priority = ReloadablePriority.fromFile(file, clock);
         assertThat(priority.state().source()).isEqualTo("fichier " + file);
         assertThat(priority.state().rules().defaultPriority()).isEqualTo(4);
         assertThat(priority.state().rules().describe()).hasSize(2);
@@ -65,7 +64,7 @@ class ReloadablePriorityTest {
         assertThat(priority.state().rules().defaultPriority()).as("défaut du document absent : 5").isEqualTo(5);
 
         write(file, "{ \"rules\": [ { \"name\": \"x\", \"priority\": 1, \"and\": { \"Modalite\": \"MR\" } } ] }", 20);
-        com.imagunity.dicom.PrioritySource.Snapshot refused = priority.state();
+        com.imagunity.rules.PrioritySource.Snapshot refused = priority.state();
         assertThat(refused.rules().describe()).as("précédentes en vigueur").containsExactly("irm : priorité 2 (Modality=MR)");
         assertThat(refused.error()).contains("Modalite");
         assertThat(priority.state().error()).as("même version : pas relue").contains("Modalite");
@@ -82,10 +81,9 @@ class ReloadablePriorityTest {
     void anInvalidOrMissingFilePreventsTheStart() throws Exception {
         Path file = dir.resolve("faux.json");
         write(file, "{ \"rules\": [ { \"name\": \"x\", \"priority\": 12 } ] }", 0);
-        assertThatThrownBy(() -> ReloadablePriority.of(new PriorityProperties(5, file, List.of()), clock))
+        assertThatThrownBy(() -> ReloadablePriority.fromFile(file, clock))
                 .hasMessageContaining("invalides").hasMessageContaining("hors de 1 à 9");
-        assertThatThrownBy(() -> ReloadablePriority.of(new PriorityProperties(5, dir.resolve("absent.json"),
-                List.of()), clock)).hasMessageContaining("illisibles");
+        assertThatThrownBy(() -> ReloadablePriority.fromFile(dir.resolve("absent.json"), clock)).hasMessageContaining("illisibles");
         assertThat(ReloadablePriority.parse("{}").rules()).isEmpty();
     }
 }

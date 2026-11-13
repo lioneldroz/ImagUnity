@@ -1,6 +1,12 @@
 package com.imagunity.config;
 
+import com.imagunity.configuration.ReloadablePriority;
+import com.imagunity.rules.DicomCondition;
+import com.imagunity.rules.PriorityRule;
+import com.imagunity.rules.PriorityRules;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -32,5 +38,21 @@ public record PriorityProperties(
      * @param or       champs dont un seul suffit
      */
     public record Rule(String name, int priority, Map<String, String> and, Map<String, String> or) {
+    }
+
+    /**
+     * Règles en vigueur d'après ces propriétés ; refuse de démarrer sur une règle ou un fichier invalide.
+     *
+     * @throws IllegalArgumentException si une règle est invalide (mot-clé inconnu, priorité hors de 1 à 9…)
+     */
+    ReloadablePriority priority(Clock clock) {
+        if (file != null && !file.toString().isBlank()) {
+            return ReloadablePriority.fromFile(file, clock);
+        }
+        List<PriorityRule> built = new ArrayList<>();
+        for (Rule rule : rules) {
+            built.add(new PriorityRule(rule.name(), rule.priority(), new DicomCondition(rule.and(), rule.or())));
+        }
+        return ReloadablePriority.fixed(new PriorityRules(defaultPriority, built), clock);
     }
 }

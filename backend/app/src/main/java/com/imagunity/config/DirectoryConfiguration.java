@@ -1,5 +1,7 @@
 package com.imagunity.config;
 
+import com.imagunity.configuration.CentralRules;
+import com.imagunity.configuration.ReloadablePriority;
 import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.DirectoryException;
 import com.imagunity.directory.EntryVerifier;
@@ -7,6 +9,7 @@ import com.imagunity.directory.HybridKemKeyPair;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.KeyFiles;
 import com.imagunity.directory.LocalDirectory;
+import com.imagunity.directory.TpmSeal;
 import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.orchestration.DirectoryPacketEncryption;
@@ -348,7 +351,7 @@ class DirectoryConfiguration {
                 scheduler.scheduleWithFixedDelay(() -> {
                     synchronize(directory, client, handshake, orchestrationExecutor);
                     if (rules != null) {
-                        synchronizeConfiguration(rules, client, identity);
+                        rules.synchronizeWith(client, identity.keys());
                     }
                 }, 0, properties.syncInterval().toMillis(), TimeUnit.MILLISECONDS);
             }
@@ -369,25 +372,6 @@ class DirectoryConfiguration {
                 return PHASE;
             }
         };
-    }
-
-    /** Lit les documents de configuration publiés, applique le plus récent qui vise la box, rend compte. */
-    static void synchronizeConfiguration(CentralRules rules, DirectoryClient client, BoxIdentity identity) {
-        try {
-            rules.synchronize(client.fetchConfigurations());
-        } catch (com.imagunity.directory.DirectoryException e) {
-            rules.failed(e.getMessage());
-            LOG.debug("Configuration centrale non lue : {}", e.getMessage());
-            return;
-        }
-        rules.reportIfDue(identity.keys()).ifPresent(report -> {
-            try {
-                client.report(report);
-                rules.reported(report);
-            } catch (com.imagunity.directory.DirectoryException e) {
-                LOG.debug("Compte rendu de configuration non remis : {}", e.getMessage());
-            }
-        });
     }
 
     static void synchronize(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
