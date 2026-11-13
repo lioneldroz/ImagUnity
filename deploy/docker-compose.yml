@@ -67,7 +67,7 @@ services:
     depends_on: [relay-db, directory]
     networks: [relais]
     ports:
-      - "8443:8443"
+      - "127.0.0.1:8443:8443"
 
   # --- Annuaire de l'organisation --------------------------------------------
   # Publie les entrées de box signées par le responsable (docs/annuaire-signe.md).
@@ -97,7 +97,7 @@ services:
     depends_on: [directory-db]
     networks: [relais]
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
 
   # --- Box A (émettrice) -----------------------------------------------------
 
@@ -113,7 +113,7 @@ services:
         ipv4_address: 172.31.1.10
         gw_priority: 1   # réseau du site prioritaire : la console publiée y arrive
     ports:
-      - "8081:8080"   # console de la box A
+      - "127.0.0.1:8081:8080"   # console de la box A
 
   box-a:
     build:
@@ -159,7 +159,7 @@ services:
       - orthanc-a-data:/var/lib/orthanc/db
     networks: [site-a]
     ports:
-      - "8042:8042"
+      - "127.0.0.1:8042:8042"
 
   # --- Box B (réceptrice) ----------------------------------------------------
 
@@ -173,7 +173,7 @@ services:
         ipv4_address: 172.31.2.10
         gw_priority: 1   # réseau du site prioritaire : la console publiée y arrive
     ports:
-      - "8082:8080"   # console de la box B
+      - "127.0.0.1:8082:8080"   # console de la box B
 
   box-b:
     build:
@@ -216,7 +216,7 @@ services:
       - orthanc-b-data:/var/lib/orthanc/db
     networks: [site-b]
     ports:
-      - "8043:8042"
+      - "127.0.0.1:8043:8042"
 
 networks:
   relais:
