@@ -14,9 +14,10 @@ import java.util.UUID;
 
 /**
  * Contenu des morceaux sur disque : {@code <dossier>/<2 premiers caractères>/<senderId>}. Un téléversement est écrit
- * dans un fichier temporaire, vérifié, puis mis en place d'un coup.
+ * dans un fichier temporaire, vérifié, puis mis en place d'un coup. Les fichiers temporaires restent sur ce disque
+ * même quand le contenu va sur un stockage S3 ({@link S3ChunkContents}).
  */
-public final class ChunkFiles {
+public final class ChunkFiles implements ChunkContents {
 
     private final Path root;
 
@@ -60,14 +61,26 @@ public final class ChunkFiles {
         return new Received(temp, size, HexFormat.of().formatHex(digest.digest()));
     }
 
+    @Override
     public void commit(Received received, String senderId) throws IOException {
         Path target = path(senderId);
         Files.createDirectories(target.getParent());
         Files.move(received.temp(), target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
+    @Override
     public void delete(String senderId) throws IOException {
         Files.deleteIfExists(path(senderId));
+    }
+
+    @Override
+    public org.springframework.core.io.Resource open(String senderId, long size) {
+        return new org.springframework.core.io.FileSystemResource(path(senderId));
+    }
+
+    @Override
+    public java.util.OptionalLong usableSpace() throws IOException {
+        return java.util.OptionalLong.of(Files.getFileStore(root).getUsableSpace());
     }
 
     static MessageDigest sha256() {

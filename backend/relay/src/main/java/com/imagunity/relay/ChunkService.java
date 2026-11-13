@@ -49,12 +49,12 @@ public final class ChunkService {
     }
 
     private final ChunkStore store;
-    private final ChunkFiles files;
+    private final ChunkContents files;
     private final RelayProperties properties;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    public ChunkService(ChunkStore store, ChunkFiles files, RelayProperties properties, Clock clock) {
+    public ChunkService(ChunkStore store, ChunkContents files, RelayProperties properties, Clock clock) {
         this.store = store;
         this.files = files;
         this.properties = properties;
@@ -80,7 +80,8 @@ public final class ChunkService {
         if (store.bytesOf(boxId) + request.size() > properties.quotaPerBox().toBytes()) {
             throw new RelayException(HttpStatus.INSUFFICIENT_STORAGE, "Volume maximal déposé par cette box atteint");
         }
-        if (Files.getFileStore(files.root()).getUsableSpace() - request.size() < properties.minFreeSpace().toBytes()) {
+        java.util.OptionalLong free = files.usableSpace();
+        if (free.isPresent() && free.getAsLong() - request.size() < properties.minFreeSpace().toBytes()) {
             throw new RelayException(HttpStatus.INSUFFICIENT_STORAGE, "Espace disque du relais insuffisant");
         }
         Duration ttl = request.ttl() == null || request.ttl() <= 0 ? properties.defaultTtl()
@@ -135,12 +136,14 @@ public final class ChunkService {
      *
      * @throws RelayException 425 si le morceau n'est toujours pas téléversé
      */
-    public Path download(ChunkStore.Recipient recipient, Duration wait) throws InterruptedException {
+    public org.springframework.core.io.Resource download(ChunkStore.Recipient recipient, Duration wait)
+            throws InterruptedException, IOException {
         Duration bounded = wait.compareTo(properties.maxWait()) > 0 ? properties.maxWait() : wait;
         Instant deadline = clock.instant().plus(bounded);
         while (true) {
-            if (chunk(recipient.senderId()).uploaded()) {
-                return files.path(recipient.senderId());
+            ChunkStore.Chunk chunk = chunk(recipient.senderId());
+            if (chunk.uploaded()) {
+                return files.open(chunk.senderId(), chunk.size());
             }
             if (!clock.instant().isBefore(deadline)) {
                 throw new RelayException(HttpStatus.TOO_EARLY, "Morceau pas encore téléversé");

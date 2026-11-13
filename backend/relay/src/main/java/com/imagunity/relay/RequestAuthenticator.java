@@ -4,7 +4,6 @@ import com.imagunity.directory.BoxEntry;
 import com.imagunity.directory.LocalDirectory;
 import com.imagunity.protocol.Codec;
 import com.imagunity.protocol.ProtocolException;
-import com.imagunity.protocol.ReplayGuard;
 import com.imagunity.protocol.SignedRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.security.GeneralSecurityException;
@@ -26,10 +25,10 @@ import org.springframework.http.HttpStatus;
 public final class RequestAuthenticator {
 
     private final LocalDirectory directory;
-    private final ReplayGuard replay;
+    private final ReplayStore replay;
     private final Clock clock;
 
-    public RequestAuthenticator(LocalDirectory directory, ReplayGuard replay, Clock clock) {
+    public RequestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock) {
         this.directory = directory;
         this.replay = replay;
         this.clock = clock;
