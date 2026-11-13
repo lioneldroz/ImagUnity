@@ -58,7 +58,7 @@ imagunity:
     # Un transfert annoncé sans accusé au-delà de ce délai est signalé dans la console.
     ack-overdue: 30m
   directory:
-    # Annuaire signé de l'organisation (voir docs/annuaire-signe.md). Désactivé : tout partenaire appairé est accepté.
+    # Annuaire signé de l'organisation (voir docs/reference/annuaire-signe.md). Désactivé : tout partenaire appairé est accepté.
     enabled: ${IMAGUNITY_DIRECTORY_ENABLED:false}
     url: ${IMAGUNITY_DIRECTORY_URL:}
     organization-key: ${IMAGUNITY_DIRECTORY_ORGANIZATION_KEY:}
@@ -74,7 +74,7 @@ imagunity:
     identity-tpm: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM:false}
     identity-tpm-pcrs: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
-  # Configuration centralisée (docs/configuration-centralisee.md) : règles de priorité et de routage signées par le
+  # Configuration centralisée (docs/reference/configuration-centralisee.md) : règles de priorité et de routage signées par le
   # responsable, lues avec l'annuaire et appliquées sans redémarrage. false : configuration locale seulement.
   central-configuration:
     enabled: ${IMAGUNITY_CENTRAL_CONFIGURATION:true}

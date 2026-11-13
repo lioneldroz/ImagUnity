@@ -28,4 +28,4 @@ Présentation de 19 diapositives qui explique simplement le fonctionnement d’I
 | 18 | Ce que la campagne de tests a montré | `slides/preuves.html` |
 | 19 | Avant le pilote : un audit de sécurité indépendant | `slides/audit.html` |
 
-Les chiffres viennent de la [campagne de tests](../phase8-campagne.md), de la [priorité des séries](../priorite-dicom.md), du [routage DICOM](../routage-dicom.md), de la [configuration centralisée](../configuration-centralisee.md), de la [spécification IU-T](../specification-protocole.md) (§ 13.4, relais multiples et réparti) et du [pré-audit](../audit/pre-audit.md). Les diapositives qui décrivaient SimpleX sont passées au transport IU-T.
+Les chiffres viennent de la [campagne de tests](../historique/phase8-campagne.md), de la [priorité des séries](../reference/priorite-dicom.md), du [routage DICOM](../reference/routage-dicom.md), de la [configuration centralisée](../reference/configuration-centralisee.md), de la [spécification IU-T](../reference/specification-protocole.md) (§ 13.4, relais multiples et réparti) et du [pré-audit](../audit/pre-audit.md). Les diapositives qui décrivaient SimpleX sont passées au transport IU-T.

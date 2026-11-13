@@ -1,6 +1,6 @@
 name: Livraison
 
-# Construit une version d'ImagUnity, sans la signer : la signature reste hors ligne, chez l'éditeur (docs/livraison.md).
+# Construit une version d'ImagUnity, sans la signer : la signature reste hors ligne, chez l'éditeur (docs/guides/livraison.md).
 # - étiquette vX.Y.Z poussée : version livrée (la version des pom.xml doit être X.Y.Z, sans -SNAPSHOT) ;
 # - lancement à la main (onglet Actions) : essai à blanc sur la version en cours, -SNAPSHOT admis.
 on:

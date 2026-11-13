@@ -10,7 +10,7 @@ Cinq revues indépendantes, une par zone, en lecture seule du code et de la docu
 | Zone | Préfixe | Modules |
 |---|---|---|
 | Cryptographie et documents signés | C | `protocol`, `directory`, `packaging`, `release`, `app/config` (TPM) |
-| Relais | R | `relay`, `deploy/relais-reparti`, `deploy/k3s` |
+| Relais | R | `relay`, `deploy/banc-essai/relais-reparti`, `deploy/banc-essai/k3s` |
 | Données reçues par la box | B | `transport`, `orchestration` |
 | Console, API et entrée DICOM | L | `api`, `app`, `dicom`, console |
 | Service d'annuaire, mises à jour, déploiement | D | `directory-server`, `release`, `deploy` |
@@ -39,7 +39,7 @@ Changements de comportement à connaître :
 - **Pile Compose d'essai** : les ports sont publiés sur `127.0.0.1` seulement.
 - **K3s** :
   - l'entrée est en HTTPS seulement, et seul `/iu/` est routé ;
-  - la base et le stockage S3 d'essai sont dans `deploy/k3s/essai`.
+  - la base et le stockage S3 d'essai sont dans `deploy/banc-essai/k3s/essai`.
 - **Migrations de base** :
   - relais : `V4__empreinte_des_entrees` ;
   - box : `V7__empreinte_des_entrees`.
@@ -78,7 +78,7 @@ Changements de comportement à connaître :
 | R9 | Faible | Fichiers temporaires abandonnés, espace de `/tmp` | Corrigé | Le fichier temporaire est supprimé quelle que soit l'issue, et ceux de plus de 6 heures sont purgés au démarrage |
 | R10 | Faible, à vérifier | Nouvel essai de Traefik et anti-rejeu | Accepté | Le nouvel essai ne vaut qu'avant toute réponse. Une requête rejouée sur une autre instance est refusée comme déjà vue, et la box réessaie avec une nouvelle signature. À vérifier sur un vrai cluster |
 | R11 | Faible | Quota non atomique entre instances | Accepté | Dépassement borné par le nombre d'instances × la taille d'un morceau |
-| R12 | Info | Compte S3 d'essai (droit `Admin`) déployé par défaut dans K3s, et remarques mineures | En partie | `deploy/k3s/essai` est séparé du déploiement par défaut (voir D10). **Reste** : en production, un compte S3 limité au compartiment |
+| R12 | Info | Compte S3 d'essai (droit `Admin`) déployé par défaut dans K3s, et remarques mineures | En partie | `deploy/banc-essai/k3s/essai` est séparé du déploiement par défaut (voir D10). **Reste** : en production, un compte S3 limité au compartiment |
 
 ### 3.3 Console, API et entrée DICOM (L)
 
@@ -109,7 +109,7 @@ Changements de comportement à connaître :
 | D7 | Faible | Comptes rendus de box expirées ou pas encore valides acceptés | Corrigé | Seules les box actives à la date de réception rendent compte |
 | D8 | Faible | Pas de protection CSRF sur les dépôts hors de `/admin/api/` | Corrigé | Les POST exigent `application/json`, qu'un formulaire d'une autre page ne peut pas envoyer |
 | D9 | Faible | Téléchargement d'une mise à jour sans borne | Corrigé | Copie arrêtée à la taille signée, artefact tronqué refusé, manifeste borné à 1 Mio (voir C7) |
-| D10 | Faible | Secrets d'essai dans le déploiement K3s par défaut | Corrigé | Base et S3 d'essai sortis du déploiement par défaut (`deploy/k3s/essai`) |
+| D10 | Faible | Secrets d'essai dans le déploiement K3s par défaut | Corrigé | Base et S3 d'essai sortis du déploiement par défaut (`deploy/banc-essai/k3s/essai`) |
 | D11 | Faible | Mot de passe de dépôt généré puis écrit en clair dans le journal | Corrigé | Écrit dans un fichier lisible du seul compte du service |
 | D12 | Faible | Chaîne d'approvisionnement : images de base et actions non épinglées par empreinte | Reporté | Actions de la CI épinglées par tag, images de base sans digest, enveloppe Maven sans empreinte. L'analyse OSV des dépendances tourne à chaque intégration. Épinglage à faire |
 | D13 | Info | Vérification des mises à jour désactivée sans clé de l'éditeur, et pas de détection de gel | Accepté | Documenté. Un miroir peut geler les mises à jour : manifestes sans date d'expiration |
@@ -151,7 +151,7 @@ Images reconstruites après les corrections (box 0.14.0, n° 26, signée par l'�
 - un TPM logiciel par box ;
 - les mises à jour signées et le routage.
 
-Les deux box ont été mises à jour ensemble, comme l'exige le champ destinataire des messages. Résultats bruts : [campagne-20261113-123649.json](../../deploy/campagne/resultats/campagne-20261113-123649.json).
+Les deux box ont été mises à jour ensemble, comme l'exige le champ destinataire des messages. Résultats bruts : [campagne-20261113-123649.json](../../deploy/banc-essai/campagne/resultats/campagne-20261113-123649.json).
 
 | Scénario | Instances arrivées et identiques | Remarque |
 |---|---|---|

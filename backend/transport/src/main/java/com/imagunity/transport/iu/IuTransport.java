@@ -33,7 +33,7 @@ import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 /**
- * Transport IU-T (spécification {@code docs/specification-protocole.md}, § 13.2) : adaptateur du {@link TransportPort}
+ * Transport IU-T (spécification {@code docs/reference/specification-protocole.md}, § 13.2) : adaptateur du {@link TransportPort}
  * sur un relais IU-FILE + IU-MSG de l'organisation.
  *
  * <ul>

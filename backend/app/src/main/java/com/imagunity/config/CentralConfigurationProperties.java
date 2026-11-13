@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * Configuration centralisée ({@code imagunity.central-configuration.*}, docs/configuration-centralisee.md) : règles de
+ * Configuration centralisée ({@code imagunity.central-configuration.*}, docs/reference/configuration-centralisee.md) : règles de
  * priorité et de routage publiées par le service d'annuaire, signées par le responsable. Exige l'annuaire.
  *
  * @param enabled appliquer les documents publiés ; faux : la box garde sa configuration locale (verrouillage local,

@@ -74,13 +74,13 @@ public final class TpmSeal {
         if (pcrs == null) {
             return "Secret TPM lié à aucun registre PCR : un autre système démarré sur cette machine (clé USB) peut le "
                     + "desceller. En production : IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS=sha256:0,4,7,8,9 (ou 11 avec un "
-                    + "noyau UKI), voir docs/cles-tpm.md";
+                    + "noyau UKI), voir docs/reference/cles-tpm.md";
         }
         java.util.Set<String> registers = java.util.Set.of(pcrs.replaceFirst("^[a-z0-9]+:", "").split(","))
                 .stream().map(String::strip).collect(java.util.stream.Collectors.toSet());
         if (registers.stream().noneMatch(java.util.Set.of("4", "8", "9", "11")::contains)) {
             return "Secret TPM lié aux PCR " + pcrs + " sans le chargeur ni le noyau (4, 8, 9 ou 11) : un autre "
-                    + "système signé pour le démarrage sécurisé peut produire les mêmes valeurs, voir docs/cles-tpm.md";
+                    + "système signé pour le démarrage sécurisé peut produire les mêmes valeurs, voir docs/reference/cles-tpm.md";
         }
         return null;
     }
@@ -258,7 +258,7 @@ public final class TpmSeal {
             String cause = java.util.Arrays.stream(lines).filter(l -> l.contains("tpm:")).findFirst()
                     .orElse(lines[lines.length - 1]).strip();
             if (message.contains("lockout")) {
-                cause += " (TPM en verrouillage anti-force brute : voir docs/cles-tpm.md)";
+                cause += " (TPM en verrouillage anti-force brute : voir docs/reference/cles-tpm.md)";
             }
             throw new IOException(command.getFirst() + " a échoué : " + cause);
         }
