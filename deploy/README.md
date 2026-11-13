@@ -89,6 +89,16 @@ docker compose -f docker-compose.yml -f compose.deux-relais.yml up -d
 
 Chaque box crée alors une file sur chaque relais et publie une adresse par relais (`iu`, `iu-2`) : télécharger sa nouvelle demande d'enrôlement, faire réémettre son entrée (`enroler --serie <n+1>`, puis `publier`). Tant que l'entrée n'est pas réémise, les messages ne passent que par le relais principal ; les morceaux sont copiés sur les deux dans tous les cas. Une box qui reçoit des morceaux sur un relais absent de sa configuration ignore ces copies. La bande passante montante est multipliée par le nombre de copies : `IMAGUNITY_IU_REPLICAS=1` garde les files redondantes sans doubler les morceaux.
 
+### Relais réparti
+
+Le relais peut tourner en plusieurs instances sans état derrière un répartiteur ([spécification § 6.8](../docs/specification-protocole.md)) : base PostgreSQL et stockage compatible S3 partagés. La surcouche [`compose.relais-reparti.yml`](compose.relais-reparti.yml) remplace le relais par Traefik (même nom `relay`, même port : les box ne changent rien), deux instances `relay-a` et `relay-b`, et un stockage SeaweedFS :
+
+```bash
+docker compose -f docker-compose.yml -f compose.relais-reparti.yml up -d
+```
+
+Réglages du stockage des morceaux : `IMAGUNITY_RELAY_STORAGE=s3`, `IMAGUNITY_RELAY_S3_ENDPOINT`, `IMAGUNITY_RELAY_S3_BUCKET` (créé au besoin), `IMAGUNITY_RELAY_S3_ACCESS_KEY` et `IMAGUNITY_RELAY_S3_SECRET_KEY` (secrets, jamais dans un fichier versionné), `IMAGUNITY_RELAY_S3_PATH_STYLE` (`true` hors AWS). Tout service compatible S3 convient (MinIO, Garage, SeaweedFS, AWS, OVH…). Pour K3s : [k3s/README.md](k3s/README.md).
+
 ### Routage par champ DICOM
 
 Sur une destination de routage (par exemple `IU_AUTO`), la box choisit le partenaire d'après le contenu de l'examen (modalité, établissement…), par des règles lues dans l'ordre ; une instance qu'aucune règle ne couvre est refusée au PACS. Exemple d'essai : `campagne/compose.routage.yml`. Voir [routage DICOM](../docs/routage-dicom.md).
