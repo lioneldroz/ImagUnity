@@ -97,7 +97,7 @@ public final class IuMsgClient {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base(relay) + path + "?wait="
                 + wait.toSeconds())).timeout(wait.plusSeconds(60));
         IuFileClientHeaders.apply(request, signed, recvId, signed.signCapability(queueKey));
-        HttpResponse<byte[]> response = exchange(request.GET().build());
+        Response response = exchange(request.GET().build(), MAX_POLL_RESPONSE);
         if (response.statusCode() == 204) {
             return List.of();
         }
@@ -138,16 +138,27 @@ public final class IuMsgClient {
     }
 
     private byte[] send(HttpRequest request, int expected) throws IOException {
-        HttpResponse<byte[]> response = exchange(request);
+        Response response = exchange(request, IuFileClient.MAX_SMALL_RESPONSE);
         if (response.statusCode() != expected) {
             throw IuFileClient.refused(response.statusCode(), response.body());
         }
         return response.body();
     }
 
-    private HttpResponse<byte[]> exchange(HttpRequest request) throws IOException {
+    /** Relève : 20 messages au plus de 72 Kio, en base64 dans du JSON ; marge comprise. */
+    static final int MAX_POLL_RESPONSE = 4 * 1024 * 1024;
+
+    private record Response(int statusCode, byte[] body) {
+    }
+
+    /** Réponse lue au plus jusqu'à {@code limit} octets (relais hostile : pas d'épuisement de la mémoire). */
+    private Response exchange(HttpRequest request, int limit) throws IOException {
         try {
-            return http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<java.io.InputStream> response = http.send(request,
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                return new Response(response.statusCode(), IuFileClient.bounded(in, limit));
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Requête interrompue", e);

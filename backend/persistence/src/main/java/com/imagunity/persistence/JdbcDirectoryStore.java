@@ -5,6 +5,7 @@ import com.imagunity.directory.SerialMemory;
 import com.imagunity.directory.SignedDocument;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -26,6 +27,24 @@ public final class JdbcDirectoryStore implements SerialMemory, EntryCache {
     public OptionalLong highest(UUID boxId) {
         return jdbc.sql("SELECT serial FROM directory_serial WHERE box_id = ?").param(boxId).query(Long.class)
                 .optional().map(OptionalLong::of).orElse(OptionalLong.empty());
+    }
+
+    @Override
+    public Optional<String> digest(UUID boxId) {
+        return jdbc.sql("SELECT digest FROM directory_serial WHERE box_id = ?").param(boxId).query(String.class)
+                .optional();
+    }
+
+    @Override
+    public void record(UUID boxId, long serial, String digest) {
+        OptionalLong current = highest(boxId);
+        if (current.isEmpty() || serial > current.getAsLong()) {
+            jdbc.sql("MERGE INTO directory_serial (box_id, serial, digest) KEY (box_id) VALUES (?, ?, ?)")
+                    .params(boxId, serial, digest).update();
+        } else if (serial == current.getAsLong()) {
+            jdbc.sql("UPDATE directory_serial SET digest = ? WHERE box_id = ? AND digest IS NULL")
+                    .params(digest, boxId).update();
+        }
     }
 
     @Override

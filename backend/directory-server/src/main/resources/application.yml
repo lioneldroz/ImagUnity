@@ -3,9 +3,11 @@ imagunity:
     # Clé publique de l'organisation (fichier .pub.json produit par « organisation-creer ») : toute entrée déposée
     # doit être signée par elle. Les box revérifient tout de leur côté.
     organization-key: ${IMAGUNITY_DIRECTORY_ORGANIZATION_KEY:./organisation.pub.json}
-    # Compte de dépôt du responsable (HTTP Basic). Sans mot de passe : un mot de passe aléatoire est généré et journalisé.
+    # Compte de dépôt du responsable (HTTP Basic). Sans mot de passe : un mot de passe aléatoire est généré et écrit
+    # dans generated-password-file, lisible du seul compte du service (jamais dans les journaux).
     publisher-user: ${IMAGUNITY_DIRECTORY_PUBLISHER_USER:responsable}
     publisher-password: ${IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD:}
+    generated-password-file: ${IMAGUNITY_DIRECTORY_GENERATED_PASSWORD_FILE:./mot-de-passe-depot.txt}
 
 spring:
   application:

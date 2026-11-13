@@ -190,6 +190,23 @@ class IuTransportTest {
     }
 
     @Test
+    void aMessageAlreadyHandledIsIgnoredAfterARestart() throws Exception {
+        Box a = a(true);
+        Box b = b(true);
+        PeerId[] peers = pair(a, b);
+        SignedMessage text = SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "une seule fois",
+                Instant.now());
+        b.transport().onMessage(text);
+        assertThat(b.await(TransportEvent.MessageReceived.class, m -> m.text().equals("une seule fois")).peer())
+                .isEqualTo(peers[1]);
+        b.transport().close();
+        Box restarted = b(false);
+        restarted.transport().onMessage(text); // redéposé par un relais après le redémarrage
+        Thread.sleep(200);
+        assertThat(restarted.all(TransportEvent.MessageReceived.class)).as("anti-rejeu gardé sur disque").isEmpty();
+    }
+
+    @Test
     void transfersResumeAfterARestartOfEitherBox() throws Exception {
         Box a = a(true);
         Box b = b(true);
@@ -298,40 +315,40 @@ class IuTransportTest {
         IuDirectory.Partner aEntry = entries.get(RelayHarness.A);
         entries.put(RelayHarness.A, new IuDirectory.Partner(aEntry.boxId(), aEntry.displayName(), false,
                 aEntry.signingKey(), aEntry.encryptionKey(), aEntry.address()));
-        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, "d'une box révoquée",
+        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "d'une box révoquée",
                 Instant.now()));
         entries.remove(RelayHarness.A);
-        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, "d'une box inconnue",
+        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "d'une box inconnue",
                 Instant.now()));
         entries.put(RelayHarness.A, aEntry);
         deposit(client, toB, "inconnu", "x");
         deposit(client, toB, IuTransport.FILE, "pas du JSON");
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t1", 3, 2, "x")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt1", 3, 2, "x")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t2", 0, 1, "{\"pas\":\"une description\"}")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt2", 0, 1, "{\"pas\":\"une description\"}")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t3", 0, 2, "{")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt3", 0, 2, "{")));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t3", 1, 3, "}")));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt3", 1, 3, "}")));
         FileDescription elsewhere = new FileDescription("IU1", "AAAAAAAAAAAAAAAAAAAAAA", FileDescription.COMPLETE,
                 "paquet.tar.zst.iu1", 256 * 1024, 1, 10, "0".repeat(64), List.of(new FileDescription.Chunk(0,
                 "0".repeat(64), List.of(new FileDescription.Replica("https://ailleurs.example", "r".repeat(43),
                 Codec.base64Url(java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
                         .getPrivate().getEncoded()))))), Instant.now().plus(Duration.ofHours(1)));
         deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
-                new IuTransport.Fragment("t4", 0, 1, elsewhere.toJson())));
+                new IuTransport.Fragment("TTTTTTTTTTTTTTTTTTTTt4", 0, 1, elsewhere.toJson())));
         deposit(client, toB, IuTransport.TEXT, "fin");
         assertThat(b.await(TransportEvent.MessageReceived.class, m -> m.text().equals("fin"))).isNotNull();
         assertThat(b.all(TransportEvent.MessageReceived.class)).extracting(TransportEvent.MessageReceived::text)
                 .doesNotContain("d'une box révoquée", "d'une box inconnue");
         assertThat(b.all(TransportEvent.FileOffered.class)).isEmpty();
         assertThat(b.transport().store().incoming()).as("seule t3 attend sa suite")
-                .extracting(IuStore.Incoming::transferId).containsExactly("t3");
+                .extracting(IuStore.Incoming::transferId).containsExactly("TTTTTTTTTTTTTTTTTTTTt3");
     }
 
     private static void deposit(IuMsgClient client, QueueAddress to, String type, String body) throws Exception {
-        client.deposit(to, RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(type, RelayHarness.A, body,
+        client.deposit(to, RelayHarness.A, RelayHarness.A_KEYS, SignedMessage.of(type, RelayHarness.A, RelayHarness.B, body,
                 Instant.now()).seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey()));
     }
 
@@ -351,7 +368,7 @@ class IuTransportTest {
         assertThat(json.length()).isGreaterThan(2 * IuTransport.FRAGMENT);
         String body = Codec.json().writeValueAsString(new IuTransport.Fragment("AAAAAAAAAAAAAAAAAAAAAA", 0, 9,
                 json.substring(0, IuTransport.FRAGMENT)));
-        byte[] sealed = SignedMessage.of(IuTransport.FILE, RelayHarness.A, body, Instant.now())
+        byte[] sealed = SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B, body, Instant.now())
                 .seal(RelayHarness.A_KEYS, RelayHarness.B_KEM.publicKey());
         assertThat(MessageEnvelope.open(sealed, RelayHarness.B_KEM).length).isLessThan(MessageEnvelope.MAX_CONTENT);
     }

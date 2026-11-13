@@ -147,6 +147,47 @@ class DicomStoreScpTest {
     }
 
     @Test
+    void enforcesSourceAddressesAndInstanceSize() throws Exception {
+        scp.stop();
+        scp = new DicomStoreScp(config, studies::add);
+        scp.limits(new DicomStoreScp.Limits(300, 4, Duration.ofSeconds(30), Duration.ofSeconds(5),
+                Set.of("127.0.0.0/8")));
+        TestPorts.start(scp);
+        assertThat(pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1"))))
+                .as("instance de plus de 300 octets").containsExactly(Status.ProcessingFailure);
+        assertThat(Files.list(storage.resolve(".tmp"))).isEmpty();
+
+        scp.stop();
+        scp = new DicomStoreScp(config, studies::add);
+        scp.limits(new DicomStoreScp.Limits(1L << 30, 4, Duration.ofSeconds(30), Duration.ofSeconds(5),
+                Set.of("10.20.0.0/16", "fd00::/8")));
+        TestPorts.start(scp);
+        assertThatThrownBy(() -> pacs.echo("IU_TO_B")).as("adresse hors des sources admises")
+                .isInstanceOf(AAssociateRJ.class);
+    }
+
+    @Test
+    void limitsAndSourcesAreChecked() throws Exception {
+        assertThatThrownBy(() -> new DicomStoreScp.Limits(0, 1, Duration.ofSeconds(1), Duration.ofSeconds(1), null))
+                .isInstanceOf(IllegalArgumentException.class);
+        for (String bad : List.of("pacs.local", "10.0.0.0/33", "10.0.0.0/x", "::1/129")) {
+            assertThatThrownBy(() -> SourceFilter.parse(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        java.net.InetAddress inside = java.net.InetAddress.getByName("192.168.10.77");
+        assertThat(SourceFilter.allows(Set.of(), inside)).isTrue();
+        assertThat(SourceFilter.allows(Set.of("192.168.10.0/24"), inside)).isTrue();
+        assertThat(SourceFilter.allows(Set.of("192.168.10.64/26"), inside)).isTrue();
+        assertThat(SourceFilter.allows(Set.of("192.168.10.0/26"), inside)).isFalse();
+        assertThat(SourceFilter.allows(Set.of("192.168.10.77"), inside)).isTrue();
+        assertThat(SourceFilter.allows(Set.of("192.168.11.0/24"), inside)).isFalse();
+        assertThat(SourceFilter.allows(Set.of("fd00::/8"), inside)).as("autre famille").isFalse();
+        assertThat(SourceFilter.allows(Set.of("0.0.0.0/0"), inside)).isTrue();
+        assertThat(DicomStoreScp.printable("PACS\nfaux journal\u0007")).isEqualTo("PACS?faux journal?");
+        assertThat(DicomStoreScp.printable("A".repeat(80))).hasSize(65);
+        assertThat(DicomStoreScp.printable(null)).isNull();
+    }
+
+    @Test
     void resumesPendingStudyAfterRestart() throws Exception {
         pacs.store("IU_TO_B", List.of(
                 TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1"),

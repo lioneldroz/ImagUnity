@@ -24,7 +24,7 @@ import java.util.UUID;
  * organisation-creer --organisation &lt;id&gt; --cles &lt;fichier&gt;
  * empreinte          --cle-publique &lt;fichier&gt;
  * box-demande        --cles &lt;fichier&gt; --box-id &lt;uuid&gt; --nom &lt;nom&gt; [--iu &lt;adresse&gt;] --sortie &lt;fichier&gt;
- * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 365] [--serie 1] --sortie &lt;fichier&gt;
+ * enroler            --cles &lt;clé organisation&gt; --demande &lt;fichier&gt; [--validite-jours 90] [--serie 1] --sortie &lt;fichier&gt;
  * revoquer           --cles &lt;clé organisation&gt; --entree &lt;fichier&gt; --motif &lt;texte&gt; --sortie &lt;fichier&gt;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
  * publier            --annuaire &lt;url&gt; --entree &lt;fichier&gt; [--compte &lt;utilisateur:mot de passe&gt;]
@@ -46,6 +46,12 @@ public final class DirectoryAdmin {
     @FunctionalInterface
     interface Prompt {
         char[] ask(String label);
+
+        /** Réponse visible (confirmation) ; par défaut comme {@link #ask}. */
+        default String answer(String label) {
+            char[] answer = ask(label);
+            return answer == null ? null : new String(answer);
+        }
     }
 
     private final PrintStream out;
@@ -68,7 +74,17 @@ public final class DirectoryAdmin {
 
     public static void main(String[] args) {
         java.io.Console console = System.console();
-        Prompt prompt = console == null ? label -> null : label -> console.readPassword("%s : ", label);
+        Prompt prompt = console == null ? label -> null : new Prompt() {
+            @Override
+            public char[] ask(String label) {
+                return console.readPassword("%s : ", label);
+            }
+
+            @Override
+            public String answer(String label) {
+                return console.readLine("%s : ", label);
+            }
+        };
         System.exit(new DirectoryAdmin(System.out, System.err, Clock.systemUTC(), System.getenv(), prompt).run(args));
     }
 
@@ -179,7 +195,7 @@ public final class DirectoryAdmin {
         Organization organization = organization(o);
         SignedDocument request = read(Path.of(require(o, "demande")));
         EnrollmentRequest r = EnrollmentRequest.verify(request);
-        long days = Long.parseLong(o.getOrDefault("validite-jours", "365"));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
         long serial = Long.parseLong(o.getOrDefault("serie", "1"));
         java.util.List<String> groups = o.containsKey("groupes") ? java.util.Arrays.stream(o.get("groupes")
                 .split(",")).map(String::strip).filter(g -> !g.isEmpty()).toList() : java.util.List.of();
@@ -249,6 +265,18 @@ public final class DirectoryAdmin {
         if (draft.routing() != null) {
             out.println("Routage : règles " + draft.routing().rules().stream().map(r -> r.name() + " → " + r.to())
                     .toList());
+        }
+        // Le brouillon vient de l'interface d'administration, qui peut être compromise : le responsable relit le
+        // document exact qu'il va signer, pas seulement son résumé.
+        out.println("Document exact à signer :");
+        out.println(tools.jackson.databind.json.JsonMapper.builder().build().readTree(draft.toJson())
+                .toPrettyString());
+        if (!o.containsKey("confirmer")) {
+            String answer = prompt.answer("Signer ce document ? Tapez « oui » pour confirmer");
+            if (answer == null || !answer.strip().equalsIgnoreCase("oui")) {
+                err.println("Signature abandonnée");
+                return 1;
+            }
         }
         SignedDocument signed = organization.signConfiguration(draft);
         write(Path.of(require(o, "sortie")), signed);
@@ -386,13 +414,13 @@ public final class DirectoryAdmin {
                   organisation-creer --organisation <id> --cles <fichier>
                   empreinte          --cle-publique <fichier>
                   box-demande        --cles <fichier> --box-id <uuid> --nom <nom> [--iu <adresse>] --sortie <fichier>
-                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 365] [--serie 1]
+                  enroler            --cles <clé organisation> --demande <fichier> [--validite-jours 90] [--serie 1]
                                      [--groupes imagerie-nord,urgences] --sortie <fichier>
                   revoquer           --cles <clé organisation> --entree <fichier> --motif <texte> --sortie <fichier>
                   verifier           --cle-publique <fichier> --entree <fichier>
                   publier            --annuaire <url> --entree <fichier> [--compte <utilisateur:mot de passe>]
                   proteger           --cles <fichier> [--box]
-                  configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier>
+                  configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier> [--confirmer]
                   configuration-publier --annuaire <url> --configuration <fichier> [--compte <utilisateur:mot de passe>]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
@@ -400,7 +428,7 @@ public final class DirectoryAdmin {
     }
 
     /** Options {@code --nom valeur} et drapeaux sans valeur ({@code --sans-phrase}, {@code --box}). */
-    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box");
+    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box", "confirmer");
 
     private static Map<String, String> options(String[] args) {
         Map<String, String> options = new HashMap<>();

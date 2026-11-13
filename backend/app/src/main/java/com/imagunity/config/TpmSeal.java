@@ -58,6 +58,31 @@ final class TpmSeal {
         this.privatePart = Path.of(base + ".tpm.priv");
         this.pcrs = pcrs == null || pcrs.isBlank() ? null : pcrs.strip();
         this.runner = runner;
+        String warning = pcrWarning(this.pcrs);
+        if (warning != null) {
+            System.getLogger(TpmSeal.class.getName()).log(System.Logger.Level.WARNING, warning);
+        }
+    }
+
+    /**
+     * Avertissement sur un lien PCR trop faible : sans PCR, un autre système démarré sur la même machine descelle le
+     * secret ; le PCR 7 seul (démarrage sécurisé) est le même pour tout système signé par la même autorité UEFI.
+     *
+     * @return l'avertissement, ou {@code null} si le chargeur ou le noyau sont aussi mesurés
+     */
+    static String pcrWarning(String pcrs) {
+        if (pcrs == null) {
+            return "Secret TPM lié à aucun registre PCR : un autre système démarré sur cette machine (clé USB) peut le "
+                    + "desceller. En production : IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS=sha256:0,4,7,8,9 (ou 11 avec un "
+                    + "noyau UKI), voir docs/cles-tpm.md";
+        }
+        java.util.Set<String> registers = java.util.Set.of(pcrs.replaceFirst("^[a-z0-9]+:", "").split(","))
+                .stream().map(String::strip).collect(java.util.stream.Collectors.toSet());
+        if (registers.stream().noneMatch(java.util.Set.of("4", "8", "9", "11")::contains)) {
+            return "Secret TPM lié aux PCR " + pcrs + " sans le chargeur ni le noyau (4, 8, 9 ou 11) : un autre "
+                    + "système signé pour le démarrage sécurisé peut produire les mêmes valeurs, voir docs/cles-tpm.md";
+        }
+        return null;
     }
 
     TpmSeal(Path base, String pcrs) {

@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,6 +46,9 @@ public class ChunkController {
     private final ChunkFiles files;
     private final RequestAuthenticator auth;
 
+    /** Demande de création : quelques champs et au plus 16 clés de retrait. */
+    static final int MAX_CREATE = 16 * 1024;
+
     public ChunkController(ChunkService chunks, ChunkFiles files, RequestAuthenticator auth) {
         this.chunks = chunks;
         this.files = files;
@@ -54,8 +56,12 @@ public class ChunkController {
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ChunkService.Created> create(@RequestBody byte[] body, HttpServletRequest request)
-            throws IOException {
+    public ResponseEntity<ChunkService.Created> create(HttpServletRequest request) throws IOException {
+        // Lu avec une limite, avant toute authentification : un corps énorme n'épuise pas la mémoire du relais.
+        byte[] body = request.getInputStream().readNBytes(MAX_CREATE + 1);
+        if (body.length > MAX_CREATE) {
+            throw new RelayException(HttpStatus.CONTENT_TOO_LARGE, "Demande de création trop longue");
+        }
         UUID box = auth.depositor(request, Codec.sha256Hex(body));
         ChunkService.CreateRequest create;
         try {
@@ -72,11 +78,10 @@ public class ChunkController {
         ChunkFiles.Received received = files.receive(request.getInputStream(), chunk.size());
         try {
             auth.capability(request, received.sha256(), senderId, chunk.senderKey());
-        } catch (RelayException e) {
-            java.nio.file.Files.deleteIfExists(received.temp());
-            throw e;
+            chunks.upload(chunk, received);
+        } finally {
+            java.nio.file.Files.deleteIfExists(received.temp()); // toute issue, y compris une panne de la base
         }
-        chunks.upload(chunk, received);
         return ResponseEntity.noContent().build();
     }
 

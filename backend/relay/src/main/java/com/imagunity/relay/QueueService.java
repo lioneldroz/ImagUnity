@@ -20,6 +20,8 @@ public final class QueueService {
     /** Taille maximale d'une enveloppe : contenu de 64 Kio, plus en-tête et étiquette. */
     static final int MAX_ENVELOPE = 72 * 1024;
     static final int MAX_PENDING = 10_000;
+    /** Part d'une file qu'une seule box émettrice peut occuper : elle ne peut pas la remplir pour les autres. */
+    static final int MAX_PENDING_PER_SENDER = 2_000;
     static final int BATCH = 20;
 
     /**
@@ -124,6 +126,10 @@ public final class QueueService {
         if (store.pending(queue.recvId()) >= MAX_PENDING) {
             throw new RelayException(HttpStatus.INSUFFICIENT_STORAGE, "File pleine : la box destinataire ne relève plus");
         }
+        if (store.pendingFrom(queue.recvId(), senderBox) >= MAX_PENDING_PER_SENDER) {
+            throw new RelayException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Trop de messages en attente de cette box pour ce destinataire");
+        }
         Instant now = clock.instant();
         String messageId = id(16);
         store.deposit(queue.recvId(), messageId, senderBox, envelope, now, now.plus(properties.defaultTtl()));
@@ -152,7 +158,9 @@ public final class QueueService {
 
     public Ids rotate(QueueStore.Queue queue) {
         Ids ids = new Ids(id(32), id(32));
-        store.rotate(queue, ids.recvId(), ids.sendId());
+        if (!store.rotate(queue, ids.recvId(), ids.sendId())) {
+            throw new RelayException(HttpStatus.NOT_FOUND, "File inconnue");
+        }
         return ids;
     }
 

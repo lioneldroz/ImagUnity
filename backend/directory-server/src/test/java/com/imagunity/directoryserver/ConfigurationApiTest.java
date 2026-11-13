@@ -139,6 +139,24 @@ class ConfigurationApiTest {
         assertThat(send("POST", reports, future.toJson(), null, false).statusCode()).isEqualTo(422);
         assertThat(send("POST", reports, "x".repeat(70_000), null, false).statusCode()).isEqualTo(422);
 
+        // Box dont l'entrée a expiré : plus de compte rendu.
+        HybridKeyPair expiredKeys = HybridKeyPair.generate();
+        UUID expired = UUID.randomUUID();
+        SignedDocument old = ORGANIZATION.enroll(EnrollmentRequest.create(expiredKeys, expired, "Site X", Map.of(),
+                now.minus(Duration.ofDays(40))), now.minus(Duration.ofDays(40)), Duration.ofDays(30), 1, List.of());
+        assertThat(send("POST", "/directory/v1/entries", old.toJson(), ACCOUNT, false).statusCode()).isEqualTo(201);
+        assertThat(send("POST", reports, ConfigurationReport.of(expired, 3, now, 0, null, now).sign(expiredKeys)
+                .toJson(), null, false).statusCode()).as("entrée expirée").isEqualTo(422);
+
+        // Corps d'un autre type (formulaire d'une page tierce) : refusé avant toute lecture.
+        HttpResponse<String> form = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"
+                + environment.getProperty("local.server.port") + "/admin/api/publish"))
+                .header("Content-Type", "text/plain").header("Authorization", "Basic " + Base64.getEncoder()
+                        .encodeToString(ACCOUNT.getBytes(StandardCharsets.UTF_8))).header("X-ImagUnity-Admin", "1")
+                .POST(HttpRequest.BodyPublishers.ofString(report.toJson())).build(), HttpResponse.BodyHandlers
+                .ofString());
+        assertThat(form.statusCode()).isEqualTo(415);
+
         HttpResponse<String> state = send("GET", "/admin/api/state", null, ACCOUNT, false);
         assertThat(state.statusCode()).isEqualTo(200);
         JsonNode boxView = null;

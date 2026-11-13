@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -31,6 +32,23 @@ public final class RelayDirectoryStore implements SerialMemory, EntryCache {
     public OptionalLong highest(UUID boxId) {
         return jdbc.sql("SELECT serial FROM directory_serial WHERE box_id = ?").param(boxId).query(Long.class)
                 .optional().map(OptionalLong::of).orElse(OptionalLong.empty());
+    }
+
+    @Override
+    public Optional<String> digest(UUID boxId) {
+        return jdbc.sql("SELECT digest FROM directory_serial WHERE box_id = ?").param(boxId).query(String.class)
+                .optional();
+    }
+
+    @Override
+    public void record(UUID boxId, long serial, String digest) {
+        transactions.executeWithoutResult(status -> {
+            jdbc.sql("INSERT INTO directory_serial (box_id, serial, digest) VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
+                    .params(boxId, serial, digest).update();
+            jdbc.sql("UPDATE directory_serial SET serial = ?, digest = ? WHERE box_id = ? "
+                    + "AND (serial < ? OR (serial = ? AND digest IS NULL))")
+                    .params(serial, digest, boxId, serial, serial).update();
+        });
     }
 
     @Override

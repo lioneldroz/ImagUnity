@@ -13,6 +13,11 @@ spec:
           respondingTimeouts:
             readTimeout: 5m
             idleTimeout: 3m
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 5m
+            idleTimeout: 3m
     logs:
       access:
         enabled: false

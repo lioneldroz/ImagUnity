@@ -191,6 +191,13 @@ class StowServiceTest {
                 new ByteArrayInputStream(part10(dataset)), null))
                 .isInstanceOfSatisfying(DicomStoreScp.Refused.class,
                         e -> assertThat(e.getStatus()).isEqualTo(Status.OutOfResources));
+
+        DicomStoreScp small = new DicomStoreScp(new DicomInputConfig("127.0.0.1", 1, Set.of(), Map.of("IU_TO_B",
+                "box-b"), storage.resolve("petit"), Duration.ofSeconds(1), 0), s -> { });
+        small.limits(new DicomStoreScp.Limits(100, 1, Duration.ofSeconds(1), Duration.ofSeconds(1), Set.of()));
+        Files.createDirectories(storage.resolve("petit/.tmp"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> small.storePart10("p", "IU_TO_B",
+                new ByteArrayInputStream(part10(dataset)), null)).hasMessageContaining("trop grande");
     }
 
     private static byte[] concat(byte[]... arrays) {

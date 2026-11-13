@@ -110,9 +110,9 @@ public final class IuFileClient {
             try (InputStream body = response.body()) {
                 int expected = received.size() > 0 ? 206 : 200;
                 if (response.statusCode() != expected) {
-                    throw refused(response.statusCode(), body.readAllBytes());
+                    throw refused(response.statusCode(), bounded(body, MAX_SMALL_RESPONSE));
                 }
-                copyWatched(body, received);
+                copyWatched(body, received, expectedSize);
                 return received.toByteArray();
             } catch (IOException e) {
                 if (e instanceof Stalled || ++interruptions > 5) {
@@ -139,7 +139,23 @@ public final class IuFileClient {
         }
     }
 
-    private static void copyWatched(InputStream body, ByteArrayOutputStream received) throws IOException {
+    /** Réponse courte du relais (JSON, refus) : au-delà, elle est refusée. */
+    static final int MAX_SMALL_RESPONSE = 64 * 1024;
+
+    /**
+     * Lit au plus {@code limit} octets ; au-delà, le relais répond anormalement (relais hostile qui tenterait
+     * d'épuiser la mémoire de la box) : la lecture est abandonnée.
+     */
+    static byte[] bounded(InputStream in, int limit) throws IOException {
+        byte[] body = in.readNBytes(limit + 1);
+        if (body.length > limit) {
+            throw new IOException("Réponse du relais trop longue (plus de " + limit + " octets)");
+        }
+        return body;
+    }
+
+    private static void copyWatched(InputStream body, ByteArrayOutputStream received, int expectedSize)
+            throws IOException {
         long idle = idleTimeout.toNanos();
         Thread reader = Thread.currentThread();
         java.util.concurrent.atomic.AtomicLong last = new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
@@ -162,6 +178,9 @@ public final class IuFileClient {
             byte[] buffer = new byte[64 * 1024];
             int n;
             while ((n = body.read(buffer)) >= 0) {
+                if (received.size() + n > expectedSize) {
+                    throw new IOException("Morceau plus long qu'annoncé : abandonné");
+                }
                 received.write(buffer, 0, n);
                 last.set(System.nanoTime());
             }
@@ -219,11 +238,15 @@ public final class IuFileClient {
     }
 
     private byte[] send(HttpRequest request, int expected) throws IOException {
-        HttpResponse<byte[]> response = exchange(request, HttpResponse.BodyHandlers.ofByteArray());
-        if (response.statusCode() != expected) {
-            throw refused(response.statusCode(), response.body());
+        HttpResponse<InputStream> response = exchange(request, HttpResponse.BodyHandlers.ofInputStream());
+        byte[] body;
+        try (InputStream in = response.body()) {
+            body = bounded(in, MAX_SMALL_RESPONSE);
         }
-        return response.body();
+        if (response.statusCode() != expected) {
+            throw refused(response.statusCode(), body);
+        }
+        return body;
     }
 
     private <T> HttpResponse<T> exchange(HttpRequest request, HttpResponse.BodyHandler<T> handler)

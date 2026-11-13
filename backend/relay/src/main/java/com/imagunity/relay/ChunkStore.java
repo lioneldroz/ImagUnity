@@ -74,8 +74,9 @@ public final class ChunkStore {
                 .query(ChunkStore::recipient).list();
     }
 
-    public void markUploaded(String senderId) {
-        jdbc.sql("UPDATE chunk SET uploaded = TRUE WHERE sender_id = ?").param(senderId).update();
+    /** Marque le morceau téléversé ; faux s'il n'existe plus (supprimé pendant le téléversement). */
+    public boolean markUploaded(String senderId) {
+        return jdbc.sql("UPDATE chunk SET uploaded = TRUE WHERE sender_id = ?").param(senderId).update() == 1;
     }
 
     public void ack(String recipientId) {

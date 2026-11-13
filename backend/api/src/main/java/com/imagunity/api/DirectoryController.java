@@ -158,7 +158,7 @@ public class DirectoryController {
         if (peers.findAll().stream().anyMatch(p -> boxId.equals(p.boxId()))) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » déjà appairée");
         }
-        pairing.join(request.name(), address);
+        pairing.join(request.name(), address, boxId);
     }
 
     @ExceptionHandler(IllegalStateException.class)

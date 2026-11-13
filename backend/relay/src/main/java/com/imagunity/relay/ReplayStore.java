@@ -39,10 +39,11 @@ public final class ReplayStore {
      * @return la raison du refus, ou vide si la requête est admise
      */
     public Optional<String> admit(SignedRequest request) {
-        long now = clock.instant().getEpochSecond();
-        if (Math.abs(now - request.timestamp()) > window.toSeconds()) {
-            return Optional.of("horodatage hors de la fenêtre admise (horloge de la box à vérifier)");
+        Optional<String> outside = outsideWindow(request);
+        if (outside.isPresent()) {
+            return outside;
         }
+        long now = clock.instant().getEpochSecond();
         // Gardé jusqu'à ce que son horodatage sorte de la fenêtre.
         Instant expires = Instant.ofEpochSecond(Math.max(now, request.timestamp()) + window.toSeconds());
         try {
@@ -52,6 +53,18 @@ public final class ReplayStore {
         } catch (DuplicateKeyException e) {
             return Optional.of("requête rejouée");
         }
+    }
+
+    /**
+     * Contrôle de l'horodatage seul, sans rien enregistrer : à faire avant de vérifier la signature (coûteuse), alors
+     * que l'enregistrement de l'identifiant ({@link #admit}) se fait après, pour qu'une requête non signée n'écrive
+     * rien en base.
+     */
+    public Optional<String> outsideWindow(SignedRequest request) {
+        if (Math.abs(clock.instant().getEpochSecond() - request.timestamp()) > window.toSeconds()) {
+            return Optional.of("horodatage hors de la fenêtre admise (horloge de la box à vérifier)");
+        }
+        return Optional.empty();
     }
 
     /** Oublie les identifiants sortis de la fenêtre. */

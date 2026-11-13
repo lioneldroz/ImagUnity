@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Appairage des box par l'annuaire.
@@ -28,7 +29,12 @@ public final class PairingService {
 
     private static final System.Logger LOG = System.getLogger(PairingService.class.getName());
 
-    private record Pending(String name, Instant since) {
+    /**
+     * Appairage demandé par l'opérateur.
+     *
+     * @param expectedBox box visée (d'après l'annuaire), ou {@code null} si le transport ne l'authentifie pas
+     */
+    private record Pending(String name, Instant since, java.util.UUID expectedBox) {
     }
 
     /** Préfixe des partenaires provisoires (connexion entrante pas encore vérifiée par l'annuaire). */
@@ -53,9 +59,17 @@ public final class PairingService {
 
     /** Se connecte à la box qui publie {@code address} dans l'annuaire, enregistrée localement sous {@code name}. */
     public synchronized void join(String name, String address) {
+        join(name, address, null);
+    }
+
+    /**
+     * Se connecte à la box {@code expectedBox} de l'annuaire, qui publie {@code address} : seule une connexion de cette
+     * box, authentifiée par le transport, reçoit le nom choisi.
+     */
+    public synchronized void join(String name, String address, java.util.UUID expectedBox) {
         Peer.requireValidName(name);
         // Avant l'appel : la connexion peut être signalée avant son retour.
-        pending = new Pending(name, clock.instant());
+        pending = new Pending(name, clock.instant(), expectedBox);
         try {
             transport.connect(address);
         } catch (RuntimeException e) {
@@ -74,12 +88,27 @@ public final class PairingService {
             return;
         }
         long peerId = connected.peer().value();
-        if (peers.findByTransportPeerId(peerId).isPresent()) {
-            return; // partenaire déjà appairé
-        }
         Instant now = clock.instant();
-        if (pending == null || pending.since().plus(pendingTimeout).isBefore(now)) {
-            pending = null;
+        boolean expected = pending != null && !pending.since().plus(pendingTimeout).isBefore(now)
+                && (pending.expectedBox() == null || transport.authenticatedBox(connected.peer())
+                .map(pending.expectedBox()::equals).orElse(false));
+        Optional<Peer> known = peers.findByTransportPeerId(peerId);
+        if (known.isPresent()) {
+            // Déjà connue (contact provisoire) : si c'est la box attendue, elle prend le nom choisi par l'opérateur.
+            if (expected && known.get().name().startsWith(PROVISIONAL_PREFIX)) {
+                peers.delete(known.get().name());
+                peers.save(new Peer(pending.name(), peerId, known.get().displayName(), known.get().pairedAt(),
+                        known.get().boxId()));
+                LOG.log(Level.INFO, "Partenaire {0} appairé (contact {1} renommé)", pending.name(),
+                        known.get().name());
+                pending = null;
+            }
+            return;
+        }
+        if (!expected) {
+            if (pending != null && pending.since().plus(pendingTimeout).isBefore(now)) {
+                pending = null; // expiré ; un appairage en cours n'est pas abandonné pour une autre box
+            }
             String name = PROVISIONAL_PREFIX + peerId;
             peers.save(new Peer(name, peerId, connected.displayName(), now));
             LOG.log(Level.INFO, "Connexion de {0} enregistrée comme {1}, en attente de vérification par l''annuaire",

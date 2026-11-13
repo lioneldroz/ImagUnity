@@ -368,4 +368,50 @@ final class IuStore {
             throw new UncheckedIOException(e);
         }
     }
+
+    // --- Messages déjà traités (anti-rejeu, gardé au redémarrage) ---
+
+    private java.nio.file.Path seenFile() {
+        return dir.resolve("messages-vus.txt");
+    }
+
+    /** Identifiants des messages déjà traités, avec leur date de traitement. */
+    synchronized java.util.Map<String, Instant> seenMessages() {
+        java.util.Map<String, Instant> seen = new java.util.LinkedHashMap<>();
+        try {
+            if (Files.exists(seenFile())) {
+                for (String line : Files.readAllLines(seenFile())) {
+                    String[] parts = line.split(" ", 2);
+                    if (parts.length == 2) {
+                        try {
+                            seen.put(parts[0], Instant.parse(parts[1]));
+                        } catch (java.time.format.DateTimeParseException e) {
+                            // ligne abîmée : ignorée
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+        return seen;
+    }
+
+    synchronized void markSeen(String messageId, Instant at) {
+        try {
+            Files.writeString(seenFile(), messageId + " " + at + "\n", java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    /** Oublie les messages traités avant {@code limit}. */
+    synchronized void forgetSeenBefore(Instant limit) {
+        java.util.Map<String, Instant> kept = seenMessages();
+        kept.values().removeIf(at -> at.isBefore(limit));
+        StringBuilder text = new StringBuilder();
+        kept.forEach((id, at) -> text.append(id).append(' ').append(at).append('\n'));
+        write(seenFile(), text.toString());
+    }
 }

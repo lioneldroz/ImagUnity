@@ -222,8 +222,17 @@ public final class ReceiveOrchestrator {
                 .ifPresent(f -> fileFailed(f, "Transport : " + failed.reason()));
     }
 
-    private void fileFailed(InboundFile file, String reason) {
+    private void fileFailed(InboundFile file, String rawReason) {
+        // Motif venu du relais ou du pair : sans caractère de contrôle (journaux), longueur bornée (base).
+        String reason = SendOrchestrator.sanitize(rawReason);
         inbound.saveFile(file.with(InboundFile.State.FAILED, clock.instant()));
+        if (file.file() != null) {
+            try {
+                java.nio.file.Files.deleteIfExists(file.file()); // téléchargement partiel : ne pas encombrer le disque
+            } catch (java.io.IOException e) {
+                LOG.log(Level.WARNING, "Fichier partiel non supprimé : {0}", e.getMessage());
+            }
+        }
         LOG.log(Level.WARNING, "Réception de {0} en échec : {1}", file.fileName(), reason);
         inbound.findTransferByGroup(file.peerName(), groupOf(file.fileName()))
                 .filter(t -> t.state() == InboundTransfer.State.ANNOUNCED)

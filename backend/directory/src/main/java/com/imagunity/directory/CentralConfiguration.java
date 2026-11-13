@@ -46,6 +46,11 @@ public record CentralConfiguration(String type, String suite, String organizatio
     public static final String TYPE = "imagunity.configuration";
     /** Tolérance d'horloge pour un document émis « dans le futur ». */
     static final Duration CLOCK_SKEW = Duration.ofMinutes(10);
+    /**
+     * Plus haut numéro de version admis : un numéro démesuré, signé par erreur ou glissé dans un brouillon par une
+     * interface compromise, bloquerait toutes les versions suivantes (aucune box n'accepte un numéro inférieur).
+     */
+    public static final long MAX_SEQUENCE = 1_000_000_000L;
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
 
     /**
@@ -175,7 +180,7 @@ public record CentralConfiguration(String type, String suite, String organizatio
         if (!Suite.ID.equals(suite)) {
             throw new DirectoryException("Configuration : suite non prise en charge " + suite);
         }
-        if (sequence < 1) {
+        if (sequence < 1 || sequence > MAX_SEQUENCE) {
             throw new DirectoryException("Configuration : numéro de version invalide " + sequence);
         }
         if (priority == null && routing == null) {

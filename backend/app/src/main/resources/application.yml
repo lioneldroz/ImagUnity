@@ -50,9 +50,11 @@ imagunity:
     max-unpacked-size: 4GB
   console:
     # Compte opérateur de la console et de l'API (HTTP Basic). Sans mot de passe, un mot de passe aléatoire
-    # est généré à chaque démarrage et journalisé. Accepte un hachage préfixé, par exemple {bcrypt}$2a$...
+    # est généré à chaque démarrage et écrit dans generated-password-file (lisible du seul compte de la box,
+    # jamais dans les journaux). Accepte un hachage préfixé, par exemple {bcrypt}$2a$...
     user: ${IMAGUNITY_CONSOLE_USER:operateur}
     password: ${IMAGUNITY_CONSOLE_PASSWORD:}
+    generated-password-file: ${IMAGUNITY_DATA_DIR:./data}/mot-de-passe-console.txt
     # Un transfert annoncé sans accusé au-delà de ce délai est signalé dans la console.
     ack-overdue: 30m
   directory:

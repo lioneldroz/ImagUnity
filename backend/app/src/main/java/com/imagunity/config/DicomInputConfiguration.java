@@ -23,8 +23,10 @@ class DicomInputConfiguration {
     }
 
     @Bean
-    DicomStoreScp dicomStoreScp(DicomProperties properties, StudyListener listener) {
-        return new DicomStoreScp(properties.toConfig(), listener);
+    DicomStoreScp dicomStoreScp(DicomProperties properties, DicomLimitsProperties limits, StudyListener listener) {
+        DicomStoreScp scp = new DicomStoreScp(properties.toConfig(), listener);
+        scp.limits(limits.toLimits());
+        return scp;
     }
 
     /** Réception STOW-RS (DICOMweb) : mêmes contrôles et même routage que le C-STORE. */

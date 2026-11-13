@@ -46,6 +46,7 @@ imagunity:
 - Variables d'environnement équivalentes : `IMAGUNITY_DICOM_ALLOWED_CALLING_AETS=ORTHANC_A`, `IMAGUNITY_DICOM_ROUTES_0_CALLED_AET=IU_TO_B`, `IMAGUNITY_DICOM_ROUTES_0_DESTINATION=box-b`.
 - Les AET de la configuration sont limités à `A-Z a-z 0-9 _ -` (16 caractères au plus) : ils servent aussi de noms de dossiers.
 - Par défaut, la liste des émetteurs autorisés est **vide** : une box mal configurée refuse tout plutôt que d'accepter n'importe qui.
+- **Limites** (`imagunity.dicom.limits.*`, pré-audit) : l'AET appelant se déclare librement, il n'authentifie pas le poste. Pour restreindre aussi les adresses, `allowed-sources` (adresses ou réseaux CIDR, par exemple `IMAGUNITY_DICOM_LIMITS_ALLOWED_SOURCES=192.168.10.20,10.1.0.0/16` ; vide : toutes). Autres limites, avec leur valeur par défaut : instance de 4 Go au plus (`max-instance-size`, C-STORE et STOW-RS), 32 associations simultanées (`max-associations`), association fermée après 2 minutes sans échange (`idle-timeout`) ou faute de demande d'association 10 s après la connexion (`request-timeout`).
 
 ## 3. Sécurité
 

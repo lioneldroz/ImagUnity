@@ -6,6 +6,7 @@ import com.imagunity.directory.SignedDocument;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -52,19 +53,24 @@ class ConfigurationController {
         return new DocumentsView(organization, service.documents());
     }
 
-    @PostMapping("/directory/v1/configurations")
+    @PostMapping(path = "/directory/v1/configurations", consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Void> publish(@RequestBody String body) {
         PublicationService.Outcome outcome = service.publish(read(body));
         return ResponseEntity.status(outcome == PublicationService.Outcome.PUBLISHED ? HttpStatus.CREATED
                 : HttpStatus.OK).build();
     }
 
-    @PostMapping("/directory/v1/configurations/reports")
-    ResponseEntity<Void> report(@RequestBody String body) {
-        if (body.length() > 64 * 1024) {
+    /** Plus long compte rendu admis ; lu avec cette limite, avant toute vérification (l'appel est public). */
+    static final int MAX_REPORT = 64 * 1024;
+
+    @PostMapping(path = "/directory/v1/configurations/reports", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Void> report(jakarta.servlet.http.HttpServletRequest request) throws java.io.IOException {
+        byte[] body = request.getInputStream().readNBytes(MAX_REPORT + 1);
+        if (body.length > MAX_REPORT) {
             throw new PublicationService.InvalidEntryException("Compte rendu trop long");
         }
-        return ResponseEntity.status(service.report(read(body)) ? HttpStatus.CREATED : HttpStatus.OK).build();
+        return ResponseEntity.status(service.report(read(new String(body, java.nio.charset.StandardCharsets.UTF_8)))
+                ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
     @GetMapping("/admin/api/state")
@@ -72,17 +78,17 @@ class ConfigurationController {
         return service.state();
     }
 
-    @PostMapping("/admin/api/draft")
+    @PostMapping(path = "/admin/api/draft", consumes = MediaType.APPLICATION_JSON_VALUE)
     CentralConfiguration draft(@RequestBody ConfigurationService.DraftRequest request) {
         return service.draft(request);
     }
 
-    @PostMapping("/admin/api/trial")
+    @PostMapping(path = "/admin/api/trial", consumes = MediaType.APPLICATION_JSON_VALUE)
     RuleSet.Trial trial(@RequestBody TrialRequest request) {
         return service.trial(request.draft(), request.header() == null ? Map.of() : request.header());
     }
 
-    @PostMapping("/admin/api/publish")
+    @PostMapping(path = "/admin/api/publish", consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Void> publishFromInterface(@RequestBody String body) {
         return publish(body);
     }

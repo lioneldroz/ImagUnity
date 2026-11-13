@@ -87,36 +87,60 @@ class MessagesTest {
                 .put(envelope, 7 + headerLength, rest).array();
     }
 
+    /** Box destinataire des essais (ses clés de chiffrement sont {@code B}). */
+    private static final UUID B_ID = UUID.randomUUID();
+
     @Test
     void signedMessagesAreVerifiedAgainstTheDirectory() {
-        SignedMessage message = SignedMessage.of("file.ack", A, "{\"x\":1}", NOW);
+        SignedMessage message = SignedMessage.of("file.ack", A, B_ID, "{\"x\":1}", NOW);
         byte[] sealed = message.seal(A_IDENTITY, B.publicKey());
 
-        assertThat(SignedMessage.open(sealed, B, DIRECTORY)).isEqualTo(message);
-        assertThatThrownBy(() -> SignedMessage.open(sealed, B, id -> Optional.empty()))
-                .hasMessageContaining("absente de l'annuaire");
-        assertThatThrownBy(() -> SignedMessage.open(sealed, B, id -> Optional.of(HybridKeyPair.generate().publicKey())))
-                .hasMessageContaining("Signature du message invalide");
+        assertThat(SignedMessage.open(sealed, B, DIRECTORY, B_ID, NOW)).isEqualTo(message);
+        assertThatThrownBy(() -> SignedMessage.open(sealed, B, id -> Optional.empty(), B_ID, NOW))
+                .isInstanceOf(SignedMessage.UnknownSender.class).hasMessageContaining("absente de l'annuaire");
+        assertThatThrownBy(() -> SignedMessage.open(sealed, B, id -> Optional.of(HybridKeyPair.generate().publicKey()),
+                B_ID, NOW)).hasMessageContaining("Signature du message invalide");
         // Message signé par une autre box qui se fait passer pour A.
         byte[] impostor = message.seal(HybridKeyPair.generate(), B.publicKey());
-        assertThatThrownBy(() -> SignedMessage.open(impostor, B, DIRECTORY)).hasMessageContaining("invalide");
+        assertThatThrownBy(() -> SignedMessage.open(impostor, B, DIRECTORY, B_ID, NOW)).hasMessageContaining("invalide");
         byte[] notSigned = MessageEnvelope.seal("pas un document".getBytes(StandardCharsets.UTF_8), B.publicKey());
-        assertThatThrownBy(() -> SignedMessage.open(notSigned, B, DIRECTORY)).hasMessageContaining("illisible");
+        assertThatThrownBy(() -> SignedMessage.open(notSigned, B, DIRECTORY, B_ID, NOW))
+                .hasMessageContaining("illisible");
         byte[] otherPayload = MessageEnvelope.seal(SignedDocument.sign("{\"a\":1}", A_IDENTITY).toJson()
                 .getBytes(StandardCharsets.UTF_8), B.publicKey());
-        assertThatThrownBy(() -> SignedMessage.open(otherPayload, B, DIRECTORY)).hasMessageContaining("illisible");
+        assertThatThrownBy(() -> SignedMessage.open(otherPayload, B, DIRECTORY, B_ID, NOW))
+                .hasMessageContaining("illisible");
+    }
+
+    @Test
+    void aMessageForAnotherBoxOrOutsideItsTimeWindowIsRefused() {
+        // Une box C fait suivre à B un message que A lui avait adressé (rechiffré pour B) : refusé.
+        UUID c = UUID.randomUUID();
+        byte[] forwarded = SignedMessage.of("file.announce", A, c, "{}", NOW).seal(A_IDENTITY, B.publicKey());
+        assertThatThrownBy(() -> SignedMessage.open(forwarded, B, DIRECTORY, B_ID, NOW))
+                .hasMessageContaining("pour une autre box");
+        byte[] old = SignedMessage.of("ping", A, B_ID, "", NOW).seal(A_IDENTITY, B.publicKey());
+        assertThatThrownBy(() -> SignedMessage.open(old, B, DIRECTORY, B_ID, NOW.plus(SignedMessage.MAX_AGE)
+                .plusSeconds(1))).hasMessageContaining("trop ancien");
+        assertThatThrownBy(() -> SignedMessage.open(old, B, DIRECTORY, B_ID, NOW.minus(SignedMessage.CLOCK_SKEW)
+                .minusSeconds(1))).hasMessageContaining("futur");
     }
 
     @Test
     void messageFieldsAreValidated() {
         String id = "AAECAwQFBgcICQoLDA0ODw";
-        assertThat(SignedMessage.of("ping", A, "", NOW).messageId()).hasSize(22)
-                .isNotEqualTo(SignedMessage.of("ping", A, "", NOW).messageId());
-        assertThatThrownBy(() -> new SignedMessage("IU2", id, NOW, "ping", A, "")).hasMessageContaining("Suite");
-        assertThatThrownBy(() -> new SignedMessage("IU1", "x", NOW, "ping", A, "")).hasMessageContaining("Identifiant");
-        assertThatThrownBy(() -> new SignedMessage("IU1", null, NOW, "ping", A, "")).hasMessageContaining("Identifiant");
-        assertThatThrownBy(() -> new SignedMessage("IU1", id, NOW, "Ping!", A, "")).hasMessageContaining("Type");
-        assertThatThrownBy(() -> new SignedMessage("IU1", id, NOW, null, A, "")).hasMessageContaining("Type");
-        assertThatThrownBy(() -> new SignedMessage("IU1", id, null, "ping", A, "")).isInstanceOf(NullPointerException.class);
+        assertThat(SignedMessage.of("ping", A, B_ID, "", NOW).messageId()).hasSize(22)
+                .isNotEqualTo(SignedMessage.of("ping", A, B_ID, "", NOW).messageId());
+        assertThatThrownBy(() -> new SignedMessage("IU2", id, NOW, "ping", A, B_ID, "")).hasMessageContaining("Suite");
+        assertThatThrownBy(() -> new SignedMessage("IU1", "x", NOW, "ping", A, B_ID, ""))
+                .hasMessageContaining("Identifiant");
+        assertThatThrownBy(() -> new SignedMessage("IU1", null, NOW, "ping", A, B_ID, ""))
+                .hasMessageContaining("Identifiant");
+        assertThatThrownBy(() -> new SignedMessage("IU1", id, NOW, "Ping!", A, B_ID, "")).hasMessageContaining("Type");
+        assertThatThrownBy(() -> new SignedMessage("IU1", id, NOW, null, A, B_ID, "")).hasMessageContaining("Type");
+        assertThatThrownBy(() -> new SignedMessage("IU1", id, null, "ping", A, B_ID, ""))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new SignedMessage("IU1", id, NOW, "ping", A, null, ""))
+                .hasMessageContaining("destinataire");
     }
 }

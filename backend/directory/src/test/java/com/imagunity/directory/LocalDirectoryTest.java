@@ -88,6 +88,20 @@ class LocalDirectoryTest {
     }
 
     @Test
+    void anotherEntryUnderTheSameSerialIsRejected() {
+        UUID a = UUID.randomUUID();
+        SignedDocument entry = enrolled(a);
+        SignedDocument other = enrolled(a); // même numéro, autre clé : deux documents signés du même numéro
+        LocalDirectory directory = directory();
+        directory.synchronize(() -> List.of(entry));
+        BoxEntry kept = directory.entry(a).orElseThrow();
+
+        assertThat(directory.synchronize(() -> List.of(other)).rejected()).isEqualTo(1);
+        assertThat(directory.synchronize(() -> List.of(entry)).accepted()).as("même entrée relue").isEqualTo(1);
+        assertThat(directory.entry(a)).contains(kept);
+    }
+
+    @Test
     void boxesMissingFromALaterReadKeepTheirLastEntry() {
         UUID a = UUID.randomUUID();
         LocalDirectory directory = directory();

@@ -1,0 +1,11 @@
+# Essai : le relais réparti (dossier parent) avec PostgreSQL et SeaweedFS à une instance, sans redondance ni
+# sauvegarde. À ne pas utiliser en production.
+#
+#   kubectl apply -k deploy/k3s/essai
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: imagunity-relais
+resources:
+  - ..
+  - postgres.yaml
+  - s3.yaml

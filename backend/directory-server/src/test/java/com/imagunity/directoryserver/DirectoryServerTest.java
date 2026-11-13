@@ -142,19 +142,29 @@ class DirectoryServerTest {
         assertThat(get("/actuator/health").statusCode()).isEqualTo(200);
     }
 
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path dir;
+
     @Test
-    void configurationChecks() {
+    void configurationChecks() throws Exception {
         DirectoryConfiguration configuration = new DirectoryConfiguration();
         var encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
 
         assertThatThrownBy(() -> configuration.organizationKey(new DirectoryServerProperties(null, "r", "p")))
                 .hasMessageContaining("IMAGUNITY_DIRECTORY_ORGANIZATION_KEY");
-        assertThat(configuration.publisher(new DirectoryServerProperties(null, "r", ""), encoder)
-                .loadUserByUsername("r").getPassword()).startsWith("{bcrypt}");
+        java.nio.file.Path file = dir.resolve("depot/mot-de-passe.txt");
+        String generated = configuration.publisher(new DirectoryServerProperties(null, "r", "", file), encoder)
+                .loadUserByUsername("r").getPassword();
+        assertThat(generated).startsWith("{bcrypt}");
+        assertThat(encoder.matches(java.nio.file.Files.readString(file).strip(), generated)).isTrue();
+        assertThat(java.nio.file.Files.getPosixFilePermissions(file)).hasSize(2);
+        java.nio.file.Files.createDirectories(dir.resolve("bloque"));
+        assertThatThrownBy(() -> DirectoryConfiguration.writeOwnerOnly(dir.resolve("bloque"), "x"))
+                .isInstanceOf(java.io.UncheckedIOException.class);
         String hash = encoder.encode("x");
         assertThat(configuration.publisher(new DirectoryServerProperties(null, "r", hash), encoder)
                 .loadUserByUsername("r").getPassword()).isEqualTo(hash);
-        assertThat(configuration.publisher(new DirectoryServerProperties(null, "r", null), encoder)
-                .loadUserByUsername("r")).isNotNull();
+        assertThat(configuration.publisher(new DirectoryServerProperties(null, "r", null, dir.resolve("p.txt")),
+                encoder).loadUserByUsername("r")).isNotNull();
     }
 }

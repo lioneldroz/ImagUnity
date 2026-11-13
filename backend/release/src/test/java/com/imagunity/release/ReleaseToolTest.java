@@ -262,14 +262,25 @@ class ReleaseToolTest {
 
             Path next = Files.writeString(site.resolve("imagunity-box-0.5.0.jar"), "logiciel 0.5.0");
             sign(next, "0.5.0", 5, site.resolve("latest.json").toString());
-            Files.writeString(next, "logiciel 0.5.0, piégé sur le serveur");
+            Files.writeString(next, "logiciel 0.5.X");
             assertThat(run("choisir")).isZero();
             assertThat(errors()).contains("Mise à jour par le serveur impossible").contains("Artefact différent");
             assertThat(output()).endsWith("\t0.4.0\t4\n");
+            Files.writeString(next, "logiciel 0.5.0, piégé sur le serveur");
+            assertThat(run("choisir")).isZero();
+            assertThat(errors()).contains("plus long que la taille signée");
+            Files.writeString(next, "logiciel");
+            assertThat(run("choisir")).isZero();
+            assertThat(errors()).contains("tronqué");
+            assertThat(dir.resolve("data/mises-a-jour/telechargement/imagunity-box-0.5.0.jar")).doesNotExist();
 
             Files.delete(next);
             assertThat(run("choisir")).isZero();
             assertThat(errors()).contains("HTTP 404 pour imagunity-box-0.5.0.jar");
+
+            Files.writeString(site.resolve("latest.json"), "x".repeat(ReleaseStore.MAX_MANIFEST + 1));
+            assertThat(run("choisir")).isZero();
+            assertThat(errors()).contains("latest.json trop long");
         } finally {
             server.stop(0);
         }

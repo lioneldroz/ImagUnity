@@ -268,4 +268,12 @@ class TpmSealTest {
             swtpm.destroy();
         }
     }
+
+    @org.junit.jupiter.api.Test
+    void weakPcrBindingsAreReported() {
+        assertThat(TpmSeal.pcrWarning(null)).contains("aucun registre PCR");
+        assertThat(TpmSeal.pcrWarning("sha256:0,7")).contains("sans le chargeur");
+        assertThat(TpmSeal.pcrWarning("sha256:0,4,7,8,9")).isNull();
+        assertThat(TpmSeal.pcrWarning("sha256: 7, 11")).isNull();
+    }
 }

@@ -111,6 +111,35 @@ class PairingServiceTest {
     }
 
     @Test
+    void onlyTheExpectedBoxReceivesTheChosenName() {
+        java.util.UUID expected = java.util.UUID.randomUUID();
+        transport.authenticated.put(6L, java.util.UUID.randomUUID());
+        transport.authenticated.put(5L, expected);
+        pairing.join("box-b", ADDRESS, expected);
+
+        transport.emit(connected(6, "autre box")); // une autre box se connecte pendant l'appairage
+
+        assertThat(peers.findByName("attente-6")).isPresent();
+        transport.emit(connected(5, "box-b"));
+        assertThat(peers.findByName("box-b")).map(Peer::transportPeerId).contains(5L);
+    }
+
+    @Test
+    void aProvisionalContactOfTheExpectedBoxIsRenamed() {
+        java.util.UUID expected = java.util.UUID.randomUUID();
+        transport.authenticated.put(7L, expected);
+        transport.emit(connected(7, "box-b")); // déjà connue comme contact provisoire
+        pairing.join("box-b", ADDRESS, expected);
+
+        transport.emit(connected(7, "box-b"));
+
+        assertThat(pairing.peers()).extracting(Peer::name).containsExactly("box-b");
+        transport.authenticated.put(8L, java.util.UUID.randomUUID());
+        transport.emit(connected(8, "autre"));
+        assertThat(peers.findByName("attente-8")).as("appairage consommé").isPresent();
+    }
+
+    @Test
     void failedJoinLeavesNoPendingPairing() {
         transport.failAccept = true;
 

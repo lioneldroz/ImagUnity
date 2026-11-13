@@ -118,13 +118,33 @@ class SecurityWiringTest {
         assertThat(send(request("/actuator/health")).statusCode()).isEqualTo(200);
     }
 
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path dir;
+
+    private static String readString(java.nio.file.Path file) {
+        try {
+            return java.nio.file.Files.readString(file);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
     @Test
-    void passwordIsGeneratedWhenMissingAndHashesAreKept() {
+    void passwordIsGeneratedWhenMissingAndHashesAreKept() throws java.io.IOException {
         PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
         SecurityConfiguration configuration = new SecurityConfiguration();
 
-        UserDetails generated = configuration.operator(new ConsoleAccessProperties("operateur", " "), encoder)
+        java.nio.file.Path file = dir.resolve("donnees/mot-de-passe-console.txt");
+        UserDetails generated = configuration.operator(new ConsoleAccessProperties("operateur", " ", file), encoder)
                 .loadUserByUsername("operateur");
+        String written = readString(file).strip();
+        assertThat(encoder.matches(written, generated.getPassword())).as("mot de passe écrit dans le fichier").isTrue();
+        assertThat(java.nio.file.Files.getPosixFilePermissions(file)).containsExactlyInAnyOrder(
+                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+        java.nio.file.Files.createDirectories(dir.resolve("bloque"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> SecurityConfiguration.writeOwnerOnly(
+                dir.resolve("bloque"), "x")).isInstanceOf(java.io.UncheckedIOException.class);
         String hash = encoder.encode("secret");
         UserDetails hashed = configuration.operator(new ConsoleAccessProperties("chef", hash), encoder)
                 .loadUserByUsername("chef");
@@ -134,7 +154,8 @@ class SecurityWiringTest {
         assertThat(encoder.matches("secret", hashed.getPassword())).isTrue();
         assertThat(SecurityConfiguration.generatedPassword()).hasSize(24)
                 .isNotEqualTo(SecurityConfiguration.generatedPassword());
-        assertThat(configuration.operator(new ConsoleAccessProperties("x", null), encoder).loadUserByUsername("x"))
-                .isNotNull();
+        assertThat(configuration.operator(new ConsoleAccessProperties("x", null, dir.resolve("x.txt")), encoder)
+                .loadUserByUsername("x")).isNotNull();
+        assertThat(new ConsoleAccessProperties("y", "z").generatedPasswordFile()).isNotNull();
     }
 }

@@ -27,6 +27,13 @@ final class FakeTransport implements TransportPort {
     boolean failSendMessage;
     boolean failAccept;
     long nextFileId = 100;
+    /** Box authentifiée par le transport pour chaque contact (vide : non fournie). */
+    final java.util.Map<Long, java.util.UUID> authenticated = new java.util.HashMap<>();
+
+    @Override
+    public java.util.Optional<java.util.UUID> authenticatedBox(PeerId peer) {
+        return java.util.Optional.ofNullable(authenticated.get(peer.value()));
+    }
 
     @Override
     public String contactAddress() {

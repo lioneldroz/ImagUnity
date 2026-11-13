@@ -138,6 +138,13 @@ public final class PeerHandshake {
         try {
             UUID boxId = UUID.fromString(node.path("boxId").asString());
             String challenge = node.path("challenge").asString();
+            Optional<UUID> authenticated = transport.authenticatedBox(message.peer());
+            if (authenticated.isPresent() && !authenticated.get().equals(boxId)) {
+                // Preuve ou défi relayé par une autre box : refusé (la box ne se lie qu'à l'émetteur authentifié).
+                LOG.log(Level.WARNING, "Poignée de main de {0} au nom de la box {1}, mais émise par la box {2} : "
+                        + "refusée", peer.get().name(), boxId, authenticated.get());
+                return;
+            }
             if (HELLO.equals(type)) {
                 onHello(peer.get(), boxId, challenge);
             } else {

@@ -111,21 +111,26 @@ spec:
   ports:
     - {name: http, port: 8443, targetPort: http}
 ---
-# Point d'entrée des box (Traefik de K3s). En production : TLS (certificat de l'établissement ou ACME) et un nom
-# d'hôte réel ; l'adresse publiée dans l'annuaire est https://<hôte>.
+# Point d'entrée des box (Traefik de K3s), en HTTPS seulement : certificat dans le secret relais-tls (certificat de
+# l'établissement, ou cert-manager). L'adresse publiée dans l'annuaire est https://<hôte>. Seule l'API IU-T
+# (/iu/) est exposée : /actuator (santé, métriques) reste interne au cluster.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: relais
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.middlewares: imagunity-relais-reessai@kubernetescrd
 spec:
+  tls:
+    - hosts: [relais.imagunity.example]
+      secretName: relais-tls
   rules:
     - host: relais.imagunity.example
       http:
         paths:
-          - path: /
+          - path: /iu/
             pathType: Prefix
             backend:
               service: {name: relais, port: {name: http}}
