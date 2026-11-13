@@ -60,11 +60,11 @@ Un arrêt entre deux étapes est rattrapé au redémarrage. Les paquets ne sont 
 
 **Clés.** Les clés privées de chiffrement sont dans `identite-box.json.chiffrement`, à côté de la clé de signature, en droits 600. Elles sont chiffrées par la **même phrase de passe** (voir l'[annuaire signé, § 9](annuaire-signe.md#9-protection-des-clés-privées)). Une box antérieure crée ses clés de chiffrement au démarrage suivant, sans changer d'identifiant, et journalise que son entrée est à réémettre.
 
-**Exigence.** `IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED` vaut `true` par défaut :
+**Exigence.** Avec l'annuaire, le chiffrement est **obligatoire**, sans réglage :
 - on refuse d'envoyer à une box dont l'entrée ne publie pas de clés de chiffrement. Message : « Box du partenaire « … » sans clés de chiffrement dans l'annuaire (entrée à réémettre…) » ;
 - on refuse de restituer un paquet reçu en clair (« Paquet reçu sans chiffrement applicatif, refusé »).
 
-Avec `false`, ces paquets passent en clair avec un avertissement. Ce réglage est **réservé à la migration d'un parc**. Sans annuaire, les paquets partent en clair, comme avant ; le transport reste chiffré.
+L'ancien réglage `IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED=false`, qui laissait passer ces paquets en clair le temps de migrer un parc, a été retiré (version 0.15.0). Une box qui le porte encore **refuse de démarrer** et l'indique : retirer la ligne de sa configuration. Sans annuaire, les paquets partent en clair, comme avant ; le transport reste chiffré.
 
 **Console.** L'onglet Annuaire signale une box active dont l'entrée n'a pas de clés de chiffrement : « sans clés de chiffrement : entrée à réémettre ».
 
@@ -81,6 +81,8 @@ Avec `false`, ces paquets passent en clair avec un avertissement. Ce réglage es
    ```
    `enroler` avertit si la demande ne contient pas de clés de chiffrement.
 4. En attendant la réémission, les envois vers une box sans clés sont refusés avec une cause explicite. On les **relance** depuis la console une fois l'entrée publiée.
+
+Cette migration se fait avec une version antérieure à 0.15.0 si le parc doit continuer d'échanger pendant la réémission : seules ces versions acceptent encore des paquets en clair ([notes de version](notes-de-version.md)).
 
 Une entrée sans clés de chiffrement ne contient pas le champ `encryptionKeys`. Elle reste donc lisible par les box antérieures.
 

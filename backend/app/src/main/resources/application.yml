@@ -74,8 +74,6 @@ imagunity:
     identity-tpm: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM:false}
     identity-tpm-pcrs: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
-    # Chiffrement applicatif des paquets pour la box destinataire (false : migration d’un parc seulement).
-    encryption-required: ${IMAGUNITY_DIRECTORY_ENCRYPTION_REQUIRED:true}
   # Configuration centralisée (docs/configuration-centralisee.md) : règles de priorité et de routage signées par le
   # responsable, lues avec l'annuaire et appliquées sans redémarrage. false : configuration locale seulement.
   central-configuration:

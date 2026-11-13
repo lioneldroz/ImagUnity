@@ -1,8 +1,6 @@
 package com.imagunity.config;
 
 import com.imagunity.directory.LocalDirectory;
-import com.imagunity.domain.peer.Peer;
-import com.imagunity.domain.peer.PeerRepository;
 import com.imagunity.orchestration.BoxIdentity;
 import com.imagunity.transport.DisabledTransport;
 import com.imagunity.transport.TransportPort;
@@ -84,54 +82,5 @@ class TransportConfiguration {
                 return DirectoryConfiguration.PHASE + 1;
             }
         };
-    }
-
-    /**
-     * Bascule vers IU-T : au premier démarrage, les partenaires appairés par SimpleX et liés à une box de l'annuaire
-     * gardent leur nom (et donc les routes DICOM qui les désignent) et reçoivent leur contact IU-T ; les contacts
-     * jamais vérifiés sont oubliés. Avant l'orchestration, qui reprend les transferts au démarrage.
-     */
-    @Bean
-    SmartLifecycle iuPeerMigration(TransportPort transport, PeerRepository peers) {
-        return new SmartLifecycle() {
-            private volatile boolean running;
-
-            @Override
-            public void start() {
-                if (transport instanceof IuTransport iu && !iu.peersMigrated()) {
-                    migratePeers(iu, peers);
-                }
-                running = true;
-            }
-
-            @Override
-            public void stop() {
-                running = false;
-            }
-
-            @Override
-            public boolean isRunning() {
-                return running;
-            }
-
-            @Override
-            public int getPhase() {
-                return OrchestrationConfiguration.PHASE - 1;
-            }
-        };
-    }
-
-    static void migratePeers(IuTransport iu, PeerRepository peers) {
-        for (Peer peer : peers.findAll()) {
-            if (peer.boxId() == null) {
-                peers.delete(peer.name());
-                LOG.info("Bascule IU-T : contact {} jamais vérifié par l'annuaire, oublié", peer.name());
-                continue;
-            }
-            long contact = iu.adopt(peer.boxId());
-            peers.save(new Peer(peer.name(), contact, peer.displayName(), peer.pairedAt(), peer.boxId()));
-            LOG.info("Bascule IU-T : partenaire {} (box {}) repris", peer.name(), peer.boxId());
-        }
-        iu.markPeersMigrated();
     }
 }

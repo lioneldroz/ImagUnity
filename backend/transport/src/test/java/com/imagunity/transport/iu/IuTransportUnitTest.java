@@ -44,24 +44,6 @@ class IuTransportUnitTest {
     }
 
     @Test
-    void partnersOfAFormerTransportAreAdoptedOnce() {
-        UUID box = UUID.randomUUID();
-        try (IuTransport transport = transport(dir.resolve("etat"))) {
-            assertThat(transport.peersMigrated()).isFalse();
-            long contact = transport.adopt(box);
-            assertThat(contact).as("loin des identifiants d'avant").isGreaterThanOrEqualTo(IuStore.FIRST_ID);
-            assertThat(transport.adopt(box)).as("même contact").isEqualTo(contact);
-            assertThat(transport.store().contact(contact)).map(IuStore.Contact::boxId).contains(box);
-            transport.markPeersMigrated();
-            assertThat(transport.peersMigrated()).isTrue();
-            assertThat(transport.busy()).isFalse();
-        }
-        try (IuTransport again = transport(dir.resolve("etat"))) {
-            assertThat(again.peersMigrated()).as("enregistré").isTrue();
-        }
-    }
-
-    @Test
     void aClosedTransportStartsNoTransfer() {
         IuTransport transport = transport(dir.resolve("ferme"));
         transport.store().save(new IuStore.Outgoing(7, 1, UUID.randomUUID(), "x", null, true, Instant.now()));

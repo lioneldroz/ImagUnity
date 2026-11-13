@@ -200,7 +200,7 @@ class TpmSealTest {
     void tpmModeIsSelectedByConfiguration() throws IOException {
         Path keys = dir.resolve("config/identite.json");
         DirectoryProperties properties = new DirectoryProperties(true, null, null, null, keys,
-                java.time.Duration.ofMinutes(5), null, null, true, true, "");
+                java.time.Duration.ofMinutes(5), null, null, true, "");
         // Selon la machine, un TPM est joignable ou non : dans les deux cas, c'est bien le TPM qui protège les clés,
         // et sans TPM la box ne démarre pas (jamais de repli silencieux sur des clés en clair).
         try {

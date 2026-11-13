@@ -54,12 +54,11 @@ class EncryptedEndToEndTest {
     private int deliveredMessagesA;
 
     /**
-     * @param keysOfB    l'entrée de B publie ses clés de chiffrement
-     * @param requiredA  A exige le chiffrement
-     * @param requiredB  B exige le chiffrement
+     * @param keysOfB     l'entrée de B publie ses clés de chiffrement
+     * @param encryptionA A chiffre ses paquets (sinon, il les envoie en clair, comme une box d'avant le chiffrement)
      * @param keysUsedByB clés avec lesquelles B déchiffre
      */
-    private void start(boolean keysOfB, boolean requiredA, boolean requiredB, BoxIdentity keysUsedByB) {
+    private void start(boolean keysOfB, boolean encryptionA, BoxIdentity keysUsedByB) {
         fixture.enroll(boxA);
         fixture.enroll(boxB, DirectoryFixture.NOW, Duration.ofDays(30), 1, keysOfB);
         directory = fixture.directory(clock);
@@ -69,16 +68,17 @@ class EncryptedEndToEndTest {
         peersB.save(new Peer("box-a", A_SEEN_BY_B.value(), "box-a", DirectoryFixture.NOW).boundTo(boxA.boxId()));
         sender = new SendOrchestrator(transfersA, peersA, new StudyPackager(PackagingConfig.defaults()), transportA,
                 dir.resolve("a/outbox"), Runnable::run, clock, new DirectoryPeerAuthorization(directory),
-                new MessageSigner(boxA, directory), new DirectoryPacketEncryption(directory, boxA, requiredA));
+                new MessageSigner(boxA, directory),
+                encryptionA ? new DirectoryPacketEncryption(directory, boxA) : PacketEncryption.none());
         sender.start();
         new ReceiveOrchestrator(inboundB, peersB, transportB, new PackageReader(1L << 30),
                 (study, instances) -> pacsB.addAll(instances), dir.resolve("b/inbox"), 1L << 30, Runnable::run, clock,
                 new DirectoryPeerAuthorization(directory), new MessageSigner(boxB, directory),
-                new DirectoryPacketEncryption(directory, keysUsedByB, requiredB)).start();
+                new DirectoryPacketEncryption(directory, keysUsedByB)).start();
     }
 
     private void start() {
-        start(true, true, true, boxB);
+        start(true, true, boxB);
     }
 
     private ReceivedStudy study() throws IOException {
@@ -147,7 +147,7 @@ class EncryptedEndToEndTest {
 
     @Test
     void recipientWithoutEncryptionKeysIsRefusedUntilItsEntryIsReissued() throws IOException {
-        start(false, true, true, boxB);
+        start(false, true, boxB);
 
         sender.handleStudy(study());
 
@@ -166,8 +166,8 @@ class EncryptedEndToEndTest {
     }
 
     @Test
-    void plainPacketsAreRefusedByARecipientThatRequiresEncryption() throws IOException {
-        start(false, false, true, boxB);
+    void plainPacketsAreRefusedByTheRecipient() throws IOException {
+        start(true, false, boxB);
 
         sender.handleStudy(study());
         assertThat(transportA.files.getFirst().file().getFileName().toString()).endsWith(".tar.zst");
@@ -180,19 +180,8 @@ class EncryptedEndToEndTest {
     }
 
     @Test
-    void plainPacketsPassDuringAMigration() throws IOException {
-        start(false, false, false, boxB);
-
-        sender.handleStudy(study());
-        relay();
-
-        assertThat(transfersA.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
-        assertThat(pacsB).hasSize(1);
-    }
-
-    @Test
     void aPacketEncryptedForAnotherBoxIsNotRestored() throws IOException {
-        start(true, true, true, fixture.box());
+        start(true, true, fixture.box());
 
         sender.handleStudy(study());
         relay();

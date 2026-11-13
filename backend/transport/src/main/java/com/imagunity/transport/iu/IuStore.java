@@ -140,8 +140,8 @@ final class IuStore {
     }
 
     /**
-     * Premier identifiant local : au-dessus de ceux de SimpleX (petits entiers), pour qu'un partenaire ou un fichier
-     * déjà en base d'avant la bascule ne soit jamais confondu avec un contact ou un fichier IU-T.
+     * Premier identifiant local des contacts et des fichiers. Valeur historique, à ne pas changer : les box déjà
+     * installées gardent ainsi leur numérotation.
      */
     static final long FIRST_ID = 1_000_000;
 
@@ -237,15 +237,6 @@ final class IuStore {
         write(dir.resolve("contacts.json"), Codec.json().writeValueAsString(new Contacts(current.next() + 1, all)));
         created[0] = true;
         return contact;
-    }
-
-    /** Vrai une fois les partenaires d'avant IU-T repris (marqueur {@code partenaires-repris}). */
-    synchronized boolean peersMigrated() {
-        return Files.exists(dir.resolve("partenaires-repris"));
-    }
-
-    synchronized void markPeersMigrated() {
-        write(dir.resolve("partenaires-repris"), "");
     }
 
     // --- Messages à déposer ---

@@ -105,6 +105,7 @@ Banc d'essai complet sur une machine (relais, deux box, deux Orthanc), pour la c
 - [Plan de réalisation](docs/plan-de-realisation.md)
 - [Analyse de la structure et plan d'amélioration](docs/plan-amelioration-structure.md)
 - [Livrer une version](docs/livraison.md)
+- [Notes de version](docs/notes-de-version.md)
 - [Phase 1 — Exploration SimpleX](docs/phase1-simplex.md)
 - [Phase 2 — Entrée DICOM](docs/phase2-dicom.md)
 - [Phase 3 — Empaquetage](docs/phase3-empaquetage.md)
