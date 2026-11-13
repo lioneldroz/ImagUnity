@@ -1,0 +1,8 @@
+[Unit]
+Description=ImagUnity : alerte sur l'échec de %i
+# Ne fait rien tant que le site n'a pas installé son script d'alerte (courriel, supervision…).
+ConditionFileIsExecutable=/etc/imagunity/alerte
+
+[Service]
+Type=oneshot
+ExecStart=/etc/imagunity/alerte %i

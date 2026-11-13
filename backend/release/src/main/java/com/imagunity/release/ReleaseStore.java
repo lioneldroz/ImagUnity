@@ -296,7 +296,8 @@ public final class ReleaseStore {
         }
     }
 
-    private long highestInstalled() throws IOException {
+    /** Plus haut numéro parmi les versions installées (chacune vérifiée avant son installation), ou 0. */
+    public long highestInstalled() throws IOException {
         return installedDirs().stream().mapToLong(p -> Long.parseLong(p.getFileName().toString())).max().orElse(0);
     }
 

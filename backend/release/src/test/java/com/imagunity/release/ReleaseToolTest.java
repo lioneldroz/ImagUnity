@@ -285,4 +285,31 @@ class ReleaseToolTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void aRunningBoxDownloadsANewerVersionWithoutStartingIt() throws IOException {
+        environment.remove("IMAGUNITY_RELEASE_KEY");
+        assertThat(run("telecharger")).as("sans clé de l'éditeur").isEqualTo(1);
+        assertThat(errors()).contains("pas de mise à jour automatique");
+
+        publisher();
+        Path image = bundled("0.1.0", 1);
+        assertThat(run("choisir")).isZero();
+        assertThat(run("telecharger")).isZero();
+        assertThat(output()).isEqualTo("a-jour\t1\n");
+
+        deposit("logiciel 0.2.0", "0.2.0", 2);
+        assertThat(run("telecharger")).isZero();
+        assertThat(output()).as("version prête, box à redémarrer").isEqualTo("nouvelle\t2\n");
+        assertThat(run("telecharger")).isZero();
+        assertThat(output()).as("toujours pas démarrée").isEqualTo("nouvelle\t2\n");
+        assertThat(run("choisir")).isZero();
+        assertThat(output()).endsWith("\t0.2.0\t2\n");
+        assertThat(run("telecharger")).isZero();
+        assertThat(output()).isEqualTo("a-jour\t2\n");
+
+        environment.put("IMAGUNITY_RELEASE_CODE", "AAAA-BBBB");
+        assertThat(run("telecharger")).isEqualTo(1);
+        assertThat(image).exists();
+    }
 }

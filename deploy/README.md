@@ -4,6 +4,10 @@ Environnement Docker Compose de la preuve de concept : deux établissements, deu
 
 Installation pas à pas sur une machine Rocky Linux (Docker CE, enrôlement, appairage, envoi d'essai) : [docs/installation-rocky-linux.md](../docs/installation-rocky-linux.md).
 
+Installation sur des machines séparées, en pré-production, sous Rocky Linux 10 :
+- site central (relais, annuaire, serveur de mises à jour) sous Docker : [docs/installation-site-central-rocky10.md](../docs/installation-site-central-rocky10.md), fichiers dans [`site-central/`](site-central/) ;
+- box sous systemd, avec mises à jour automatiques : [docs/installation-box-rocky10.md](../docs/installation-box-rocky10.md), fichiers dans [`box-systemd/`](box-systemd/).
+
 ```
  site-a                        relais (« Internet »)               site-b
 ┌──────────────┐   ┌────────────────────────────────────┐   ┌──────────────┐

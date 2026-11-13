@@ -1,0 +1,12 @@
+[Unit]
+Description=ImagUnity : recherche nocturne d'une nouvelle version de la box
+
+[Timer]
+# Fenêtre de maintenance : chaque nuit entre 3 h et 4 h (heure locale), à un moment tiré au hasard pour étaler la
+# charge du serveur de mises à jour. À adapter par « systemctl edit imagunity-box-maj.timer ».
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

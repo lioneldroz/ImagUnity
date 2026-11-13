@@ -1,0 +1,46 @@
+# Caddy du site central : certificats (Let's Encrypt, ou autorité interne si TLS_INTERNE=local_certs), routage
+# vers le relais et l'annuaire, administration réservée à RESEAU_ADMIN, fichiers des mises à jour.
+{
+	{$TLS_INTERNE}
+}
+
+# Relais IU-T : seule l'API /iu/ est exposée ; /actuator reste interne.
+{$RELAIS_HOTE} {
+	handle /iu/* {
+		reverse_proxy relay:8443 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 404
+	}
+	log {
+		output discard
+	}
+}
+
+# Annuaire : lecture publique (documents signés), dépôt et administration réservés au réseau d'administration.
+{$ANNUAIRE_HOTE} {
+	handle /directory/v1/* {
+		@depot_hors_admin {
+			method POST
+			path /directory/v1/entries /directory/v1/configurations
+			not remote_ip {$RESEAU_ADMIN}
+		}
+		respond @depot_hors_admin 403
+		reverse_proxy directory:8090
+	}
+	handle /admin* {
+		@hors_admin not remote_ip {$RESEAU_ADMIN}
+		respond @hors_admin 403
+		reverse_proxy directory:8090
+	}
+	# Serveur de mises à jour : fichiers statiques (latest.json et jars signés), vérifiés par chaque box.
+	handle_path /mises-a-jour/* {
+		root * /srv/mises-a-jour
+		file_server
+	}
+	handle {
+		respond 404
+	}
+}
