@@ -1,0 +1,80 @@
+name: Livraison
+
+# Construit une version d'ImagUnity, sans la signer : la signature reste hors ligne, chez l'éditeur (docs/livraison.md).
+# - étiquette vX.Y.Z poussée : version livrée (la version des pom.xml doit être X.Y.Z, sans -SNAPSHOT) ;
+# - lancement à la main (onglet Actions) : essai à blanc sur la version en cours, -SNAPSHOT admis.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  livraison:
+    name: Construction de la version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Version
+        id: version
+        run: |
+          VERSION=$(grep -A1 '<artifactId>imagunity-parent</artifactId>' backend/pom.xml \
+            | sed -n 's#.*<version>\(.*\)</version>.*#\1#p')
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] \
+              || { echo "Étiquette $GITHUB_REF_NAME, mais version $VERSION dans les pom.xml"; exit 1; }
+            case "$VERSION" in *-SNAPSHOT) echo "Une version livrée ne finit pas par -SNAPSHOT"; exit 1 ;; esac
+          fi
+          grep -q "\"version\": \"$VERSION\"" frontend/package.json \
+            || { echo "frontend/package.json n'est pas en version $VERSION (deploy/livraison/fixer-version.sh)"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Construction et tests
+        working-directory: backend
+        run: sh ./mvnw -B -ntp verify
+
+      - name: Box (à signer)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          D="imagunity-$VERSION"
+          mkdir -p "$D/box" "$D/site-central"
+          cp backend/app/target/imagunity-box.jar backend/release/target/imagunity-release.jar "$D/box/"
+          unzip -p "$D/box/imagunity-box.jar" META-INF/MANIFEST.MF | grep -q "Implementation-Version: $VERSION"
+
+      - name: Images du site central
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          D="imagunity-$VERSION"
+          docker build -q -t "imagunity/relay:$VERSION" -f deploy/relay/Dockerfile backend
+          docker build -q -t "imagunity/directory:$VERSION" -f deploy/directory/Dockerfile backend
+          docker save "imagunity/relay:$VERSION" "imagunity/directory:$VERSION" | gzip > "$D/site-central/images.tar.gz"
+
+      - name: Empreintes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd "imagunity-$VERSION"
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: imagunity-${{ steps.version.outputs.version }}
+          path: imagunity-${{ steps.version.outputs.version }}
+          retention-days: 30
+          if-no-files-found: error

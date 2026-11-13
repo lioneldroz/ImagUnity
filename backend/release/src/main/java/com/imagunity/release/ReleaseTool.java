@@ -27,7 +27,9 @@ import java.util.Set;
  * Éditeur (poste hors ligne qui garde la clé) :
  *   cle-creer  --editeur &lt;nom&gt; --cles &lt;fichier&gt; [--sans-phrase]
  *   empreinte  --cle-publique &lt;fichier&gt;
- *   signer     --cles &lt;fichier&gt; --artefact &lt;jar&gt; --version &lt;v&gt; --sequence &lt;n&gt; [--sortie &lt;manifeste&gt;]
+ *   signer     --cles &lt;fichier&gt; --artefact &lt;jar&gt; --registre &lt;registre&gt; [--sortie &lt;manifeste&gt;]
+ *              (version lue dans le jar, numéro suivant du registre, registre mis à jour ;
+ *               sans registre : --version &lt;v&gt; --sequence &lt;n&gt;)
  *   verifier   --cle-publique &lt;fichier&gt; --manifeste &lt;fichier&gt; --artefact &lt;jar&gt;
  *
  * Box (au démarrage, avant le logiciel) :
@@ -154,7 +156,31 @@ public final class ReleaseTool {
     private int sign(Map<String, String> o) throws IOException {
         Path keysFile = Path.of(require(o, "cles"));
         Path artifact = Path.of(require(o, "artefact"));
-        long sequence = Long.parseLong(require(o, "sequence"));
+        String product = o.getOrDefault("produit", ReleaseManifest.BOX);
+        String sha256 = ReleaseVerifier.sha256(artifact);
+        String version;
+        long sequence;
+        Path registryFile = o.containsKey("registre") ? Path.of(o.get("registre")) : null;
+        VersionRegistry registry = null;
+        if (registryFile != null) {
+            // Version lue dans l'artefact, numéro pris dans le registre : ni l'une ni l'autre ne se tape à la main.
+            registry = VersionRegistry.read(registryFile);
+            version = VersionRegistry.jarVersion(artifact).orElseThrow(() -> new ReleaseException(
+                    "Artefact sans version (Implementation-Version absente de son manifeste)"));
+            if (o.containsKey("version") && !o.get("version").equals(version)) {
+                throw new ReleaseException("--version " + o.get("version") + " différente de la version de l'artefact ("
+                        + version + ")");
+            }
+            sequence = registry.nextSequence();
+            if (o.containsKey("sequence") && Long.parseLong(o.get("sequence")) != sequence) {
+                throw new ReleaseException("--sequence " + o.get("sequence") + " différent du numéro suivant du registre ("
+                        + sequence + ")");
+            }
+            registry.checkNew(product, version, sha256);
+        } else {
+            version = require(o, "version");
+            sequence = Long.parseLong(require(o, "sequence"));
+        }
         char[] passphrase = null;
         if (KeyFiles.isProtected(keysFile)) {
             passphrase = passphrase(false);
@@ -166,13 +192,16 @@ public final class ReleaseTool {
             err.println("Attention : clé non protégée par phrase de passe (" + keysFile + ")");
         }
         HybridKeyPair keys = KeyFiles.readPrivate(keysFile, passphrase);
-        ReleaseManifest manifest = new ReleaseManifest(com.imagunity.directory.Suite.ID,
-                o.getOrDefault("produit", ReleaseManifest.BOX), require(o, "version"), sequence,
-                new ReleaseManifest.Artifact(artifact.getFileName().toString(), Files.size(artifact),
-                        ReleaseVerifier.sha256(artifact)), clock.instant());
+        ReleaseManifest manifest = new ReleaseManifest(com.imagunity.directory.Suite.ID, product, version, sequence,
+                new ReleaseManifest.Artifact(artifact.getFileName().toString(), Files.size(artifact), sha256),
+                clock.instant());
         Path output = Path.of(o.getOrDefault("sortie", artifact + ReleaseStore.MANIFEST_SUFFIX));
         Files.writeString(output, manifest.sign(keys).toJson(), StandardCharsets.UTF_8);
         out.println("Version " + manifest.label() + " signée : " + output);
+        if (registry != null) {
+            registry.with(new VersionRegistry.Entry(version, sequence, sha256, clock.instant())).write(registryFile);
+            out.println("Registre mis à jour : " + registryFile + " (à commiter)");
+        }
         return 0;
     }
 
@@ -302,7 +331,8 @@ public final class ReleaseTool {
                 Usage :
                   cle-creer  --editeur <nom> --cles <fichier> [--sans-phrase]
                   empreinte  --cle-publique <fichier>
-                  signer     --cles <fichier> --artefact <jar> --version <v> --sequence <n> [--sortie <manifeste>]
+                  signer     --cles <fichier> --artefact <jar> --registre <registre-versions.json> [--sortie <manifeste>]
+                             (sans registre : --version <v> --sequence <n>)
                   verifier   --cle-publique <fichier> --manifeste <fichier> --artefact <jar>
                   choisir    (box : configuration par IMAGUNITY_RELEASE_*)
                   telecharger (box en marche : installe une version plus récente, sans la démarrer)""");

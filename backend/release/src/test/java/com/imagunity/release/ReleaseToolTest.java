@@ -312,4 +312,67 @@ class ReleaseToolTest {
         assertThat(run("telecharger")).isEqualTo(1);
         assertThat(image).exists();
     }
+
+    /** Jar minimal portant (ou non) une version dans son manifeste, comme le jar de la box. */
+    static Path jarWithVersion(Path file, String version) throws IOException {
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+        if (version != null) {
+            manifest.getMainAttributes().put(java.util.jar.Attributes.Name.IMPLEMENTATION_VERSION, version);
+        }
+        Files.createDirectories(file.getParent());
+        try (java.util.jar.JarOutputStream jar = new java.util.jar.JarOutputStream(Files.newOutputStream(file),
+                manifest)) {
+            jar.putNextEntry(new java.util.jar.JarEntry("contenu.txt"));
+            jar.write(("logiciel " + version + " " + file.getFileName()).getBytes(StandardCharsets.UTF_8));
+        }
+        return file;
+    }
+
+    @Test
+    void theRegistryGivesTheNumberAndTheJarGivesTheVersion() throws IOException {
+        publisher();
+        Path registry = dir.resolve("registre-versions.json");
+        Files.writeString(registry, "{\"product\":\"imagunity-box\",\"firstSequence\":30,\"note\":\"essais\","
+                + "\"versions\":[]}");
+        Path first = jarWithVersion(dir.resolve("v1/imagunity-box.jar"), "0.15.0");
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", first.toString(), "--registre",
+                registry.toString())).as(errors()).isZero();
+        assertThat(output()).contains("Version 0.15.0 (n° 30) signée").contains("Registre mis à jour");
+        assertThat(run("verifier", "--cle-publique", p("editeur.json.pub.json"), "--manifeste",
+                first + ReleaseStore.MANIFEST_SUFFIX, "--artefact", first.toString())).isZero();
+        VersionRegistry written = VersionRegistry.read(registry);
+        assertThat(written.versions()).singleElement().satisfies(e -> {
+            assertThat(e.version()).isEqualTo("0.15.0");
+            assertThat(e.sequence()).isEqualTo(30);
+            assertThat(e.sha256()).isEqualTo(ReleaseVerifier.sha256(first));
+        });
+
+        Path second = jarWithVersion(dir.resolve("v2/imagunity-box.jar"), "0.15.1");
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", second.toString(), "--registre",
+                registry.toString(), "--version", "0.15.1", "--sequence", "31")).as(errors()).isZero();
+        assertThat(output()).contains("(n° 31)");
+
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", second.toString(), "--registre",
+                registry.toString())).isEqualTo(1);
+        assertThat(errors()).contains("déjà signée");
+        Path third = jarWithVersion(dir.resolve("v3/imagunity-box.jar"), "0.16.0");
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", third.toString(), "--registre",
+                registry.toString(), "--version", "0.16.1")).isEqualTo(1);
+        assertThat(errors()).contains("différente de la version de l'artefact");
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", third.toString(), "--registre",
+                registry.toString(), "--sequence", "40")).isEqualTo(1);
+        assertThat(errors()).contains("numéro suivant du registre (32)");
+        Path snapshot = jarWithVersion(dir.resolve("v4/imagunity-box.jar"), "0.17.0-SNAPSHOT");
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", snapshot.toString(), "--registre",
+                registry.toString())).isEqualTo(1);
+        assertThat(errors()).contains("non livrable");
+        Path noVersion = jarWithVersion(dir.resolve("v5/imagunity-box.jar"), null);
+        assertThat(run("signer", "--cles", p("editeur.json"), "--artefact", noVersion.toString(), "--registre",
+                registry.toString())).isEqualTo(1);
+        assertThat(errors()).contains("Implementation-Version");
+        assertThat(VersionRegistry.read(registry).versions()).as("refus : registre inchangé").hasSize(2);
+        assertThat(third + ReleaseStore.MANIFEST_SUFFIX).as("refus : rien de signé").satisfies(
+                f -> assertThat(Path.of(f)).doesNotExist());
+    }
 }

@@ -342,13 +342,12 @@ Une mise à jour de Java ne prend effet qu'au redémarrage de la box. La mise à
 
 ## Annexe : préparer l'archive (éditeur)
 
-Construire demande Java 25 et Node.js 24 : la console React est construite au passage et embarquée dans le jar de la box.
+L'archive se prépare à partir d'une livraison signée ([livrer une version](livraison.md)) : le workflow Livraison construit la box, puis l'éditeur la signe hors ligne, avec le registre des numéros.
 
 ```bash
-cd backend && ./mvnw -DskipTests package && cd ..
-java -jar backend/release/target/imagunity-release.jar signer --cles editeur.json \
-    --artefact backend/app/target/imagunity-box.jar --version 0.15.0 --sequence 28
-sh deploy/box-systemd/construire-archive.sh 0.15.0          # → imagunity-box-0.15.0.tar.gz
+java -jar box/imagunity-release.jar signer --cles editeur.json --artefact box/imagunity-box.jar \
+    --registre deploy/livraison/registre-versions.json
+sh deploy/box-systemd/construire-archive.sh box              # → imagunity-box-0.15.0.tar.gz
 ```
 
 L'archive contient :
