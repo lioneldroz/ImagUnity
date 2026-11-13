@@ -131,9 +131,10 @@ class IuFileTest {
                 Clock.systemUTC(), quick);
         assertThatThrownBy(() -> stranger.prepare(packet, ChunkLayout.MIB, Duration.ofHours(1)))
                 .isInstanceOfSatisfying(RelayRefusedException.class, e -> {
-                    assertThat(e.status()).isEqualTo(403);
+                    assertThat(e.status()).as("box inconnue : même réponse qu'une signature invalide")
+                            .isEqualTo(401);
                     assertThat(e.retryable()).isFalse();
-                    assertThat(e).hasMessageContaining("absente de l'annuaire");
+                    assertThat(e).hasMessageContaining("refusée");
                 });
 
         IuFileUploader uploader = uploader();

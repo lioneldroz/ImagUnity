@@ -183,6 +183,23 @@ class IuTransportEdgeTest {
             }
             assertThat(b.store().incoming()).hasSize(before);
             assertThat(contact.boxId()).isEqualTo(RelayHarness.A);
+            assertThat(b.authenticatedBox(new com.imagunity.transport.PeerId(contact.peerId())))
+                    .as("box authentifiée du pair").contains(RelayHarness.A);
+            assertThat(b.authenticatedBox(new com.imagunity.transport.PeerId(424242))).isEmpty();
+
+            // Description complète mais d'un autre transfert que ses fragments : écartée.
+            b.onMessage(SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B, Codec.json()
+                    .writeValueAsString(new IuTransport.Fragment("AUTRETRANSFERTxxxxxxxx", 0, 1,
+                            known.description())), Instant.now()));
+            assertThat(b.store().incoming()).hasSize(before);
+
+            // Descriptions incomplètes d'un même pair : en nombre limité.
+            for (int i = 0; i <= IuTransport.MAX_COLLECTING; i++) {
+                b.onMessage(SignedMessage.of(IuTransport.FILE, RelayHarness.A, RelayHarness.B, Codec.json()
+                        .writeValueAsString(new IuTransport.Fragment(String.format("F%021d", i), 0, 2, "x")),
+                        Instant.now()));
+            }
+            assertThat(b.store().incoming()).hasSize(before + IuTransport.MAX_COLLECTING);
             assertThat(b.busy()).isFalse();
         }
     }

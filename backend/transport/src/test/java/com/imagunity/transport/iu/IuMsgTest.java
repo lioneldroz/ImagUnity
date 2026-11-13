@@ -191,7 +191,7 @@ class IuMsgTest {
                 quick);
         assertThatThrownBy(() -> stranger.send(new QueueAddress(RelayHarness.relayUrl, rotated.sendId()),
                 RelayHarness.B, RelayHarness.B_KEM.publicKey(), "ping", "x"))
-                .isInstanceOfSatisfying(RelayRefusedException.class, e -> assertThat(e.status()).isEqualTo(403));
+                .isInstanceOfSatisfying(RelayRefusedException.class, e -> assertThat(e.status()).isEqualTo(401));
         assertThatThrownBy(() -> client.receive(RelayHarness.relayUrl, rotated.recvId(),
                 HybridKeyPair.generate().ed25519().getPrivate(), Duration.ZERO)).isInstanceOf(RelayRefusedException.class);
     }
