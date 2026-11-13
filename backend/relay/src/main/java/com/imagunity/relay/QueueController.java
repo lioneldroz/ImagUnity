@@ -35,6 +35,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class QueueController {
 
     private static final String EMPTY = Codec.sha256Hex(new byte[0]);
+    /** Taille maximale d'une demande de création de file (suite, clé publique, identifiant d'envoi réservé). */
+    static final int MAX_CREATE = 16 * 1024;
 
     private final QueueService queues;
     private final RequestAuthenticator auth;
@@ -45,8 +47,12 @@ public class QueueController {
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<QueueService.Ids> create(@org.springframework.web.bind.annotation.RequestBody byte[] body,
-                                                   HttpServletRequest request) {
+    public ResponseEntity<QueueService.Ids> create(HttpServletRequest request) throws IOException {
+        // Lu avec une limite, avant toute authentification : un corps énorme n'épuise pas la mémoire du relais.
+        byte[] body = request.getInputStream().readNBytes(MAX_CREATE + 1);
+        if (body.length > MAX_CREATE) {
+            throw new RelayException(HttpStatus.CONTENT_TOO_LARGE, "Demande de création trop longue");
+        }
         UUID box = auth.depositor(request, Codec.sha256Hex(body));
         QueueService.CreateRequest create;
         try {

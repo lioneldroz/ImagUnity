@@ -2,6 +2,15 @@
 
 > Ce qu'il faut savoir avant de mettre à jour un site central ou un parc de box. L'ordre général reste : **l'annuaire, puis le relais, puis les box** ([livraison, § 6](livraison.md#6-mettre-à-jour-le-site-central-depuis-une-livraison)).
 
+## Version suivante (en préparation)
+
+Corrections issues de la revue de novembre 2026 :
+
+- **Séries arrivées après l'envoi de leur étude** : elles étaient supprimées sans être envoyées. Chaque transfert enregistre désormais ses instances ; une série arrivée plus tard part dans un nouveau transfert. Migration de la base de la box (`V8`), appliquée seule au démarrage. Les transferts en cours lors de la mise à jour n'ont pas encore cette liste : si une instance d'un tel transfert revient (arrêt de la box juste après l'empaquetage), elle est renvoyée une seconde fois au lieu d'être supprimée ; elle n'est jamais perdue.
+- **Relais** : la demande de création de file est limitée à 16 Ko, lue avant l'authentification (une requête démesurée pouvait épuiser la mémoire du relais).
+- **Box sous systemd** : le choix de la version au démarrage ne télécharge plus rien (c'est la mise à jour de la nuit qui télécharge, puis redémarre la box). Un démarrage ne dépend donc plus du réseau, et son échec déclenche l'alerte. Ces fichiers ne sont pas dans le jar signé : relancer `installer.sh` de la nouvelle archive, qui recharge systemd.
+- **Lecture de l'annuaire** : une réponse mal formée ou une erreur imprévue n'arrête plus la lecture périodique jusqu'au redémarrage de la box.
+
 ## 0.15.0
 
 Première version livrée par la [chaîne de livraison](livraison.md) (n° 30). Elle apporte la console dans la box, l'installation de la box sous systemd et celle du site central sous Docker.

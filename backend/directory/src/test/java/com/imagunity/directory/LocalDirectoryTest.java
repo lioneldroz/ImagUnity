@@ -159,6 +159,9 @@ class LocalDirectoryTest {
             assertThat(client.fetch()).containsExactly(entry);
             body[0] = "{\"organization\":\"chu-exemple\",\"entries\":null}";
             assertThat(client.fetch()).isEmpty();
+            // Élément vide (réponse mal formée ou altérée) : écarté, sans faire échouer la lecture.
+            body[0] = "{\"organization\":\"chu-exemple\",\"entries\":[null," + entry.toJson() + "]}";
+            assertThat(client.fetch()).containsExactly(entry);
             status[0] = 503;
             assertThatThrownBy(client::fetch).isInstanceOf(DirectoryException.class).hasMessageContaining("503");
         } finally {
@@ -196,6 +199,8 @@ class LocalDirectoryTest {
         try {
             assertThat(client.fetchConfigurations()).containsExactly(document);
             body[0] = "{\"organization\":\"chu-exemple\",\"configurations\":null}";
+            assertThat(client.fetchConfigurations()).isEmpty();
+            body[0] = "{\"organization\":\"chu-exemple\",\"configurations\":[null]}";
             assertThat(client.fetchConfigurations()).isEmpty();
             client.report(document);
             assertThat(reports).singleElement().satisfies(r -> assertThat(r).contains("payload"));

@@ -162,25 +162,44 @@ public final class SendOrchestrator {
     // --- Étapes ---
 
     void handleStudy(ReceivedStudy study) {
-        Optional<Transfer> existing = transfers.findActive(study.studyInstanceUid(), study.calledAet(),
+        List<Transfer> active = transfers.findActive(study.studyInstanceUid(), study.calledAet(),
                 study.destination());
+        // Instances déjà empaquetées dans un transfert en cours : restes de réception (arrêt de la box juste après
+        // l'empaquetage), à supprimer. Les autres, par exemple une série arrivée après l'empaquetage de l'étude,
+        // partent dans un nouveau transfert : elles ne sont jamais supprimées sans avoir été envoyées.
+        Set<String> packaged = new java.util.HashSet<>();
+        active.forEach(t -> packaged.addAll(transfers.instances(t.id())));
+        List<ReceivedInstance> leftovers = study.instances().stream()
+                .filter(i -> packaged.contains(i.sopInstanceUid())).toList();
+        if (!leftovers.isEmpty()) {
+            LOG.log(Level.INFO, "Étude déjà prise en charge par le transfert {0} : {1} instance(s) déjà empaquetée(s) "
+                    + "supprimée(s)", active.getFirst().id(), leftovers.size());
+            deleteIncoming(withInstances(study, leftovers));
+            if (leftovers.size() == study.instances().size()) {
+                return;
+            }
+            study = withInstances(study, study.instances().stream()
+                    .filter(i -> !packaged.contains(i.sopInstanceUid())).toList());
+        }
+        Optional<Transfer> pending = active.stream().filter(t -> t.state() == TransferState.RECEIVED).findFirst();
         Transfer transfer;
-        if (existing.isEmpty()) {
+        if (pending.isPresent()) {
+            transfer = pending.get(); // reprise après redémarrage
+            LOG.log(Level.INFO, "Transfert {0} repris", transfer.id());
+        } else {
             transfer = Transfer.received(study.studyInstanceUid(), study.calledAet(), study.destination(),
                     study.totalSize(), clock.instant());
             transfers.create(transfer);
-            LOG.log(Level.INFO, "Transfert {0} créé pour {1}", transfer.id(), transfer.destination());
-        } else if (existing.get().state() == TransferState.RECEIVED) {
-            transfer = existing.get(); // reprise après redémarrage
-            LOG.log(Level.INFO, "Transfert {0} repris", transfer.id());
-        } else {
-            // Étude déjà empaquetée : les fichiers de réception sont des restes à supprimer.
-            LOG.log(Level.INFO, "Étude déjà prise en charge par le transfert {0} ({1})", existing.get().id(),
-                    existing.get().state());
-            deleteIncoming(study);
-            return;
+            LOG.log(Level.INFO, active.isEmpty() ? "Transfert {0} créé pour {1}"
+                    : "Transfert {0} créé pour {1} : instances reçues après l''empaquetage de l''étude",
+                    transfer.id(), transfer.destination());
         }
         packageStudy(transfer, study);
+    }
+
+    private static ReceivedStudy withInstances(ReceivedStudy study, List<ReceivedInstance> instances) {
+        return new ReceivedStudy(study.studyInstanceUid(), study.calledAet(), study.destination(), study.callingAets(),
+                instances, study.firstReceivedAt(), study.lastReceivedAt());
     }
 
     private void packageStudy(Transfer transfer, ReceivedStudy study) {
@@ -196,6 +215,8 @@ public final class SendOrchestrator {
                         null, false))
                 .toList();
         transfers.saveParts(transfer.id(), transferParts);
+        transfers.saveInstances(transfer.id(), study.instances().stream().map(ReceivedInstance::sopInstanceUid)
+                .collect(java.util.stream.Collectors.toSet()));
         Transfer packaged = transfer.packaged(parts.getFirst().manifest().packageGroupId(), parts.size(),
                 clock.instant());
         transfers.update(packaged);

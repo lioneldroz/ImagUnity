@@ -16,8 +16,12 @@ public interface TransferRepository {
 
     Optional<Transfer> find(UUID id);
 
-    /** Transfert non terminé de cette étude, reçue sur cette destination DICOM, vers ce partenaire, s'il existe. */
-    Optional<Transfer> findActive(String studyInstanceUid, String calledAet, String destination);
+    /**
+     * Transferts non terminés de cette étude, reçue sur cette destination DICOM, vers ce partenaire, du plus récent
+     * au plus ancien. Il peut y en avoir plusieurs : des instances arrivées après l'empaquetage d'une étude partent
+     * dans un transfert à elles.
+     */
+    List<Transfer> findActive(String studyInstanceUid, String calledAet, String destination);
 
     List<Transfer> findByStates(Set<TransferState> states);
 
@@ -37,4 +41,10 @@ public interface TransferRepository {
     List<TransferPart> parts(UUID transferId);
 
     Optional<TransferPart> findPartByTransportFileId(long transportFileId);
+
+    /** Enregistre les instances (SOP Instance UID) empaquetées dans un transfert. */
+    void saveInstances(UUID transferId, Set<String> sopInstanceUids);
+
+    /** Instances empaquetées dans un transfert (vide pour un transfert d'une version antérieure). */
+    Set<String> instances(UUID transferId);
 }
