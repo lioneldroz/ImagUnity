@@ -99,8 +99,10 @@ public record InboundTransfer(UUID transferId, String peerName, String packageGr
     }
 
     public InboundTransfer failed(String reason, Instant now) {
+        // Colonne de 2000 caractères : un motif plus long (texte d'un relais) empêcherait d'enregistrer l'échec.
+        String bounded = reason == null || reason.length() <= 1000 ? reason : reason.substring(0, 1000) + "…";
         return new InboundTransfer(transferId, peerName, packageGroupId, studyInstanceUid, partCount, announcement,
-                State.FAILED, reason, createdAt, now, restoredInstances, false, restoredParts, expectedInstances);
+                State.FAILED, bounded, createdAt, now, restoredInstances, false, restoredParts, expectedInstances);
     }
 
     public InboundTransfer acknowledged(Instant now) {
