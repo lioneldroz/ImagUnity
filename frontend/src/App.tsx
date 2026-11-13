@@ -5,6 +5,7 @@ import { InboundTable } from './components/InboundTable'
 import { OutboundTable } from './components/OutboundTable'
 import { OverviewCards } from './components/OverviewCards'
 import { DirectoryCard } from './components/DirectoryCard'
+import { CentralConfigurationCard } from './components/CentralConfigurationCard'
 import { PriorityCard } from './components/PriorityCard'
 import { PeerList } from './components/PeerList'
 
@@ -59,6 +60,11 @@ function App() {
       <section className="card">
         <h2>Annuaire de l’organisation</h2>
         <DirectoryCard />
+      </section>
+
+      <section className="card">
+        <h2>Configuration centralisée</h2>
+        <CentralConfigurationCard />
       </section>
 
       <section className="card">

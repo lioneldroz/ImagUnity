@@ -57,6 +57,8 @@ public final class ReloadablePriority implements SeriesPriority, PrioritySource 
     private final Path file;
     private final Clock clock;
     private volatile Snapshot state;
+    /** Règles de la configuration centralisée, si elle en fixe : elles l'emportent sur les règles locales. */
+    private volatile java.util.function.Supplier<java.util.Optional<Snapshot>> central = java.util.Optional::empty;
     private FileTime loadedVersion;
 
     private ReloadablePriority(Path file, PriorityRules rules, String source, Clock clock) {
@@ -143,8 +145,17 @@ public final class ReloadablePriority implements SeriesPriority, PrioritySource 
         return state();
     }
 
-    /** Règles en vigueur, après relecture du fichier s'il a changé. */
+    /** Règles de la configuration centralisée (vide : règles locales). */
+    public void central(java.util.function.Supplier<java.util.Optional<Snapshot>> central) {
+        this.central = central;
+    }
+
+    /** Règles en vigueur : celles de la configuration centralisée, sinon les locales (fichier relu s'il a changé). */
     public Snapshot state() {
+        java.util.Optional<Snapshot> centralState = central.get();
+        if (centralState.isPresent()) {
+            return centralState.get();
+        }
         if (file != null) {
             try {
                 reload(false);
