@@ -150,15 +150,18 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
         error = null;
         java.util.Collection<String> boxGroups = groups.get();
         Applied current0 = applied;
+        boolean dropped = false;
         if (current0 != null && !current0.configuration().target().includes(boxId, boxGroups)) {
-            // Box retirée du groupe visé (entrée réémise par le responsable) : retour à la configuration locale, sans
-            // jamais revenir à un document plus ancien.
-            LOG.info("Configuration centrale n° {} : cette box n'est plus visée (groupes {}), configuration locale "
-                    + "en vigueur", current0.configuration().sequence(), boxGroups);
+            // Box retirée du groupe visé (entrée réémise et signée par le responsable) : le document le plus récent
+            // qui la vise encore s'applique, sinon la configuration locale.
+            LOG.info("Configuration centrale n° {} : cette box n'est plus visée (groupes {})",
+                    current0.configuration().sequence(), boxGroups);
             applied = null;
-            save(null, clock.instant());
+            dropped = true;
         }
-        long current = floor;
+        // Sinon, seuls les documents plus récents que tout ce qui a déjà été appliqué comptent (pas de retour en
+        // arrière, même après un redémarrage).
+        long current = dropped ? 0 : floor;
         List<Candidate> candidates = documents.stream().map(this::verified).flatMap(Optional::stream)
                 .filter(c -> c.configuration().target().includes(boxId, boxGroups))
                 .filter(c -> c.configuration().sequence() > current)
@@ -179,11 +182,16 @@ public final class CentralRules implements com.imagunity.api.CentralConfiguratio
             }
             Instant now = clock.instant();
             applied = new Applied(candidate, rules, now);
-            floor = candidate.sequence();
+            floor = Math.max(floor, candidate.sequence());
             save(found.document(), now);
             LOG.info("Configuration centrale {} appliquée{}", candidate.describe(), candidate.author() == null ? ""
                     : " (par " + candidate.author() + (candidate.comment() == null ? "" : " : " + candidate.comment())
                     + ")");
+            return true;
+        }
+        if (dropped) {
+            LOG.info("Aucune autre configuration centrale ne vise cette box : configuration locale en vigueur");
+            save(null, clock.instant());
             return true;
         }
         return false;
