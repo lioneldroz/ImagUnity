@@ -22,29 +22,48 @@ Aucune connexion n'entre depuis Internet : la box ne fait que des connexions sor
 
 ## Comment la box est protégée sur la machine
 
-| Élément | Emplacement | Propriétaire |
+**Aucun processus de la box ne tourne en root.** Deux comptes de service, sans mot de passe ni shell, se partagent le travail :
+
+| Compte | Rôle | Unités systemd |
 |---|---|---|
-| Lanceur, version livrée, scripts | `/opt/imagunity/` | root, lecture seule pour la box |
-| Versions installées par les mises à jour, et état anti-retour | `/var/lib/imagunity-maj/` | root |
-| Configuration, clés publiques, magasin de confiance | `/etc/imagunity/` | root, groupe `imagunity` en lecture |
-| Phrase de passe des clés de la box | `/etc/imagunity/phrase-box` | root seul (0600) ; transmise au service par systemd |
-| Données de la box : identité, base, transferts | `/var/lib/imagunity-box/` | compte `imagunity`, 0700 |
+| `imagunity` | Exécute la box : DICOM, transferts, API | `imagunity-box.service` |
+| `imagunity-maj` | Vérifie la signature de l'éditeur avant chaque démarrage et choisit la version ; chaque nuit, télécharge les mises à jour et redémarre la box | `imagunity-box-choix.service` (lancé par la box à chaque démarrage), `imagunity-box-maj.service` et son timer |
 
-Le service `imagunity-box` se déroule en deux temps.
-1. Le **lanceur**, en root, vérifie la signature de l'éditeur sur chaque version disponible et refuse tout retour en arrière.
-2. Le **logiciel** démarre ensuite sous le compte `imagunity`, sans aucun privilège. Le système de fichiers est en lecture seule pour lui, sauf ses propres données.
+`imagunity-maj` ne peut redémarrer que la box, et rien d'autre. Ce droit lui est accordé par une règle polkit (`/etc/polkit-1/rules.d/50-imagunity-maj.rules`).
 
-Une faille dans le logiciel ne permet donc ni de modifier le lanceur, ni de remplacer une version, ni de lire la phrase de passe. C'est la réponse au constat D3 du [pré-audit](audit/pre-audit.md).
+| Élément | Emplacement | Propriétaire | Accès |
+|---|---|---|---|
+| Lanceur, version livrée, scripts | `/opt/imagunity/` | root | Lecture seule pour les deux comptes ; ne change qu'avec `installer.sh` |
+| Versions installées, état anti-retour, dépôt manuel | `/var/lib/imagunity-maj/` | `imagunity-maj` | Lecture seule pour la box |
+| Version choisie au démarrage | `/run/imagunity-choix/choix` | `imagunity-maj` | Lecture seule pour la box |
+| Configuration (`box.env`) et phrase de passe (`phrase-box`) | `/etc/imagunity/` | root, 0600 | Lues par systemd seul, qui les transmet aux services ; aucun des deux comptes ne peut les lire |
+| Clés publiques, magasin de confiance | `/etc/imagunity/` | root, 0644 | Lecture pour les deux comptes |
+| Données de la box : identité, base, transferts | `/var/lib/imagunity-box/` | `imagunity`, 0700 | Inaccessibles à `imagunity-maj` |
+
+Une faille dans le logiciel de la box ne permet donc pas :
+- de modifier le lanceur ;
+- de remplacer ou d'ajouter une version ;
+- de revenir à une version plus ancienne ;
+- de lire la phrase de passe.
+
+C'est la réponse au constat D3 du [pré-audit](audit/pre-audit.md). De son côté, le compte des mises à jour ne voit ni les données de la box ni ses clés, et ne peut lui-même modifier que les versions, toujours vérifiées au démarrage.
 
 **Ce qui a été essayé.** Les mêmes scripts et services ont été essayés en conditions réelles :
-- installation par `installer.sh` ;
-- démarrage avec l'enchaînement de systemd : lanceur en root, puis logiciel sous `imagunity` ;
+- installation par `installer.sh`, avec ses deux comptes ;
+- démarrage avec l'enchaînement de systemd : choix de la version sous `imagunity-maj`, puis logiciel sous `imagunity`, aucun processus root ;
 - connexion au site central en HTTPS, par une autorité interne ;
 - enrôlement, appairage, puis transfert de 100 images arrivées identiques ;
-- mise à jour automatique 0.14.0 → 0.14.1 par le serveur de mises à jour, avec contrôle de santé ;
-- contrôle que le compte `imagunity` ne peut écrire ni dans les versions, ni dans le lanceur, ni lire la phrase de passe.
+- mises à jour automatiques sous `imagunity-maj`, par le serveur de mises à jour et par le dépôt manuel (0.14.0 → 0.14.1 → 0.14.2 → 0.14.3), avec redémarrage et contrôle de la version retenue ;
+- droits : chaque compte est refusé hors de son rôle (versions, lanceur, choix, données de l'autre, `box.env`, phrase de passe).
 
-L'environnement d'essai n'avait pas systemd comme premier processus : son enchaînement a été reproduit à l'identique, et les fichiers de service validés par `systemd-analyze verify`. Restent à essayer sur une vraie machine Rocky Linux 10 : systemd lui-même, avec ses protections (`ProtectSystem`, `LoadCredential`…), l'installation de Java (§ 2) et le TPM.
+L'environnement d'essai n'avait pas systemd comme premier processus. Son enchaînement a été reproduit à l'identique, y compris le redémarrage demandé par `imagunity-maj`, et les fichiers de service ont été validés par `systemd-analyze verify`.
+
+Restent à essayer sur une vraie machine Rocky Linux 10 :
+- systemd lui-même, avec ses protections (`ProtectSystem`, `LoadCredential`…) ;
+- le lancement de `imagunity-box-choix.service` à chaque redémarrage, par dépendance ;
+- la règle polkit ;
+- l'installation de Java (§ 2) ;
+- le TPM.
 
 ## 0. Prérequis
 
@@ -68,11 +87,12 @@ L'environnement d'essai n'avait pas systemd comme premier processus : son encha�
 
 ```bash
 dnf -y update
-dnf -y install tar curl httpd-tools
+dnf -y install tar curl httpd-tools polkit
 systemctl enable --now chronyd
 ```
 
-`httpd-tools` fournit `htpasswd`, qui sert à hacher le mot de passe de l'opérateur (§ 6).
+- `httpd-tools` fournit `htpasswd`, qui sert à hacher le mot de passe de l'opérateur (§ 6).
+- `polkit` permet au compte des mises à jour de redémarrer la box sans root. Il est souvent déjà présent ; l'installateur refuse de continuer sans lui.
 
 ## 2. Installer Java 25
 
@@ -112,10 +132,13 @@ sh installer.sh
 ```
 
 `installer.sh` effectue les opérations suivantes, puis rend la main sans rien démarrer :
-1. il crée le compte de service `imagunity` ;
+1. il crée les comptes de service `imagunity` et `imagunity-maj` ;
 2. il installe le lanceur et la version livrée dans `/opt/imagunity` ;
-3. il installe les services systemd ;
-4. il crée `/etc/imagunity/box.env` à partir de l'exemple, et la phrase de passe `/etc/imagunity/phrase-box`.
+3. il crée `/var/lib/imagunity-maj`, avec son dossier de dépôt, au nom de `imagunity-maj` ;
+4. il installe les services systemd et la règle polkit ;
+5. il crée `/etc/imagunity/box.env` (0600) à partir de l'exemple, et la phrase de passe `/etc/imagunity/phrase-box` (0600).
+
+Une installation antérieure, dont les versions appartenaient à root, est reprise : l'installateur les remet au nom de `imagunity-maj`.
 
 Relancé plus tard avec une nouvelle archive, il remplace le lanceur et les scripts sans toucher à la configuration ni aux données.
 
@@ -247,7 +270,7 @@ systemctl enable --now imagunity-box-maj.timer
 systemctl list-timers imagunity-box-maj.timer
 ```
 
-Chaque nuit, `imagunity-box-maj.service` télécharge et vérifie la dernière version publiée, sans l'exécuter. S'il y en a une plus récente, il redémarre la box. Au démarrage, la box la revérifie et la retient comme dernière exécutée, puis le service attend qu'elle réponde jusqu'à 5 minutes. Un transfert en cours reprend après le redémarrage, au morceau près.
+Chaque nuit, `imagunity-box-maj.service`, sous le compte `imagunity-maj`, télécharge et vérifie la dernière version publiée, sans l'exécuter. S'il y en a une plus récente, il redémarre la box. Au démarrage, la box la revérifie et la retient comme dernière exécutée, puis le service attend qu'elle réponde jusqu'à 5 minutes. Un transfert en cours reprend après le redémarrage, au morceau près.
 
 | Besoin | Commande |
 |---|---|
@@ -257,7 +280,7 @@ Chaque nuit, `imagunity-box-maj.service` télécharge et vérifie la dernière v
 | Box sans accès au serveur | Copier `<jar>` et `<jar>.manifeste.json` dans `/var/lib/imagunity-maj/depot/`, puis lancer la vérification immédiate. Une pièce refusée part dans `depot/refusees/` |
 | Version installée | `curl -s $U http://192.168.1.78:8080/api/v1/box` |
 
-**Alertes.** En cas d'échec de la box ou d'une mise à jour, par exemple si la box ne répond plus après une mise à jour, systemd lance `/etc/imagunity/alerte <nom du service>`, s'il existe et est exécutable :
+**Alertes.** En cas d'échec de la box ou d'une mise à jour, par exemple si la box ne répond plus après une mise à jour, systemd lance `/etc/imagunity/alerte <nom du service>` sous le compte `imagunity-maj`, s'il existe et est exécutable :
 
 ```bash
 cat > /etc/imagunity/alerte <<'EOF'
@@ -265,7 +288,7 @@ cat > /etc/imagunity/alerte <<'EOF'
 # Exemple : message dans le journal système ; à remplacer par l'envoi d'un courriel ou une alerte de supervision.
 logger -p daemon.err -t imagunity "Échec de $1 sur $(hostname) : voir journalctl -u $1"
 EOF
-chmod 0750 /etc/imagunity/alerte
+chmod 0755 /etc/imagunity/alerte      # lancé sous le compte imagunity-maj, sans privilège
 ```
 
 Une version défectueuse ne se retire pas, puisque le retour en arrière est refusé. L'éditeur publie une version corrigée de numéro supérieur, d'abord sur le canal `pilote`.
@@ -285,7 +308,7 @@ Une mise à jour de Java ne prend effet qu'au redémarrage de la box. La mise à
 | Besoin | Commande |
 |---|---|
 | État | `systemctl status imagunity-box imagunity-box-maj.timer` |
-| Journal | `journalctl -u imagunity-box -f` ; mises à jour : `journalctl -u imagunity-box-maj` |
+| Journal | `journalctl -u imagunity-box -f` ; choix de la version : `journalctl -u imagunity-box-choix` ; mises à jour : `journalctl -u imagunity-box-maj` |
 | Transferts | `curl -s $U http://<ip>:8080/api/v1/overview` et `…/api/v1/transfers` |
 | Sauvegarde | `/var/lib/imagunity-box` (identité de la box, transferts) et `/etc/imagunity`. Sans elles, il faut une nouvelle identité et un nouvel enrôlement |
 | Désinstaller | `systemctl disable --now imagunity-box imagunity-box-maj.timer`, puis faire révoquer l'entrée de la box par le responsable |
@@ -299,6 +322,8 @@ Une mise à jour de Java ne prend effet qu'au redémarrage de la box. La mise à
 | Le PACS est refusé à l'association | AET absent de `IMAGUNITY_DICOM_ALLOWED_CALLING_AETS`, adresse hors de `…_ALLOWED_SOURCES`, ou pare-feu |
 | `Le TPM refuse de desceller…` | L'état de démarrage a changé (micrologiciel, noyau) : voir [clés et TPM](cles-tpm.md) |
 | La box ne démarre pas après une mise à jour | `journalctl -u imagunity-box -b`. L'alerte a été déclenchée ; l'éditeur publie une version corrigée |
+| `Interactive authentication required` dans `journalctl -u imagunity-box-maj` | Règle polkit absente ou polkit non installé : `dnf -y install polkit`, puis relancer `installer.sh` |
+| `imagunity-box-choix.service` en échec : la box ne démarre pas | Aucune version valide, ou empreinte de l'éditeur différente : `journalctl -u imagunity-box-choix` |
 
 ## Annexe : préparer l'archive (éditeur)
 

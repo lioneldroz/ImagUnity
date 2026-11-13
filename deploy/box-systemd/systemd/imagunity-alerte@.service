@@ -5,4 +5,11 @@ ConditionFileIsExecutable=/etc/imagunity/alerte
 
 [Service]
 Type=oneshot
+# Pas de root : le script du site tourne sous le compte des mises à jour, sans privilège.
+User=imagunity-maj
+Group=imagunity-maj
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
 ExecStart=/etc/imagunity/alerte %i

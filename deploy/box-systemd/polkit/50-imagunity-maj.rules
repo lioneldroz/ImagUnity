@@ -1,0 +1,10 @@
+// Le compte imagunity-maj (mise à jour automatique de la box ImagUnity) peut redémarrer imagunity-box.service, et
+// rien d'autre : aucun autre service, aucune autre action. Installé dans /etc/polkit-1/rules.d/ par installer.sh.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "imagunity-box.service" &&
+        (action.lookup("verb") == "restart" || action.lookup("verb") == "start") &&
+        subject.user == "imagunity-maj") {
+        return polkit.Result.YES;
+    }
+});

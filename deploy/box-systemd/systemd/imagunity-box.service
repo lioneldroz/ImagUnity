@@ -3,6 +3,9 @@ Description=ImagUnity : box de transfert d'examens DICOM
 Documentation=https://github.com/lioneldroz/ImagUnity/blob/main/docs/installation-box-rocky10.md
 Wants=network-online.target
 After=network-online.target time-sync.target
+# Vérification des versions signées, sous le compte imagunity-maj, à chaque démarrage de la box.
+Requires=imagunity-box-choix.service
+After=imagunity-box-choix.service
 OnFailure=imagunity-alerte@%n.service
 
 [Service]
@@ -13,9 +16,8 @@ EnvironmentFile=/etc/imagunity/box.env
 LoadCredential=phrase-box:/etc/imagunity/phrase-box
 StateDirectory=imagunity-box
 StateDirectoryMode=0700
-RuntimeDirectory=imagunity-box
-# Lanceur en root (+) : vérifie les versions signées. Le logiciel, lui, tourne sous le compte imagunity.
-ExecStartPre=+/opt/imagunity/bin/choisir.sh
+# Aucun processus root : le choix de la version est fait par imagunity-box-choix.service (compte imagunity-maj),
+# la box tourne sous le compte imagunity et ne peut modifier ni le lanceur, ni les versions, ni l'état anti-retour.
 ExecStart=/opt/imagunity/bin/demarrer.sh
 Restart=on-failure
 RestartSec=15s
