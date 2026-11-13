@@ -51,7 +51,8 @@ class RelayStartupTest {
         JdbcClient jdbc = JdbcClient.create(dataSource);
         jdbc.sql("CREATE TABLE directory_entry (box_id UUID PRIMARY KEY, serial BIGINT NOT NULL, document TEXT NOT NULL,"
                 + " fetched_at TIMESTAMP WITH TIME ZONE NOT NULL)").update();
-        jdbc.sql("CREATE TABLE directory_serial (box_id UUID PRIMARY KEY, serial BIGINT NOT NULL)").update();
+        jdbc.sql("CREATE TABLE directory_serial (box_id UUID PRIMARY KEY, serial BIGINT NOT NULL, digest VARCHAR(64))")
+                .update();
         RelayDirectoryStore store = new RelayDirectoryStore(dataSource,
                 new TransactionTemplate(new DataSourceTransactionManager(dataSource)));
         UUID box = UUID.randomUUID();
@@ -62,8 +63,19 @@ class RelayStartupTest {
         store.record(box, 2);
         store.record(box, 1);
         assertThat(store.highest(box)).hasValue(2);
+        assertThat(store.digest(box)).isEmpty();
+        store.record(box, 2, "d2");
+        store.record(box, 2, "autre");
+        store.record(box, 1, "d1");
+        assertThat(store.digest(box)).hasValue("d2");
+        store.record(box, 3, "d3");
+        assertThat(store.highest(box)).hasValue(3);
+        assertThat(store.digest(box)).hasValue("d3");
+        UUID fresh = UUID.randomUUID();
+        store.record(fresh, 1, "f1");
+        assertThat(store.digest(fresh)).hasValue("f1");
         store.save(box, 1, first, Instant.now());
-        store.save(box, 2, second, Instant.now());
+        store.save(box, 3, second, Instant.now());
         assertThat(store.entries()).containsExactly(second);
     }
 

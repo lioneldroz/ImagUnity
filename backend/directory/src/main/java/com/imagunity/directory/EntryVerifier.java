@@ -2,6 +2,7 @@ package com.imagunity.directory;
 
 import java.time.Clock;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Vérifie les entrées de l'annuaire côté box, avec la clé du responsable épinglée à l'installation.
@@ -43,8 +44,26 @@ public final class EntryVerifier {
             throw new DirectoryException("Retour en arrière refusé pour la box " + entry.boxId() + " : entrée n° "
                     + entry.serial() + ", n° " + highest + " déjà vu");
         }
-        serials.record(entry.boxId(), entry.serial());
+        String digest = digest(document.payload());
+        if (entry.serial() == highest) {
+            Optional<String> known = serials.digest(entry.boxId());
+            if (known.isPresent() && !known.get().equals(digest)) {
+                throw new DirectoryException("Entrée n° " + entry.serial() + " de la box " + entry.boxId()
+                        + " différente de celle déjà vue sous ce numéro : refusée");
+            }
+        }
+        serials.record(entry.boxId(), entry.serial(), digest);
         return new Verified(entry, entry.statusAt(clock.instant()));
+    }
+
+    /** Empreinte SHA-256 (hexadécimal) du contenu signé, indépendante de la signature (ML-DSA n'est pas déterministe). */
+    static String digest(String payload) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

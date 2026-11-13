@@ -30,6 +30,24 @@ class JdbcDirectoryStoreTest {
     }
 
     @Test
+    void remembersTheDigestOfTheHighestEntry() {
+        UUID box = UUID.randomUUID();
+        store.record(box, 2);
+        assertThat(store.digest(box)).as("numéro retenu avant l'empreinte").isEmpty();
+        store.record(box, 2, "d2");
+        store.record(box, 2, "autre");
+        assertThat(store.digest(box)).hasValue("d2");
+        store.record(box, 1, "d1");
+        assertThat(store.digest(box)).hasValue("d2");
+        store.record(box, 3, "d3");
+        assertThat(store.highest(box)).hasValue(3);
+        assertThat(store.digest(box)).hasValue("d3");
+        UUID fresh = UUID.randomUUID();
+        store.record(fresh, 1, "f1");
+        assertThat(store.digest(fresh)).hasValue("f1");
+    }
+
+    @Test
     void cachesOneEntryPerBox() {
         UUID box = UUID.randomUUID();
         SignedDocument first = new SignedDocument("{\"serial\":1}", new HybridSignature("IU1", "a", "b"));
