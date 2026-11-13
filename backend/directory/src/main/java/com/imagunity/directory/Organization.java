@@ -57,6 +57,19 @@ public final class Organization {
         return SignedDocument.sign(Json.write(current.revoke(now, reason)), keys);
     }
 
+    /**
+     * Signe un document de configuration centralisée de cette organisation.
+     *
+     * @throws DirectoryException si le document vise une autre organisation ou est mal formé
+     */
+    public SignedDocument signConfiguration(CentralConfiguration configuration) {
+        if (!id.equals(configuration.organization())) {
+            throw new DirectoryException("Configuration de l'organisation « " + configuration.organization()
+                    + " », responsable de « " + id + " »");
+        }
+        return configuration.sign(keys);
+    }
+
     /** Identifiant d'organisation : lettres minuscules, chiffres et tirets, 64 caractères au plus. */
     static String requireValidId(String id) {
         if (id == null || !id.matches("[a-z0-9][a-z0-9-]{0,63}")) {
