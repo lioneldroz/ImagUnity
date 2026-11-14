@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImagUnity — responsable</title>
+  <link rel="stylesheet" href="interface.css">
+  <script src="interface.js" defer></script>
+</head>
+<body>
+<header class="bandeau">
+  <div>
+    <h1>ImagUnity — demandes d'enrôlement</h1>
+    <p class="sous-titre" id="contexte">Interface locale du responsable</p>
+  </div>
+  <div class="actions">
+    <span class="discret" id="etat-phrase"></span>
+    <button type="button" class="secondaire" id="oublier" hidden>Oublier la phrase</button>
+    <button type="button" class="secondaire" id="actualiser">Actualiser</button>
+    <button type="button" class="secondaire" id="quitter">Quitter</button>
+  </div>
+</header>
+<main>
+  <p class="message" id="message" hidden></p>
+  <section>
+    <h2>Demandes en attente</h2>
+    <p class="aide">Chaque box non enrôlée dépose sa demande dans l'annuaire. Valider signe son entrée ici, sur ce
+      poste, avec la clé de l'organisation, puis la publie. Une demande sans code d'enrôlement ne se valide
+      qu'après avoir comparé son empreinte avec celle que l'installateur lit sur la box.</p>
+    <div id="demandes"><p class="discret">Chargement…</p></div>
+  </section>
+</main>
+
+<dialog id="dialogue-valider">
+  <form method="dialog" id="formulaire-valider">
+    <h2 id="valider-titre">Valider la demande</h2>
+    <p id="valider-resume"></p>
+    <label id="bloc-phrase">Phrase de passe de la clé du responsable
+      <input type="password" id="phrase" autocomplete="off">
+    </label>
+    <label class="choix" id="bloc-garder"><input type="checkbox" id="garder">
+      Garder la clé déverrouillée pendant cette session (oubliée après 15 minutes sans usage)</label>
+    <div class="actions">
+      <button type="submit" id="confirmer-valider">Signer et publier</button>
+      <button type="button" class="secondaire" id="annuler-valider">Annuler</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogue-refuser">
+  <form method="dialog">
+    <h2>Refuser la demande</h2>
+    <p id="refuser-resume"></p>
+    <p class="discret">La demande disparaît de la liste ; les nouveaux envois de cette box sont ignorés pendant
+      30 jours.</p>
+    <div class="actions">
+      <button type="button" class="danger" id="confirmer-refuser">Refuser</button>
+      <button type="button" class="secondaire" id="annuler-refuser">Annuler</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>
