@@ -96,6 +96,7 @@ class DirectoryConfiguration {
                         // Demandes d'enrôlement : déposées par les box (sans compte), lues par le responsable.
                         .requestMatchers(HttpMethod.POST, "/directory/v1/enrollment-requests").permitAll()
                         .requestMatchers(HttpMethod.GET, "/directory/v1/enrollment-requests").hasRole("PUBLISHER")
+                        .requestMatchers(HttpMethod.DELETE, "/directory/v1/enrollment-requests/*").hasRole("PUBLISHER")
                         .requestMatchers("/admin", "/admin/", "/admin/**").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.GET, "/directory/v1/**", "/actuator/health",
                                 "/actuator/health/**").permitAll()

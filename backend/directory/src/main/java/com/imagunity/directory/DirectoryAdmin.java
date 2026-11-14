@@ -3,8 +3,6 @@ package com.imagunity.directory;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,7 +10,6 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,6 +28,7 @@ import java.util.UUID;
  * verifier           --cle-publique &lt;fichier&gt; --entree &lt;fichier&gt;
  * publier            --annuaire &lt;url&gt; --entree &lt;fichier&gt; [--compte &lt;utilisateur:mot de passe&gt;]
  * proteger           --cles &lt;fichier&gt; [--box]
+ * interface          --cles &lt;clé organisation&gt; --codes &lt;fichier&gt; --annuaire &lt;url&gt; [--port 0] [--ouvrir]
  * </pre>
  * Les clés privées sont chiffrées par phrase de passe : elle vient de {@code IMAGUNITY_PHRASE_ORGANISATION} (clé du
  * responsable) ou {@code IMAGUNITY_PHRASE_BOX} (clé d'une box), sinon elle est demandée au terminal (deux fois à la
@@ -116,6 +114,7 @@ public final class DirectoryAdmin {
                 case "code-creer" -> createCode(options);
                 case "enroler-attente" -> enrollPending(options);
                 case "renouveler" -> renewAll(options);
+                case "interface" -> localInterface(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -345,35 +344,27 @@ public final class DirectoryAdmin {
         int enrolled = 0;
         int skipped = 0;
         for (tools.jackson.databind.JsonNode item : pending) {
-            EnrollmentSubmission submission = EnrollmentSubmission.fromJson(item.get("submission").toString());
-            EnrollmentRequest request;
-            try {
-                request = EnrollmentRequest.verify(submission.request());
-            } catch (DirectoryException e) {
-                err.println("Demande illisible ou mal signée : laissée de côté (" + e.getMessage() + ")");
+            Optional<PendingRequest> assessed = PendingRequest.assess(item, codes, clock.instant());
+            if (assessed.isEmpty() || assessed.get().status() == PendingRequest.Status.ILLISIBLE) {
+                err.println("Demande illisible ou mal signée : laissée de côté"
+                        + assessed.map(a -> " (" + a.detail() + ")").orElse(""));
                 skipped++;
                 continue;
             }
-            String label = "« " + request.displayName() + " » (" + request.boxId() + ", empreinte "
-                    + HybridPublicKey.decode(request.signingKeys()).shortCode() + ")";
-            Optional<EnrollmentCodes.Entry> code = codes.byId(submission.code());
-            String refusal = code.isEmpty() ? "sans code d'enrôlement de ce responsable : à traiter à la main, après "
-                    + "comparaison de l'empreinte avec l'installateur (enroler)"
-                    : !submission.provenBy(code.get().code()) ? "preuve du code invalide : demande refusée"
-                    : code.get().usedAt() != null && !request.boxId().equals(code.get().boxId())
-                    ? "code déjà utilisé par la box " + code.get().boxId()
-                    : !clock.instant().isBefore(code.get().expiresAt()) ? "code expiré le "
-                    + day(code.get().expiresAt()) + " : en tirer un autre (code-creer)" : null;
-            if (refusal != null) {
-                out.println(label + " : " + refusal);
+            PendingRequest p = assessed.get();
+            if (p.status() != PendingRequest.Status.CODE_VERIFIE) {
+                out.println(p.label() + " : " + p.detail() + (p.status() == PendingRequest.Status.SANS_CODE
+                        ? " (enroler, ou l'interface du responsable)" : ""));
                 skipped++;
                 continue;
             }
-            EnrollmentCodes.Entry c = code.get();
-            long serial = nextSerial(o, request.boxId());
+            EnrollmentRequest request = p.request();
+            EnrollmentSubmission submission = p.submission();
+            EnrollmentCodes.Entry c = p.code();
+            long serial = calls(o).nextSerial(request.boxId());
             out.println("Box « " + c.name() + " »" + (c.name().equals(request.displayName()) ? ""
                     : " (nom proposé par la box : « " + request.displayName() + " »)") + ", " + request.boxId());
-            out.println("  empreinte " + HybridPublicKey.decode(request.signingKeys()).shortCode() + ", code d'enrôlement "
+            out.println("  empreinte " + p.fingerprint() + ", code d'enrôlement "
                     + "vérifié, groupes " + (c.groups().isEmpty() ? "aucun" : c.groups()) + ", n° " + serial + ", "
                     + days + " jours");
             if (!confirmed(o, "Enrôler cette box ? Tapez « oui » pour confirmer")) {
@@ -396,6 +387,45 @@ public final class DirectoryAdmin {
         }
         out.println(enrolled + " box enrôlée(s), " + skipped + " demande(s) laissée(s) de côté");
         return 0;
+    }
+
+    /**
+     * Interface locale : page servie sur 127.0.0.1 qui liste les demandes en attente et les fait valider (signature
+     * sur ce poste, publication) ou refuser ; s'arrête depuis la page ou par Ctrl+C.
+     */
+    private int localInterface(Map<String, String> o) throws IOException {
+        Path keys = Path.of(require(o, "cles"));
+        Path codes = Path.of(require(o, "codes"));
+        DirectoryCalls calls = calls(o);
+        account(o);
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
+        int port = Integer.parseInt(o.getOrDefault("port", "0"));
+        if (days < 1 || days > 3650 || port < 0 || port > 65535) {
+            throw new IllegalArgumentException("Validité (1 à 3650 jours) ou port (0 à 65535) hors limites");
+        }
+        String phrase = environment.get(ORGANIZATION_PASSPHRASE);
+        try (LocalInterface ui = LocalInterface.start(keys, codes, calls, days, port, clock, out,
+                phrase == null || phrase.isEmpty() ? null : phrase.toCharArray())) {
+            out.println("Interface du responsable : " + ui.url());
+            out.println("À ouvrir dans le navigateur de ce poste (adresse personnelle, ne pas la partager) ; "
+                    + "arrêt par le bouton « Quitter » ou Ctrl+C.");
+            if (o.containsKey("ouvrir")) {
+                browse(ui.url());
+            }
+            ui.awaitClose();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        out.println("Interface arrêtée");
+        return 0;
+    }
+
+    private void browse(URI url) {
+        try {
+            java.awt.Desktop.getDesktop().browse(url);
+        } catch (IOException | RuntimeException e) {
+            err.println("Navigateur non ouvert (" + e.getClass().getSimpleName() + ") : ouvrir l'adresse à la main");
+        }
     }
 
     /** Renouvelle d'un coup les entrées actives qui expirent bientôt (mêmes clés, adresses et groupes). */
@@ -447,20 +477,6 @@ public final class DirectoryAdmin {
         return failures == 0 ? 0 : 1;
     }
 
-    /** Numéro de la prochaine entrée de cette box : 1, ou le suivant de son entrée publiée. */
-    private long nextSerial(Map<String, String> o, UUID boxId) throws IOException {
-        HttpResponse<String> current = get(o, "/directory/v1/entries/" + boxId, false);
-        if (current.statusCode() == 404) {
-            return 1;
-        }
-        if (current.statusCode() != 200) {
-            throw new DirectoryException("Lecture de l'entrée de la box " + boxId + " refusée (HTTP "
-                    + current.statusCode() + ")");
-        }
-        return Json.read(SignedDocument.fromJson(current.body()).payload(), BoxEntry.class, "Entrée de box").serial()
-                + 1;
-    }
-
     private boolean confirmed(Map<String, String> o, String question) {
         if (o.containsKey("confirmer")) {
             return true;
@@ -478,20 +494,13 @@ public final class DirectoryAdmin {
         return instant.atZone(java.time.ZoneOffset.UTC).toLocalDate().toString();
     }
 
+    private DirectoryCalls calls(Map<String, String> o) {
+        return new DirectoryCalls(require(o, "annuaire"), () -> account(o));
+    }
+
     /** Lecture sur le service d'annuaire ; avec le compte du responsable si {@code account}. */
     private HttpResponse<String> get(Map<String, String> o, String path, boolean account) throws IOException {
-        String directory = require(o, "annuaire").replaceAll("/+$", "");
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(directory + path)).GET();
-        if (account) {
-            request.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(account(o)
-                    .getBytes(StandardCharsets.UTF_8)));
-        }
-        try (HttpClient http = HttpClient.newHttpClient()) {
-            return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Lecture interrompue", e);
-        }
+        return calls(o).get(path, account);
     }
 
     private String account(Map<String, String> o) {
@@ -506,20 +515,9 @@ public final class DirectoryAdmin {
     /** Dépôt d'un document signé sur le service d'annuaire, avec le compte du responsable. */
     private HttpResponse<String> post(Map<String, String> o, String path, SignedDocument document)
             throws IOException {
-        String directory = require(o, "annuaire").replaceAll("/+$", "");
-        String account = account(o);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(directory + path))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Basic " + Base64.getEncoder()
-                        .encodeToString(account.getBytes(StandardCharsets.UTF_8)))
-                .POST(HttpRequest.BodyPublishers.ofString(document.toJson()))
-                .build();
-        try (HttpClient http = HttpClient.newHttpClient()) {
-            return http.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Publication interrompue", e);
-        }
+        DirectoryCalls calls = calls(o);
+        account(o);
+        return calls.post(path, document);
     }
 
     private Organization organization(Map<String, String> o) throws IOException {
@@ -628,13 +626,15 @@ public final class DirectoryAdmin {
                                      [--confirmer]
                   renouveler         --cles <clé organisation> --annuaire <url> [--avant-jours 15] [--validite-jours 90]
                                      [--confirmer]
+                  interface          --cles <clé organisation> --codes <fichier> --annuaire <url> [--validite-jours 90]
+                                     [--port 0] [--ouvrir]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;
     }
 
     /** Options {@code --nom valeur} et drapeaux sans valeur ({@code --sans-phrase}, {@code --box}). */
-    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box", "confirmer");
+    private static final java.util.Set<String> FLAGS = java.util.Set.of("sans-phrase", "box", "confirmer", "ouvrir");
 
     private static Map<String, String> options(String[] args) {
         Map<String, String> options = new HashMap<>();

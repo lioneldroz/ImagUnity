@@ -60,7 +60,11 @@ final class AutomaticEnrollment {
                 DirectoryController.enrollmentRequest(identity, transport, displayName, clock), code);
         try {
             if (!client.submitEnrollment(submission)) {
-                LOG.debug("Demande d'enrôlement : box déjà enrôlée selon l'annuaire, en attente de la lecture suivante");
+                if (!warned) {
+                    LOG.warn("Demande d'enrôlement écartée par l'annuaire : box déjà enrôlée, ou demande refusée par "
+                            + "le responsable ; nouvel essai à la lecture suivante");
+                    warned = true;
+                }
                 return false;
             }
         } catch (DirectoryException e) {

@@ -34,6 +34,18 @@ public class EnrollmentStore {
                         at.atOffset(ZoneOffset.UTC)).update();
     }
 
+    /** Vrai si le responsable a refusé la demande de cette box. */
+    boolean refused(UUID boxId) {
+        return jdbc.sql("SELECT COUNT(*) FROM enrollment_request WHERE box_id = ? AND refused_at IS NOT NULL")
+                .param(boxId).query(Integer.class).single() > 0;
+    }
+
+    /** Refuse la demande de cette box : elle n'est plus listée ; faux s'il n'y en avait pas. */
+    boolean refuse(UUID boxId, Instant at) {
+        return jdbc.sql("UPDATE enrollment_request SET refused_at = ? WHERE box_id = ? AND refused_at IS NULL")
+                .params(at.atOffset(ZoneOffset.UTC), boxId).update() > 0;
+    }
+
     boolean exists(UUID boxId) {
         return jdbc.sql("SELECT COUNT(*) FROM enrollment_request WHERE box_id = ?").param(boxId)
                 .query(Integer.class).single() > 0;
@@ -45,7 +57,7 @@ public class EnrollmentStore {
 
     /** Demandes en attente, de la plus récente à la plus ancienne. */
     List<Pending> all() {
-        return jdbc.sql("SELECT * FROM enrollment_request ORDER BY received_at DESC")
+        return jdbc.sql("SELECT * FROM enrollment_request WHERE refused_at IS NULL ORDER BY received_at DESC")
                 .query((rs, n) -> new Pending(rs.getObject("box_id", UUID.class), rs.getString("display_name"),
                         rs.getString("fingerprint"), rs.getString("code_id"), rs.getString("submission"),
                         rs.getObject("received_at", OffsetDateTime.class).toInstant()))
@@ -56,9 +68,10 @@ public class EnrollmentStore {
         jdbc.sql("DELETE FROM enrollment_request WHERE box_id = ?").param(boxId).update();
     }
 
-    /** Efface les demandes reçues avant cette date ; rend leur nombre. */
-    int purgeBefore(Instant limit) {
-        return jdbc.sql("DELETE FROM enrollment_request WHERE received_at < ?").param(limit.atOffset(ZoneOffset.UTC))
-                .update();
+    /** Efface les demandes en attente reçues avant {@code pending}, et les refus antérieurs à {@code refused}. */
+    int purgeBefore(Instant pending, Instant refused) {
+        return jdbc.sql("DELETE FROM enrollment_request WHERE (refused_at IS NULL AND received_at < ?) "
+                        + "OR refused_at < ?")
+                .params(pending.atOffset(ZoneOffset.UTC), refused.atOffset(ZoneOffset.UTC)).update();
     }
 }

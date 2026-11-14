@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
  * POST /directory/v1/enrollment-requests   dépôt par une box (sans compte) : 202 enregistrée, 409 box déjà active,
  *                                          422 demande invalide, 429 trop de demandes en attente
  * GET  /directory/v1/enrollment-requests   demandes en attente (compte du responsable)
+ * DELETE /directory/v1/enrollment-requests/{boxId}  refus d'une demande (compte du responsable) : 204, 404
  * </pre>
  */
 @RestController
@@ -43,6 +44,17 @@ class EnrollmentController {
     @GetMapping("/directory/v1/enrollment-requests")
     List<EnrollmentService.Pending> pending() {
         return enrollments.pending();
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/directory/v1/enrollment-requests/{boxId}")
+    ResponseEntity<Void> refuse(@org.springframework.web.bind.annotation.PathVariable java.util.UUID boxId) {
+        enrollments.refuse(boxId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @ExceptionHandler(java.util.NoSuchElementException.class)
+    ProblemDetail notFound(java.util.NoSuchElementException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(PublicationService.InvalidEntryException.class)
