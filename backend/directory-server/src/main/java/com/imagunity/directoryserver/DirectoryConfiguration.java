@@ -82,6 +82,31 @@ class DirectoryConfiguration {
         return new ConfigurationService(store, entries, key.organization(), key.key(), clock);
     }
 
+    @Bean
+    FederationService federationService(RecognitionStore store, KeyFiles.OrganizationPublicKey key, Clock clock) {
+        return new FederationService(store, key.organization(), key.key(), clock);
+    }
+
+    /**
+     * Relais des entrées des partenaires : lecture de leur annuaire au démarrage puis à intervalle régulier
+     * ({@code imagunity.directory.partner-sync-interval}, 5 minutes par défaut).
+     */
+    @Bean(destroyMethod = "shutdownNow")
+    java.util.concurrent.ScheduledExecutorService partnerSync(FederationService federation,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.partner-sync-interval:5m}")
+            java.time.Duration interval) {
+        java.util.concurrent.ScheduledExecutorService executor = java.util.concurrent.Executors
+                .newSingleThreadScheduledExecutor(Thread.ofPlatform().name("partenaires").daemon().factory());
+        executor.scheduleWithFixedDelay(() -> {
+            try {
+                federation.refreshPartners();
+            } catch (RuntimeException e) {
+                LOG.warn("Relais des entrées des partenaires : {}", e.getMessage());
+            }
+        }, 10, interval.toSeconds(), java.util.concurrent.TimeUnit.SECONDS);
+        return executor;
+    }
+
     /** En-tête exigé sur les requêtes de l'interface : un autre site ne peut pas le poser (anti-CSRF). */
     static final String ADMIN_HEADER = "X-ImagUnity-Admin";
 
@@ -91,6 +116,7 @@ class DirectoryConfiguration {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/directory/v1/entries").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations").hasRole("PUBLISHER")
+                        .requestMatchers(HttpMethod.POST, "/directory/v1/recognitions").hasRole("PUBLISHER")
                         // Comptes rendus : signés par la box, vérifiés par le service ; sans compte.
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations/reports").permitAll()
                         // Demandes d'enrôlement : déposées par les box (sans compte), lues par le responsable.

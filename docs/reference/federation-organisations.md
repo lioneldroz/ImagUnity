@@ -106,11 +106,12 @@ Il est signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des oct
   "type": "recognition",
   "organization": "grand-est",
   "partner": {
-    "label": "bourgogne-fc",
+    "organization": "bourgogne-fc",
     "key": { "ed25519": "<X.509 base64>", "mlDsa65": "<X.509 base64>" },
+    "directory": "https://annuaire.bourgogne-fc.example",
     "relays": ["https://relais.bourgogne-fc.example"]
   },
-  "scope": { "localGroups": ["imagerie-nord"], "partnerGroups": ["neurochirurgie"] },
+  "scope": { "localGroups": ["imagerie-nord"], "partnerGroups": ["*"] },
   "serial": 1,
   "validFrom": "2026-12-01T00:00:00Z",
   "validUntil": "2027-03-01T00:00:00Z",
@@ -119,7 +120,8 @@ Il est signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des oct
 ```
 
 - **Empreinte vérifiée hors bande** entre les deux responsables, une fois par accord et non une fois par box. L'outil l'affiche et la fait confirmer.
-- Le partenaire est identifié par **l'empreinte de sa clé**. Le libellé n'est qu'un nom affiché : deux organisations peuvent toutes deux s'appeler `chu-exemple`.
+- Le partenaire est identifié par **l'empreinte de sa clé**. Son identifiant (`organization`, celui que portent ses entrées) n'est qu'un libellé : deux organisations peuvent toutes deux s'appeler `chu-exemple`.
+- `directory` : l'annuaire du partenaire, que seul le service d'annuaire local contacte (§ 6.2).
 - **Numéro, validité, révocation** : mêmes règles que les entrées (pas de retour en arrière, réémission pour renouveler ou révoquer). La validité est courte, 90 jours au plus, tant que la preuve de fraîcheur (§ 7) n'existe pas.
 
 ### 6.2 Où les box et les relais trouvent les entrées des partenaires
@@ -128,7 +130,7 @@ Le **service d'annuaire de l'organisation relaie les entrées de ses partenaires
 
 - La box et le relais n'ont **qu'une adresse d'annuaire**, comme aujourd'hui. Pas d'ouverture de pare-feu vers les annuaires étrangers.
 - L'annuaire étranger n'est contacté que par le service d'annuaire, depuis le site central.
-- La box ne garde que les entrées du **périmètre** : groupes du partenaire acceptés.
+- La box n'**utilise** que les entrées du **périmètre** (groupes du partenaire acceptés) ; les autres restent en cache, pour l'affichage et au cas où le périmètre s'élargirait.
 
 Un annuaire qui retiendrait des entrées ou des révocations reste le risque connu (constat C2). L'étape 2 le traite pour tous les annuaires à la fois (§ 7).
 

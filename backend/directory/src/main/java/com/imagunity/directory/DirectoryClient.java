@@ -19,10 +19,15 @@ public final class DirectoryClient {
     record ConfigurationsResponse(String organization, List<SignedDocument> configurations) {
     }
 
+    /** Réponse de {@code GET /directory/v1/recognitions}. */
+    record RecognitionsResponse(String organization, List<SignedDocument> recognitions) {
+    }
+
     private final URI entries;
     private final URI configurations;
     private final URI reports;
     private final URI enrollments;
+    private final String base;
     private final HttpClient http;
     private final Duration timeout;
 
@@ -32,6 +37,7 @@ public final class DirectoryClient {
         this.configurations = URI.create(base + "/directory/v1/configurations");
         this.reports = URI.create(base + "/directory/v1/configurations/reports");
         this.enrollments = URI.create(base + "/directory/v1/enrollment-requests");
+        this.base = base;
         this.timeout = timeout;
         this.http = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
@@ -66,6 +72,44 @@ public final class DirectoryClient {
         ConfigurationsResponse body = Json.read(response.body(), ConfigurationsResponse.class,
                 "Réponse de l'annuaire (configurations)");
         return withoutNulls(body.configurations());
+    }
+
+    /**
+     * Reconnaissances de partenaires publiées par le responsable (fédération), non vérifiées : à faire passer par
+     * {@link LocalDirectory#synchronizeRecognitions}.
+     *
+     * @throws DirectoryException si l'annuaire est injoignable ou répond mal
+     */
+    public List<SignedDocument> fetchRecognitions() {
+        Reply response = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/recognitions")).timeout(timeout)
+                .build(), "Lecture des reconnaissances");
+        if (response.statusCode() != 200) {
+            throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
+                    + " à la lecture des reconnaissances");
+        }
+        return withoutNulls(Json.read(response.body(), RecognitionsResponse.class,
+                "Réponse de l'annuaire (reconnaissances)").recognitions());
+    }
+
+    /**
+     * Entrées d'un partenaire reconnu, relayées par l'annuaire de l'organisation, non vérifiées : à faire passer par
+     * {@link LocalDirectory#synchronizePartner}.
+     *
+     * @param partner empreinte de la clé du partenaire
+     * @throws DirectoryException si l'annuaire est injoignable ou répond mal
+     */
+    public List<SignedDocument> fetchPartnerEntries(String partner) {
+        if (!partner.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Empreinte de partenaire mal formée");
+        }
+        Reply response = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/partners/" + partner
+                + "/entries")).timeout(timeout).build(), "Lecture des entrées du partenaire");
+        if (response.statusCode() != 200) {
+            throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
+                    + " à la lecture des entrées du partenaire");
+        }
+        return withoutNulls(Json.read(response.body(), EntriesResponse.class,
+                "Réponse de l'annuaire (entrées du partenaire)").entries());
     }
 
     /**
