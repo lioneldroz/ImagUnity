@@ -29,6 +29,38 @@ public interface SerialMemory {
         record(boxId, serial);
     }
 
+    /**
+     * Mémoire des numéros des entrées d'une organisation partenaire, séparée de celle des box locales : un partenaire
+     * qui publierait un numéro très élevé pour l'identifiant d'une box locale ne bloque pas ses entrées. Les clés sont
+     * des UUID de version 3, qui ne coïncident jamais avec l'identifiant (aléatoire, version 4) d'une box.
+     */
+    default SerialMemory scoped(String partner) {
+        SerialMemory base = this;
+        java.util.function.Function<UUID, UUID> key = boxId -> UUID.nameUUIDFromBytes(("imagunity-partenaire:"
+                + partner + ":" + boxId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return new SerialMemory() {
+            @Override
+            public OptionalLong highest(UUID boxId) {
+                return base.highest(key.apply(boxId));
+            }
+
+            @Override
+            public Optional<String> digest(UUID boxId) {
+                return base.digest(key.apply(boxId));
+            }
+
+            @Override
+            public void record(UUID boxId, long serial) {
+                base.record(key.apply(boxId), serial);
+            }
+
+            @Override
+            public void record(UUID boxId, long serial, String digest) {
+                base.record(key.apply(boxId), serial, digest);
+            }
+        };
+    }
+
     /** Mémoire en mémoire vive (tests, outil du responsable). */
     static SerialMemory inMemory() {
         record Seen(long serial, String digest) {

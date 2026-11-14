@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
  * @param priority     règles de priorité des séries, ou {@code null} : configuration locale de la box
  * @param routing      règles de routage par champ DICOM, ou {@code null} : configuration locale de la box
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record CentralConfiguration(String type, String suite, String organization, Target target, long sequence,
                                    Instant issuedAt,
                                    @JsonInclude(JsonInclude.Include.NON_NULL) String author,
@@ -62,6 +63,7 @@ public record CentralConfiguration(String type, String suite, String organizatio
      * @param boxes  box visées (si {@code all} est faux)
      * @param groups groupes visés (si {@code all} est faux)
      */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Target(boolean all, @JsonInclude(JsonInclude.Include.NON_EMPTY) List<UUID> boxes,
                          @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> groups) {
 
@@ -129,6 +131,7 @@ public record CentralConfiguration(String type, String suite, String organizatio
      * locale ({@code and} : tous les champs, {@code or} : un seul suffit). Les mots-clés et les motifs sont vérifiés
      * par la box, qui refuse le document entier si une règle est invalide.
      */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Rule(String name,
                        @JsonInclude(JsonInclude.Include.NON_NULL) Integer priority,
                        @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<String, String> and,
@@ -143,6 +146,7 @@ public record CentralConfiguration(String type, String suite, String organizatio
     }
 
     /** Règles de priorité : priorité par défaut (1 à 9) et règles, lues dans l'ordre. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Priority(@JsonProperty("default") Integer defaultPriority, List<Rule> rules) {
 
         public Priority {
@@ -151,6 +155,7 @@ public record CentralConfiguration(String type, String suite, String organizatio
     }
 
     /** Règles de routage, lues dans l'ordre : la première qui correspond désigne les partenaires. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public record Routing(List<Rule> rules) {
 
         public Routing {

@@ -96,6 +96,59 @@ public final class Organization {
     }
 
     /**
+     * Reconnaît une organisation partenaire (fédération) : première reconnaissance, n° 1.
+     *
+     * @throws IllegalArgumentException si le partenaire est cette organisation, ou si un champ est invalide
+     */
+    public SignedDocument recognize(Recognition.Partner partner, Recognition.Scope scope, Instant now,
+                                    Duration validity) {
+        requireOther(partner);
+        return SignedDocument.sign(Json.write(Recognition.first(id, partner, scope, now, validity)), keys);
+    }
+
+    /**
+     * Réémet la reconnaissance d'un partenaire, avec un nouveau périmètre, de nouveaux relais ou une nouvelle
+     * validité : numéro suivant. Après une révocation, rétablit l'accord.
+     *
+     * @throws DirectoryException si le document n'est pas une reconnaissance de cette organisation
+     */
+    public SignedDocument renewRecognition(SignedDocument current, Recognition.Partner partner,
+                                           Recognition.Scope scope, Instant now, Duration validity) {
+        Recognition r = ownRecognition(current, true);
+        requireOther(partner);
+        return SignedDocument.sign(Json.write(r.next(partner, scope, now, validity)), keys);
+    }
+
+    /**
+     * Révoque la reconnaissance d'un partenaire : numéro suivant, l'accord cesse aussitôt.
+     *
+     * @throws DirectoryException si le document n'est pas une reconnaissance de cette organisation, ou est déjà révoqué
+     */
+    public SignedDocument revokeRecognition(SignedDocument current, Instant now, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Motif de révocation obligatoire");
+        }
+        return SignedDocument.sign(Json.write(ownRecognition(current, false).revoke(now, reason.strip())), keys);
+    }
+
+    private Recognition ownRecognition(SignedDocument document, boolean revokedAllowed) {
+        if (!document.isSignedBy(publicKey())) {
+            throw new DirectoryException("Reconnaissance non signée par cette organisation");
+        }
+        Recognition r = Json.read(document.payload(), Recognition.class, "Reconnaissance");
+        if (r.revoked() && !revokedAllowed) {
+            throw new DirectoryException("Reconnaissance déjà révoquée");
+        }
+        return r;
+    }
+
+    private void requireOther(Recognition.Partner partner) {
+        if (partner.fingerprint().equals(publicKey().fingerprint())) {
+            throw new IllegalArgumentException("Une organisation ne se reconnaît pas elle-même");
+        }
+    }
+
+    /**
      * Signe un document de configuration centralisée de cette organisation.
      *
      * @throws DirectoryException si le document vise une autre organisation ou est mal formé

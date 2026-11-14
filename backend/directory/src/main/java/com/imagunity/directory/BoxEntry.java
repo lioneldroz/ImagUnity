@@ -27,6 +27,7 @@ import java.util.UUID;
  * @param groups           groupes de la box (configuration centralisée), fixés par le responsable ; absents de
  *                         l'entrée signée quand il n'y en a pas, ce qui laisse identiques les entrées antérieures
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record BoxEntry(String suite, String organization, UUID boxId, String displayName,
                        HybridPublicKey.Encoded signingKeys,
                        @JsonInclude(JsonInclude.Include.NON_NULL) HybridKemPublicKey.Encoded encryptionKeys,
