@@ -18,7 +18,9 @@ import org.springframework.http.HttpStatus;
 /**
  * Vérifie les requêtes signées (spécification § 6.3, 6.4) : horodatage et anti-rejeu, puis
  * <ul>
- *   <li>dépôt : box enrôlée et <b>active</b> dans l'annuaire, double signature de son identité ;</li>
+ *   <li>dépôt : box enrôlée et <b>active</b> dans l'annuaire, double signature de son identité. Une box d'une
+ *       organisation partenaire (fédération) ne peut que déposer des messages, dans les files des box locales que
+ *       couvre l'accord ;</li>
  *   <li>capacité : signature Ed25519 de la clé du morceau ou de la file, sans identité.</li>
  * </ul>
  */
@@ -61,6 +63,35 @@ public final class RequestAuthenticator {
         }
         admit(signed);
         return boxId;
+    }
+
+    /**
+     * Requête de dépôt d'une box de l'organisation : création de file ou de morceau.
+     *
+     * @throws RelayException 401 ou 403 comme {@link #depositor}, et 403 pour une box d'une organisation partenaire
+     */
+    public UUID localDepositor(HttpServletRequest request, String bodySha256) {
+        UUID boxId = depositor(request, bodySha256);
+        if (!directory.isLocal(boxId)) {
+            throw new RelayException(HttpStatus.FORBIDDEN, "Box d'une organisation partenaire : seul le dépôt de "
+                    + "messages lui est ouvert sur ce relais");
+        }
+        return boxId;
+    }
+
+    /**
+     * Dépôt d'un message dans la file d'une box locale : toujours permis entre box de l'organisation ; pour une box
+     * d'un partenaire, il faut un accord actif qui couvre les deux box.
+     *
+     * @throws RelayException 403 sinon
+     */
+    public void requireExchange(UUID owner, UUID depositor) {
+        if (directory.isLocal(depositor)) {
+            return;
+        }
+        if (!directory.isLocal(owner) || !directory.exchangeAllowed(owner, depositor)) {
+            throw new RelayException(HttpStatus.FORBIDDEN, "Dépôt hors de l'accord avec l'organisation de cette box");
+        }
     }
 
     /**
