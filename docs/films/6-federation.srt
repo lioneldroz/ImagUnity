@@ -1,0 +1,58 @@
+1
+00:00:02,000 --> 00:00:08,000
+Deux régions, deux organisations, chacune avec son annuaire, son relais et ses box.
+Comment leurs box peuvent-elles échanger ?
+
+2
+00:00:10,000 --> 00:00:20,000
+Par défaut, une box ne fait confiance qu'à son organisation :
+les box de la région B lui sont inconnues.
+
+3
+00:00:23,000 --> 00:00:31,000
+Chaque responsable reconnaît l'autre organisation. Ils comparent d'abord, de vive voix,
+l'empreinte de leurs clés.
+
+4
+00:00:31,000 --> 00:00:39,000
+La reconnaissance fixe la clé du partenaire, ses relais autorisés,
+et les groupes qui peuvent échanger. Sans groupes, aucun échange.
+
+5
+00:00:39,000 --> 00:00:46,000
+Elle est signée hors ligne et publiée sur l'annuaire de son organisation.
+Un échange ne marche que si les deux responsables ont signé.
+
+6
+00:00:48,000 --> 00:00:57,000
+Le service d'annuaire de chaque région relaie alors les entrées du partenaire
+à ses box et à son relais, qui les vérifient avec la clé de l'accord.
+
+7
+00:00:59,000 --> 00:01:07,000
+La box A dépose les morceaux chiffrés sur son propre relais, comme d'habitude.
+
+8
+00:01:07,000 --> 00:01:15,000
+Elle dépose l'annonce directement dans la boîte de B, sur le relais de B :
+ce relais accepte les box de A couvertes par l'accord, pour ce seul dépôt.
+
+9
+00:01:15,000 --> 00:01:23,000
+La box B retire les morceaux sur le relais de A, avec les clés de l'annonce.
+Les relais ne se parlent jamais.
+
+10
+00:01:25,000 --> 00:01:32,000
+Accord à sens unique, box hors du périmètre, relais non autorisé :
+l'échange est refusé, avec le motif.
+
+11
+00:01:32,000 --> 00:01:40,000
+Et une organisation qui revendiquerait l'identifiant d'une box d'une autre
+est écartée et signalée.
+
+12
+00:01:42,000 --> 00:01:51,000
+Chaque organisation reste maîtresse de ses box : elle choisit ses partenaires,
+leur périmètre, et la juridiction de leurs relais.

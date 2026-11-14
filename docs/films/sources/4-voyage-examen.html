@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Le voyage d'un examen</title>
+<style>html,body{margin:0;background:#F6F7F4;overflow:hidden}</style></head>
+<body><script src="moteur.js"></script><script>
+"use strict";
+// Film 4 : le voyage d'un examen, du PACS de l'hôpital A au PACS de l'hôpital B.
+const PA = [230, 300], BA = [230, 690], PB = [1690, 300], BB = [1690, 690];
+const R1 = [960, 540], R2 = [960, 790], ANN = [960, 170];
+const FILE_B = [1050, 600];         // file de réception de B, sur le relais
+const SLOTS = [0, 1, 2, 3, 4, 5].map((i) => [R1[0] - 85 + (i % 3) * 85, R1[1] - 30 + Math.floor(i / 3) * 0]);
+
+function decor(t, o = 1, options = {}) {
+  return [
+    site(70, 110, 320, 820, "Hôpital A", { opacity: o }),
+    site(1530, 110, 320, 820, "Hôpital B", { opacity: o }),
+    pacs(PA[0], PA[1], "PACS A", { opacity: o }),
+    pacs(PB[0], PB[1], "PACS B", { opacity: o }),
+    box(BA[0], BA[1], "Box A", { opacity: o }),
+    box(BB[0], BB[1], "Box B", { opacity: o }),
+    options.relais === false ? null : relais(R1[0], R1[1], "Relais", { opacity: o }),
+    options.relais2 ? relais(R2[0], R2[1], "Relais 2 (copie)", { opacity: o * 0.8 }) : null,
+    options.annuaire ? annuaire(ANN[0], ANN[1], "Annuaire", { opacity: o }) : null,
+  ];
+}
+const titre = (s, t, de, a) => text(960, 80, s, { size: 40, weight: 700, fill: C.texte, opacity: vis(t, de, a) });
+
+film({
+  titre: "Le voyage d'un examen",
+  duree: 176,
+  couverture: 75,
+  sousTitres: [
+    [2, 9, "Le voyage d'un examen : ce qui se passe entre l'envoi par le PACS de l'hôpital A\net sa réception par le PACS de l'hôpital B."],
+    [11, 19, "Le PACS de A envoie l'examen en DICOM (C-STORE) à la box,\ncomme à n'importe quelle modalité ou station."],
+    [19, 27, "L'AET appelé désigne le partenaire : envoyer à « IU_TO_B », c'est envoyer à la box B.\nSeuls les appelants autorisés sont acceptés."],
+    [29, 37, "Des règles peuvent aussi choisir le destinataire d'après les champs DICOM :\nmodalité, description, établissement…"],
+    [37, 45, "Les règles de priorité font partir d'abord les séries urgentes,\nles autres suivent."],
+    [47, 55, "La box regroupe l'étude en un paquet compressé,\npuis le chiffre pour la seule box B."],
+    [55, 63, "La clé de chiffrement de B vient de l'annuaire, signée par le responsable.\nChiffrement hybride, résistant aux ordinateurs quantiques."],
+    [65, 73, "Le paquet chiffré est découpé en morceaux, déposés sur le relais de l'émetteur.\nChaque morceau a sa propre clé de retrait."],
+    [73, 83, "Si l'organisation a plusieurs relais, chaque morceau est copié sur chacun :\nla panne d'un relais n'arrête pas le transfert."],
+    [85, 93, "La box A dépose une annonce dans la boîte aux lettres de B, sur son relais :\nla liste des morceaux et leurs clés de retrait."],
+    [93, 101, "L'annonce est signée par A et chiffrée pour B :\nle relais ne voit qu'une enveloppe opaque, sans type ni contenu."],
+    [103, 111, "La box B relève sa boîte, ouvre l'enveloppe\net vérifie la signature de A avec l'annuaire."],
+    [111, 120, "Elle retire les morceaux grâce aux clés de l'annonce,\net vérifie l'empreinte de chacun."],
+    [120, 128, "Un relais injoignable ? Elle prend la copie sur l'autre relais."],
+    [130, 138, "La box B réassemble le paquet, le déchiffre et vérifie son intégrité."],
+    [138, 146, "Puis elle remet l'examen à son PACS en DICOM, série par série :\nles premières séries sont disponibles sans attendre la fin."],
+    [148, 156, "B renvoie un accusé signé, qui porte l'empreinte de ce qu'elle a reçu.\nA marque le transfert « livré »."],
+    [156, 164, "Les morceaux sont effacés du relais dès leur retrait :\nrien ne reste sur le site central."],
+    [166, 174, "Aucune image en clair hors des deux hôpitaux, aucun port ouvert chez eux,\net la preuve de bout en bout que l'examen est arrivé intact."],
+  ],
+  plans: [
+    { de: 0, a: 10, dessin: (t) => [
+      text(960, 470, "Le voyage d'un examen", { size: 88, weight: 800, fill: C.box, opacity: vis(t, 0, 9.6) }),
+      text(960, 550, "du PACS de l'hôpital A au PACS de l'hôpital B", { size: 40, fill: C.discret, opacity: vis(t, 0.6, 9.6) }),
+    ] },
+    // 1. PACS → box.
+    { de: 10, a: 28, dessin: (t) => {
+      const items = [titre("1. Le PACS envoie l'examen à sa box", t, 10, 28), ...decor(t, vis(t, 10, Infinity))];
+      for (let i = 0; i < 5; i++) {
+        const p = prog(t, 12 + i * 0.8, 15.5 + i * 0.8);
+        if (p > 0) items.push(document_(...along([[PA[0], PA[1] + 120], [BA[0], BA[1] - 95]], p), "examen", { echelle: 0.6, opacity: p >= 1 ? vis(t, 0, 27.5) : 1 }));
+      }
+      items.push(bulle(560, 420, "C-STORE\nappelé : IU_TO_B\nappelant : PACS_A ✓", { size: 26, mono: true, opacity: vis(t, 19, 28), couleur: C.box }));
+      items.push(fleche([[440, 470], [330, 560]], { opacity: vis(t, 19.5, 28) }));
+      return items;
+    } },
+    // 2. Règles.
+    { de: 28, a: 46, dessin: (t) => {
+      const series = [["Série 1 : routine", 0], ["Série 2 : routine", 1], ["Série 3 : URGENT", 2]];
+      const reorder = prog(t, 39, 42);
+      return [titre("2. Les règles choisissent le destinataire et l'ordre", t, 28, 46), ...decor(t, 1),
+        bulle(820, 330, "Routage : modalité = CT\net description contient « neuro »\n→ partenaire box-b", { size: 28, opacity: vis(t, 29.5, 46), couleur: C.box, mono: true }),
+        ...series.map(([s, i]) => {
+          const y0 = 560 + i * 70;
+          const y1 = 560 + (i === 2 ? 0 : (i + 1)) * 70;
+          return bulle(820, lerp(y0, y1, reorder), s, { size: 26, opacity: vis(t, 37, 46), couleur: i === 2 ? C.refus : C.bord, texte: i === 2 ? C.refus : C.texte, largeur: 360 });
+        }),
+        text(1060, 580, "priorité 1 : part d'abord", { size: 22, anchor: "start", fill: C.refus, opacity: vis(t, 42, 46) }),
+      ];
+    } },
+    // 3. Paquet et chiffrement.
+    { de: 46, a: 64, dessin: (t) => {
+      const p = prog(t, 47.5, 51);
+      const items = [titre("3. Un paquet, chiffré pour la seule box B", t, 46, 64), ...decor(t, 1, { annuaire: true, relais: false })];
+      for (let i = 0; i < 5; i++) {
+        if (p < 1) items.push(document_(lerp(BA[0] + 150 + i * 30, BA[0] + 230, p), lerp(BA[1] - 160, BA[1] - 120, p), "examen", { echelle: 0.5 }));
+      }
+      items.push(document_(BA[0] + 240, BA[1] - 120, p >= 1 && t > 53 ? "paquet" : "examen", { opacity: vis(t, 50.5, 64), echelle: 1.1, label: t > 53 ? "paquet.tar.zst.iu1" : "paquet.tar.zst" }));
+      // Clé de B qui vient de l'annuaire.
+      const k = prog(t, 55.5, 59);
+      items.push(cle(...along([[ANN[0] + 40, ANN[1] + 40], [700, 420], [BA[0] + 290, BA[1] - 190]], k), { couleur: C.chiffre, opacity: vis(t, 55.5, 64), echelle: 1.2 }));
+      items.push(text(ANN[0] + 170, ANN[1] + 10, "entrée de la box B :\nclé de chiffrement", { size: 22, anchor: "start", fill: C.annuaire, opacity: vis(t, 55.5, 64) }));
+      items.push(bulle(960, 780, "X25519 + ML-KEM-768 (hybride, post-quantique)\npuis AES-256-GCM", { size: 26, mono: true, opacity: vis(t, 58, 64), couleur: C.chiffre }));
+      return items;
+    } },
+    // 4. Morceaux sur le relais (et sa copie).
+    { de: 64, a: 84, dessin: (t) => {
+      const items = [titre("4. Le paquet est découpé en morceaux, déposés sur le relais", t, 64, 84), ...decor(t, 1, { relais2: t > 73 })];
+      if (t < 67) items.push(document_(BA[0] + 240, BA[1] - 120, "paquet", { echelle: 1.1, opacity: vis(t, 64, 67) }));
+      for (let i = 0; i < 6; i++) {
+        const p = prog(t, 66 + i * 0.7, 69.5 + i * 0.7);
+        items.push(morceau(...along([[BA[0] + 240, BA[1] - 120], [620, 540], SLOTS[i]], p)));
+        items.push(text(SLOTS[i][0], SLOTS[i][1] + 6, String(i + 1), { size: 16, fill: "#fff", weight: 700, opacity: p >= 1 ? 1 : 0 }));
+        const q = prog(t, 75 + i * 0.6, 78 + i * 0.6);
+        if (q > 0) items.push(morceau(...along([[BA[0] + 120, BA[1] + 20], [620, 830], [SLOTS[i][0], R2[1] - 30]], q), { opacity: 0.85 }));
+      }
+      items.push(cle(700, 470, { couleur: C.chiffre, echelle: 0.8, opacity: vis(t, 70, 84) }));
+      items.push(text(740, 478, "une clé de retrait par morceau", { size: 22, anchor: "start", fill: C.chiffre, opacity: vis(t, 70, 84) }));
+      return items;
+    } },
+    // 5. Annonce dans la file de B.
+    { de: 84, a: 102, dessin: (t) => {
+      const items = [titre("5. Une annonce signée, dans la boîte aux lettres de B", t, 84, 102), ...decor(t, 1, { relais2: true }),
+        ...SLOTS.map((s) => morceau(s[0], s[1])),
+        el("rect", { x: FILE_B[0] - 10, y: FILE_B[1] + 20, width: 150, height: 70, rx: 10, fill: "#fff", stroke: C.relais, "stroke-width": 3, opacity: vis(t, 85, 102) }),
+        text(FILE_B[0] + 65, FILE_B[1] + 115, "boîte de B", { size: 20, fill: C.relais, opacity: vis(t, 85, 102) })];
+      const p = prog(t, 86.5, 90.5);
+      items.push(document_(...along([[BA[0] + 110, BA[1] - 30], [700, 700], [FILE_B[0] + 65, FILE_B[1] + 55]], p), p > 0.95 && t > 93 ? "paquet" : "message", { echelle: 0.6 }));
+      items.push(bulle(560, 330, "annonce : morceaux 1 à 6, leurs clés de retrait,\nempreintes ; signée par A, chiffrée pour B", { size: 24, opacity: vis(t, 88, 102), couleur: C.signe }));
+      items.push(bulle(1180, 380, "le relais voit : 1 enveloppe opaque", { size: 24, opacity: vis(t, 94, 102), couleur: C.relais, texte: C.relais }));
+      return items;
+    } },
+    // 6. Retrait par B.
+    { de: 102, a: 129, dessin: (t) => {
+      const items = [titre("6. La box B relève sa boîte et retire les morceaux", t, 102, 129), ...decor(t, 1, { relais2: true, annuaire: true })];
+      const p = prog(t, 103.5, 106);
+      items.push(document_(...along([[FILE_B[0] + 65, FILE_B[1] + 55], [BB[0] - 140, BB[1] - 60]], p), "message", { echelle: 0.6, opacity: vis(t, 102, 111) }));
+      items.push(fleche([[ANN[0] + 100, ANN[1] + 50], [BB[0] - 120, BB[1] - 90]], { couleur: C.annuaire, pointille: true, opacity: vis(t, 107, 111) }));
+      items.push(sceau(BB[0] + 120, BB[1] - 70, { opacity: vis(t, 108.5, 129) }));
+      items.push(text(BB[0] + 120, BB[1] - 105, "signée par A ✓", { size: 20, fill: C.signe, opacity: vis(t, 108.5, 129) }));
+      for (let i = 0; i < 6; i++) {
+        const panne = i === 4;
+        const src = panne ? [SLOTS[i][0], R2[1] - 30] : SLOTS[i];
+        const q = prog(t, panne ? 121 : 112 + i * 1.1, panne ? 125 : 115 + i * 1.1);
+        if (q < 1) items.push(morceau(...along([src, [1300, panne ? 830 : 560], [BB[0] - 140, BB[1] + 10]], q)));
+        else items.push(text(BB[0] - 175 + i * 28, BB[1] + 100, "✓", { size: 26, fill: C.chiffre, weight: 800 }));
+        if (!panne && t < 120) items.push(morceau(SLOTS[i][0], R2[1] - 30, { opacity: 0.85 }));
+      }
+      if (t > 119.5) items.push(croix(R1[0] + 160, R1[1] - 60, { opacity: vis(t, 119.5, 129), echelle: 0.9 }));
+      return items;
+    } },
+    // 7. Restitution au PACS B.
+    { de: 129, a: 147, dessin: (t) => {
+      const items = [titre("7. Déchiffrement, vérification, restitution au PACS", t, 129, 147), ...decor(t, 1)];
+      items.push(document_(BB[0] - 240, BB[1] - 120, t < 133 ? "paquet" : "examen", { echelle: 1.1, opacity: vis(t, 129, 139), label: t < 133 ? "réassemblé" : "déchiffré ✓" }));
+      for (let i = 0; i < 3; i++) {
+        const p = prog(t, 139 + i * 2, 141.5 + i * 2);
+        if (p > 0) items.push(document_(...along([[BB[0], BB[1] - 95], [PB[0], PB[1] + 120]], p), "examen", { echelle: 0.6, label: p >= 1 ? "" : "série " + (i + 1) }));
+      }
+      items.push(bulle(1240, 330, "C-STORE vers PACS_B,\nsérie par série", { size: 26, mono: true, opacity: vis(t, 139, 147), couleur: C.box }));
+      return items;
+    } },
+    // 8. Accusé et effacement.
+    { de: 147, a: 165, dessin: (t) => {
+      const items = [titre("8. Accusé signé, morceaux effacés", t, 147, 165), ...decor(t, vis(t, -1, 165))];
+      const p = prog(t, 149, 153.5);
+      items.push(document_(...along([[BB[0] - 120, BB[1] + 40], [960, 920], [BA[0] + 120, BA[1] + 40]], p), "message", { echelle: 0.7, label: "accusé" }));
+      items.push(bulle(BA[0], BA[1] + 140, "livré ✓", { size: 28, couleur: C.chiffre, texte: C.chiffre, opacity: vis(t, 153.5, 165) }));
+      SLOTS.forEach((s) => items.push(morceau(s[0], s[1], { opacity: 1 - prog(t, 156.5, 159.5) })));
+      items.push(text(R1[0], R1[1] + 150, "vide", { size: 24, fill: C.relais, opacity: vis(t, 159.5, 165) }));
+      return items;
+    } },
+    // Récapitulatif.
+    { de: 165, a: 176, dessin: (t) => {
+      const etapes = ["DICOM", "règles", "paquet chiffré", "morceaux", "annonce signée", "retrait vérifié", "DICOM", "accusé"];
+      return [
+        text(960, 300, "En résumé", { size: 56, weight: 800, fill: C.box, opacity: vis(t, 165, 176) }),
+        ...etapes.map((s, i) => g({ opacity: vis(t, 165.5 + i * 0.5, 176) }, [
+          bulle(200 + i * 217, 520, s, { size: 24, largeur: 196, couleur: i === 2 || i === 3 ? C.chiffre : i === 4 || i === 7 ? C.signe : C.box }),
+          i < etapes.length - 1 ? text(308 + i * 217, 528, "›", { size: 40, fill: C.trait }) : null,
+        ])),
+      ];
+    } },
+  ],
+});
+</script></body></html>

@@ -1,0 +1,54 @@
+1
+00:00:02,000 --> 00:00:08,000
+Pannes, coupures, erreurs : ce que fait ImagUnity, et ce qu'il ne fait jamais.
+
+2
+00:00:10,000 --> 00:00:18,000
+Un relais ne répond plus ? Les box réessaient, avec des délais croissants.
+
+3
+00:00:18,000 --> 00:00:27,000
+Si l'organisation a plusieurs relais, chaque morceau est sur chacun :
+la box destinataire prend simplement la copie sur l'autre.
+
+4
+00:00:29,000 --> 00:00:37,000
+La box destinataire est éteinte ? Les morceaux l'attendent sur le relais,
+dans la limite de leur bail (72 heures par défaut).
+
+5
+00:00:37,000 --> 00:00:45,000
+Dès qu'elle redémarre, elle relève sa boîte et reprend le transfert.
+
+6
+00:00:47,000 --> 00:00:55,000
+Le PACS ne répond plus ? Chaque étape a un délai d'attente :
+la box ne reste pas bloquée.
+
+7
+00:00:55,000 --> 00:01:03,000
+La restitution reprend plus tard, et l'exploitant peut relancer
+un transfert depuis la console.
+
+8
+00:01:05,000 --> 00:01:13,000
+Une box est révoquée par le responsable ?
+
+9
+00:01:13,000 --> 00:01:21,000
+Les autres box le voient à leur lecture de l'annuaire et refusent d'échanger avec elle,
+avec le motif dans la console.
+
+10
+00:01:23,000 --> 00:01:31,000
+Un morceau altéré, un message mal signé ? Chaque empreinte et chaque signature
+sont vérifiées.
+
+11
+00:01:31,000 --> 00:01:39,000
+Ce qui ne se vérifie pas est écarté : rien d'altéré n'est jamais remis au PACS.
+
+12
+00:01:41,000 --> 00:01:49,000
+Pas de perte silencieuse : chaque transfert finit « livré » avec accusé signé,
+ou en échec avec son motif, visible dans la console.

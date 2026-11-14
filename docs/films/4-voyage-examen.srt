@@ -1,0 +1,92 @@
+1
+00:00:02,000 --> 00:00:09,000
+Le voyage d'un examen : ce qui se passe entre l'envoi par le PACS de l'hôpital A
+et sa réception par le PACS de l'hôpital B.
+
+2
+00:00:11,000 --> 00:00:19,000
+Le PACS de A envoie l'examen en DICOM (C-STORE) à la box,
+comme à n'importe quelle modalité ou station.
+
+3
+00:00:19,000 --> 00:00:27,000
+L'AET appelé désigne le partenaire : envoyer à « IU_TO_B », c'est envoyer à la box B.
+Seuls les appelants autorisés sont acceptés.
+
+4
+00:00:29,000 --> 00:00:37,000
+Des règles peuvent aussi choisir le destinataire d'après les champs DICOM :
+modalité, description, établissement…
+
+5
+00:00:37,000 --> 00:00:45,000
+Les règles de priorité font partir d'abord les séries urgentes,
+les autres suivent.
+
+6
+00:00:47,000 --> 00:00:55,000
+La box regroupe l'étude en un paquet compressé,
+puis le chiffre pour la seule box B.
+
+7
+00:00:55,000 --> 00:01:03,000
+La clé de chiffrement de B vient de l'annuaire, signée par le responsable.
+Chiffrement hybride, résistant aux ordinateurs quantiques.
+
+8
+00:01:05,000 --> 00:01:13,000
+Le paquet chiffré est découpé en morceaux, déposés sur le relais de l'émetteur.
+Chaque morceau a sa propre clé de retrait.
+
+9
+00:01:13,000 --> 00:01:23,000
+Si l'organisation a plusieurs relais, chaque morceau est copié sur chacun :
+la panne d'un relais n'arrête pas le transfert.
+
+10
+00:01:25,000 --> 00:01:33,000
+La box A dépose une annonce dans la boîte aux lettres de B, sur son relais :
+la liste des morceaux et leurs clés de retrait.
+
+11
+00:01:33,000 --> 00:01:41,000
+L'annonce est signée par A et chiffrée pour B :
+le relais ne voit qu'une enveloppe opaque, sans type ni contenu.
+
+12
+00:01:43,000 --> 00:01:51,000
+La box B relève sa boîte, ouvre l'enveloppe
+et vérifie la signature de A avec l'annuaire.
+
+13
+00:01:51,000 --> 00:02:00,000
+Elle retire les morceaux grâce aux clés de l'annonce,
+et vérifie l'empreinte de chacun.
+
+14
+00:02:00,000 --> 00:02:08,000
+Un relais injoignable ? Elle prend la copie sur l'autre relais.
+
+15
+00:02:10,000 --> 00:02:18,000
+La box B réassemble le paquet, le déchiffre et vérifie son intégrité.
+
+16
+00:02:18,000 --> 00:02:26,000
+Puis elle remet l'examen à son PACS en DICOM, série par série :
+les premières séries sont disponibles sans attendre la fin.
+
+17
+00:02:28,000 --> 00:02:36,000
+B renvoie un accusé signé, qui porte l'empreinte de ce qu'elle a reçu.
+A marque le transfert « livré ».
+
+18
+00:02:36,000 --> 00:02:44,000
+Les morceaux sont effacés du relais dès leur retrait :
+rien ne reste sur le site central.
+
+19
+00:02:46,000 --> 00:02:54,000
+Aucune image en clair hors des deux hôpitaux, aucun port ouvert chez eux,
+et la preuve de bout en bout que l'examen est arrivé intact.

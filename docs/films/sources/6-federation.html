@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Échanger entre organisations</title>
+<style>html,body{margin:0;background:#F6F7F4;overflow:hidden}</style></head>
+<body><script src="moteur.js"></script><script>
+"use strict";
+// Film 6 : échanger entre organisations (fédération, reconnaissance mutuelle, relais qui ne se parlent pas).
+const A = { ann: [480, 250], rel: [480, 560], box: [250, 820], resp: [150, 250] };
+const B = { ann: [1440, 250], rel: [1440, 560], box: [1670, 820], resp: [1770, 250] };
+const titre = (s, t, de, a) => text(960, 70, s, { size: 40, weight: 700, opacity: vis(t, de, a) });
+function regions(o, extras = {}) {
+  return [
+    site(60, 110, 820, 820, "Région A — grand-est", { opacity: o }),
+    site(1040, 110, 820, 820, "Région B — bourgogne-fc", { opacity: o }),
+    annuaire(A.ann[0], A.ann[1], "Annuaire A", { opacity: o }), annuaire(B.ann[0], B.ann[1], "Annuaire B", { opacity: o }),
+    relais(A.rel[0], A.rel[1], "Relais A", { opacity: o }), relais(B.rel[0], B.rel[1], "Relais B", { opacity: o }),
+    box(A.box[0], A.box[1], "Box A", { opacity: o, sous: "groupe imagerie" }), box(B.box[0], B.box[1], "Box B", { opacity: o, sous: "groupe neuro" }),
+    extras.responsables ? personne(A.resp[0], A.resp[1], "Responsable A", { couleur: C.signe, opacity: o * extras.responsables }) : null,
+    extras.responsables ? personne(B.resp[0], B.resp[1], "Responsable B", { couleur: C.signe, opacity: o * extras.responsables }) : null,
+  ];
+}
+
+film({
+  titre: "Échanger entre organisations",
+  duree: 116,
+  couverture: 70,
+  sousTitres: [
+    [2, 8, "Deux régions, deux organisations, chacune avec son annuaire, son relais et ses box.\nComment leurs box peuvent-elles échanger ?"],
+    [10, 20, "Par défaut, une box ne fait confiance qu'à son organisation :\nles box de la région B lui sont inconnues."],
+    [23, 31, "Chaque responsable reconnaît l'autre organisation. Ils comparent d'abord, de vive voix,\nl'empreinte de leurs clés."],
+    [31, 39, "La reconnaissance fixe la clé du partenaire, ses relais autorisés,\net les groupes qui peuvent échanger. Sans groupes, aucun échange."],
+    [39, 46, "Elle est signée hors ligne et publiée sur l'annuaire de son organisation.\nUn échange ne marche que si les deux responsables ont signé."],
+    [48, 57, "Le service d'annuaire de chaque région relaie alors les entrées du partenaire\nà ses box et à son relais, qui les vérifient avec la clé de l'accord."],
+    [59, 67, "La box A dépose les morceaux chiffrés sur son propre relais, comme d'habitude."],
+    [67, 75, "Elle dépose l'annonce directement dans la boîte de B, sur le relais de B :\nce relais accepte les box de A couvertes par l'accord, pour ce seul dépôt."],
+    [75, 83, "La box B retire les morceaux sur le relais de A, avec les clés de l'annonce.\nLes relais ne se parlent jamais."],
+    [85, 92, "Accord à sens unique, box hors du périmètre, relais non autorisé :\nl'échange est refusé, avec le motif."],
+    [92, 100, "Et une organisation qui revendiquerait l'identifiant d'une box d'une autre\nest écartée et signalée."],
+    [102, 111, "Chaque organisation reste maîtresse de ses box : elle choisit ses partenaires,\nleur périmètre, et la juridiction de leurs relais."],
+  ],
+  plans: [
+    { de: 0, a: 9, dessin: (t) => [
+      text(960, 470, "Échanger entre organisations", { size: 84, weight: 800, fill: C.box, opacity: vis(t, 0, 8.6) }),
+      text(960, 550, "la fédération", { size: 40, fill: C.discret, opacity: vis(t, 0.6, 8.6) }),
+    ] },
+    { de: 9, a: 22, dessin: (t) => [titre("Deux organisations, chacune chez soi", t, 9, 22), ...regions(vis(t, 9, Infinity)),
+      fleche([[A.box[0] + 120, A.box[1]], [B.box[0] - 130, B.box[1]]], { pointille: true, opacity: vis(t, 13, 22) * 0.5 }),
+      croix(960, A.box[1], { opacity: vis(t, 14, 22) }),
+      text(960, A.box[1] + 70, "box inconnue", { size: 24, fill: C.refus, opacity: vis(t, 14, 22) }),
+    ] },
+    { de: 22, a: 47, dessin: (t) => {
+      const pa = prog(t, 40, 43.5);
+      const pb = prog(t, 41, 44.5);
+      return [titre("1. Chaque responsable reconnaît l'autre", t, 22, 47), ...regions(1, { responsables: vis(t, 22, Infinity) }),
+        fleche([[A.resp[0] + 60, A.resp[1] - 60], [B.resp[0] - 60, B.resp[1] - 60]], { pointille: true, couleur: C.signe, opacity: vis(t, 23, 31) }),
+        bulle(960, 150, "empreintes comparées au téléphone", { size: 24, couleur: C.signe, opacity: vis(t, 23.5, 31) }),
+        bulle(960, 440, "reconnaissance de B\nclé : Q2EJ-PEZ7-…\nrelais : relais B\ngroupes : imagerie ↔ neuro", { size: 24, mono: true, couleur: C.signe, opacity: vis(t, 31, 40) }),
+        sceau(1110, 400, { opacity: vis(t, 37, 40) }),
+        document_(...along([[A.resp[0] + 70, A.resp[1] - 20], [A.ann[0] - 110, A.ann[1]]], pa), "message", { echelle: 0.7, opacity: vis(t, 39.5, 47) }),
+        document_(...along([[B.resp[0] - 70, B.resp[1] - 20], [B.ann[0] + 110, B.ann[1]]], pb), "message", { echelle: 0.7, opacity: vis(t, 40.5, 47) }),
+      ];
+    } },
+    { de: 47, a: 58, dessin: (t) => {
+      const p = prog(t, 49, 52);
+      const q = prog(t, 52.5, 55.5);
+      return [titre("2. Les entrées du partenaire sont relayées", t, 47, 58), ...regions(1, { responsables: 1 }),
+        document_(...along([[B.ann[0] - 100, B.ann[1]], [A.ann[0] + 100, A.ann[1]]], p), "entree", { echelle: 0.6, label: "entrées de B" }),
+        document_(...along([[A.ann[0], A.ann[1] + 90], [A.box[0] + 40, A.box[1] - 80]], q), "entree", { echelle: 0.5, opacity: vis(t, 52.5, 58) }),
+        document_(...along([[A.ann[0] + 30, A.ann[1] + 90], [A.rel[0] + 30, A.rel[1] - 90]], q), "entree", { echelle: 0.5, opacity: vis(t, 52.5, 58) }),
+        sceau(A.box[0] + 120, A.box[1] - 70, { couleur: C.chiffre, opacity: vis(t, 55.5, 58) }),
+      ];
+    } },
+    { de: 58, a: 84, dessin: (t) => {
+      const items = [titre("3. Un examen de A vers B", t, 58, 84), ...regions(1, { responsables: 1 })];
+      for (let i = 0; i < 4; i++) {
+        const dest = [A.rel[0] - 75 + (i % 2) * 150, A.rel[1] - 25];
+        const p = prog(t, 59.5 + i * 0.6, 62.5 + i * 0.6);
+        const q = prog(t, 76 + i * 0.8, 79.5 + i * 0.8);
+        if (q < 1) items.push(morceau(...(q > 0 ? along([dest, [960, 700], [B.box[0] - 130, B.box[1]]], q) : along([[A.box[0] + 120, A.box[1]], dest], p))));
+      }
+      const m = prog(t, 68, 72);
+      items.push(document_(...along([[A.box[0] + 120, A.box[1] - 40], [960, 640], [B.rel[0] - 40, B.rel[1] + 30]], m), "message", { echelle: 0.6, opacity: vis(t, 67.5, 84) }));
+      items.push(text(B.rel[0] - 40, B.rel[1] + 150, "boîte de B", { size: 20, fill: C.relais, opacity: vis(t, 71, 84) }));
+      items.push(bulle(960, 400, "les relais ne se parlent pas", { size: 28, couleur: C.relais, texte: C.relais, opacity: vis(t, 79, 84) }));
+      items.push(croix(960, 470, { echelle: 0.6, opacity: vis(t, 79, 84) }));
+      return items;
+    } },
+    { de: 84, a: 101, dessin: (t) => {
+      const cas = ["Accord à sens unique", "Box hors du périmètre", "Relais non autorisé", "Identifiant de box revendiqué"];
+      return [titre("4. Ce qui est refusé", t, 84, 101),
+        ...cas.map((s, i) => g({ opacity: vis(t, 85 + i * (i < 3 ? 1.5 : 4), 101) }, [
+          bulle(860, 300 + i * 140, s, { size: 34, largeur: 700, couleur: C.refus, texte: C.refus }),
+          croix(1290, 300 + i * 140, { echelle: 0.9 }),
+        ]))];
+    } },
+    { de: 101, a: 116, dessin: (t) => {
+      const etapes = [["reconnaissance mutuelle, signée hors ligne", C.signe], ["périmètre en groupes, vide par défaut", C.box],
+        ["relais autorisés : la juridiction est choisie", C.relais], ["les relais ne se parlent pas", C.trait], ["chiffré de bout en bout, comme toujours", C.chiffre]];
+      return [text(960, 300, "En résumé", { size: 56, weight: 800, fill: C.box, opacity: vis(t, 101, 116) }),
+        ...etapes.map(([s, c], i) => bulle(960, 410 + i * 80, s, { size: 30, largeur: 820, couleur: c, opacity: vis(t, 102 + i * 0.7, 116) }))];
+    } },
+  ],
+});
+</script></body></html>
