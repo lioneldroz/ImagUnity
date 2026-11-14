@@ -76,13 +76,17 @@ public final class DirectoryClient {
 
     /**
      * Reconnaissances de partenaires publiées par le responsable (fédération), non vérifiées : à faire passer par
-     * {@link LocalDirectory#synchronizeRecognitions}.
+     * {@link LocalDirectory#synchronizeRecognitions}. Un service d'annuaire antérieur à la fédération (404) n'en a
+     * aucune.
      *
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetchRecognitions() {
         Reply response = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/recognitions")).timeout(timeout)
                 .build(), "Lecture des reconnaissances");
+        if (response.statusCode() == 404) {
+            return List.of(); // service d'annuaire antérieur à la fédération
+        }
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
                     + " à la lecture des reconnaissances");

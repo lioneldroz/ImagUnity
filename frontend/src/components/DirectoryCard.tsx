@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { BOX_STATUS_LABELS, ENROLLMENT_REQUEST_URL, fetchDirectory, pairWithBox, type DirectoryBox } from '../api/directory'
+import {
+  BOX_STATUS_LABELS,
+  ENROLLMENT_REQUEST_URL,
+  fetchDirectory,
+  pairWithBox,
+  type DirectoryBox,
+  type PartnerOrganization,
+} from '../api/directory'
 import { formatDate } from '../format'
 import { StateBadge } from './StateBadge'
 
@@ -33,6 +40,9 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
   if (box.pairedAs) {
     return <span>{box.pairedAs}</span>
   }
+  if (box.refusal) {
+    return <span className="muted small">{box.refusal}</span>
+  }
   if (box.status !== 'ACTIVE' || !box.reachable) {
     return <span className="muted small">{box.reachable ? '—' : 'pas d’adresse publiée'}</span>
   }
@@ -53,6 +63,57 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
       </button>
       {pair.isError && <div className="error small">{pair.error.message}</div>}
     </form>
+  )
+}
+
+function scope(groups: string[]): string {
+  if (groups.length === 0) return 'aucun'
+  return groups.includes('*') ? 'tous' : groups.join(', ')
+}
+
+function PartnersTable({ partners }: { partners: PartnerOrganization[] }) {
+  return (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Organisation partenaire</th>
+            <th>Accord</th>
+            <th>Périmètre</th>
+            <th>Dernière lecture</th>
+          </tr>
+        </thead>
+        <tbody>
+          {partners.map((p) => (
+            <tr key={p.shortCode}>
+              <td>
+                {p.organization}
+                <div className="muted small mono">{p.shortCode}</div>
+              </td>
+              <td>
+                <StateBadge label={BOX_STATUS_LABELS[p.status]} tone={p.status === 'ACTIVE' ? 'ok' : 'error'} />
+                <div className="muted small">jusqu’au {formatDate(p.validUntil)}</div>
+              </td>
+              <td className="small">
+                groupes locaux : {scope(p.localGroups)}
+                <br />
+                groupes du partenaire : {scope(p.partnerGroups)}
+                <div className="muted">relais : {p.relays.join(', ')}</div>
+              </td>
+              <td className="small">
+                {!p.lastSync && <span className="muted">pas encore lue</span>}
+                {p.lastSync?.error && <span className="error">{p.lastSync.error}</span>}
+                {p.lastSync && !p.lastSync.error && p.lastSync.at && (
+                  <span>
+                    {formatDate(p.lastSync.at)} : {p.boxes} box utilisable(s)
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -96,12 +157,20 @@ export function DirectoryCard() {
           )}
         </dd>
       </dl>
+      {d.collisions.length > 0 && (
+        <div className="error small">
+          {d.collisions.length} identifiant(s) de box revendiqué(s) par deux organisations : entrée(s) écartée(s). Dernier :{' '}
+          box {d.collisions[d.collisions.length - 1].boxId}, revendiquée par {d.collisions[d.collisions.length - 1].claimant},
+          tenue par {d.collisions[d.collisions.length - 1].holder}. Prévenir le responsable.
+        </div>
+      )}
+      {d.partners.length > 0 && <PartnersTable partners={d.partners} />}
       {d.boxes.length > 0 && (
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Box de l’organisation</th>
+                <th>Box</th>
                 <th>État</th>
                 <th>Valide jusqu’au</th>
                 <th>Partenaire</th>
@@ -110,7 +179,10 @@ export function DirectoryCard() {
             <tbody>
               {d.boxes.map((b) => (
                 <tr key={b.boxId}>
-                  <td>{b.displayName}</td>
+                  <td>
+                    {b.displayName}
+                    {b.organization && <div className="muted small">organisation partenaire : {b.organization}</div>}
+                  </td>
                   <td>
                     <StateBadge label={BOX_STATUS_LABELS[b.status]} tone={b.status === 'ACTIVE' ? 'ok' : 'error'} />
                     {b.status === 'ACTIVE' && !b.encrypted && (

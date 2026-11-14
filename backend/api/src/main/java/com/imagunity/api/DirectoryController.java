@@ -39,7 +39,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Annuaire signé, vu de la box.
  *
  * <pre>
- * GET  /api/v1/directory                      identité de la box, synchronisation, box connues (enabled:false sans annuaire)
+ * GET  /api/v1/directory                      identité de la box, synchronisation, box connues, organisations
+ *                                             partenaires (enabled:false sans annuaire)
  * GET  /api/v1/directory/enrollment-request   demande d'enrôlement signée, avec l'adresse de contact de la box
  * POST /api/v1/directory/boxes/{boxId}/pair   {"name": "box-b"} : se connecte à l'adresse publiée de cette box (202)
  * </pre>
@@ -51,14 +52,33 @@ import org.springframework.web.bind.annotation.RestController;
 public class DirectoryController {
 
 
-    /** Une box de l'annuaire. */
     /**
-     * @param reachable vrai si la box publie une adresse de contact
-     * @param pairedAs  nom local du partenaire lié à cette box ({@code null} : pas appairée)
-     * @param encrypted vrai si l'entrée publie les clés de chiffrement de la box (sinon, entrée à réémettre)
+     * Une box de l'annuaire.
+     *
+     * @param reachable    vrai si la box publie une adresse de contact
+     * @param pairedAs     nom local du partenaire lié à cette box ({@code null} : pas appairée)
+     * @param encrypted    vrai si l'entrée publie les clés de chiffrement de la box (sinon, entrée à réémettre)
+     * @param organization organisation partenaire de la box ({@code null} : box de l'organisation)
+     * @param refusal      motif pour lequel cette box ne peut pas échanger avec elle (accord, périmètre), ou
+     *                     {@code null}
      */
     public record BoxView(UUID boxId, String displayName, long serial, BoxEntry.Status status, Instant validUntil,
-                          boolean reachable, String pairedAs, boolean encrypted) {
+                          boolean reachable, String pairedAs, boolean encrypted, String organization,
+                          String refusal) {
+    }
+
+    /**
+     * Une organisation partenaire reconnue par le responsable (fédération).
+     *
+     * @param boxes box de ce partenaire utilisables (accord actif, périmètre, relais)
+     */
+    public record PartnerView(String organization, String shortCode, BoxEntry.Status status, Instant validUntil,
+                              List<String> localGroups, List<String> partnerGroups, List<String> relays,
+                              SyncView lastSync, int boxes) {
+    }
+
+    /** Identifiant de box revendiqué par deux organisations : l'entrée de {@code claimant} a été écartée. */
+    public record CollisionView(UUID boxId, String claimant, String holder, Instant at) {
     }
 
     /** Corps de {@code POST /boxes/{boxId}/pair}. */
@@ -70,7 +90,8 @@ public class DirectoryController {
     }
 
     /** Réponse de {@code GET /api/v1/directory}. */
-    public record DirectoryView(boolean enabled, UUID boxId, String shortCode, SyncView lastSync, List<BoxView> boxes) {
+    public record DirectoryView(boolean enabled, UUID boxId, String shortCode, SyncView lastSync, List<BoxView> boxes,
+                                List<PartnerView> partners, List<CollisionView> collisions) {
     }
 
     private static final System.Logger LOG = System.getLogger(DirectoryController.class.getName());
@@ -100,19 +121,42 @@ public class DirectoryController {
         BoxIdentity me = identity.getIfAvailable();
         LocalDirectory local = directory.getIfAvailable();
         if (me == null || local == null) {
-            return new DirectoryView(false, null, null, null, List.of());
+            return new DirectoryView(false, null, null, null, List.of(), List.of(), List.of());
         }
         LocalDirectory.SyncStatus sync = local.lastSync();
         Instant now = clock.instant();
         Map<UUID, String> paired = peers.findAll().stream().filter(p -> p.boxId() != null)
                 .collect(Collectors.toMap(Peer::boxId, Peer::name, (a, b) -> a));
         List<BoxView> boxes = local.entries().stream()
-                .sorted(Comparator.comparing(BoxEntry::displayName))
+                .sorted(Comparator.comparing((BoxEntry e) -> !local.isLocal(e.boxId()))
+                        .thenComparing(BoxEntry::displayName))
                 .map(e -> new BoxView(e.boxId(), e.displayName(), e.serial(), e.statusAt(now), e.validUntil(),
-                        e.transport().containsKey(transport.addressKind()), paired.get(e.boxId()), e.encryptionKeys() != null))
+                        e.transport().containsKey(transport.addressKind()), paired.get(e.boxId()),
+                        e.encryptionKeys() != null,
+                        local.partnerOf(e.boxId()).map(r -> r.partner().organization()).orElse(null),
+                        local.exchangeRefusal(me.boxId(), e.boxId()).orElse(null)))
+                .toList();
+        Map<String, String> names = new HashMap<>();
+        List<PartnerView> partners = local.recognitions().stream()
+                .sorted(Comparator.comparing(r -> r.partner().organization()))
+                .map(r -> {
+                    String fp = r.partner().fingerprint();
+                    names.put(fp, r.partner().organization() + " (" + r.partner().shortCode() + ")");
+                    LocalDirectory.SyncStatus ps = local.partnerSync(fp);
+                    return new PartnerView(r.partner().organization(), r.partner().shortCode(), r.statusAt(now),
+                            r.validUntil(), r.scope().localGroups(), r.scope().partnerGroups(), r.partner().relays(),
+                            ps == null ? null : new SyncView(ps.at(), ps.accepted(), ps.rejected(), ps.error()),
+                            (int) boxes.stream().filter(b -> b.organization() != null && local.partnerOf(b.boxId())
+                                    .map(p -> p.partner().fingerprint().equals(fp)).orElse(false)).count());
+                })
+                .toList();
+        List<CollisionView> collisions = local.collisions().stream()
+                .map(c -> new CollisionView(c.boxId(), names.getOrDefault(c.claimant(), c.claimant()),
+                        LocalDirectory.LOCAL.equals(c.holder()) ? "cette organisation"
+                                : names.getOrDefault(c.holder(), c.holder()), c.at()))
                 .toList();
         return new DirectoryView(true, me.boxId(), me.keys().publicKey().shortCode(),
-                new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes);
+                new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes, partners, collisions);
     }
 
     /** @param name nom proposé pour la box (par défaut, le nom de la box) */
@@ -145,7 +189,10 @@ public class DirectoryController {
                 clock.instant());
     }
 
-    /** Se connecte à l'adresse publiée d'une box active de l'organisation, sous le nom choisi par l'opérateur. */
+    /**
+     * Se connecte à l'adresse publiée d'une box active, de l'organisation ou d'un partenaire dont l'accord couvre les
+     * deux box, sous le nom choisi par l'opérateur.
+     */
     @PostMapping("/boxes/{boxId}/pair")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void pair(@PathVariable UUID boxId, @RequestBody PairRequest request) {
@@ -161,6 +208,9 @@ public class DirectoryController {
         if (entry.statusAt(clock.instant()) != BoxEntry.Status.ACTIVE) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » non active dans l'annuaire");
         }
+        local.exchangeRefusal(me.boxId(), boxId).ifPresent(refusal -> {
+            throw new IllegalStateException(refusal);
+        });
         String address = entry.transport().get(transport.addressKind());
         if (address == null) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » sans adresse de contact publiée");

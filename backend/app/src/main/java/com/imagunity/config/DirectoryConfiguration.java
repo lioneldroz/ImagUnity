@@ -251,7 +251,10 @@ class DirectoryConfiguration {
     @Bean
     LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, JdbcDirectoryStore store, Clock clock) {
         // Le cache est relu au démarrage du cycle de vie, une fois les migrations de la base faites.
-        return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock);
+        // Fédération : reconnaissances signées par le responsable et entrées des partenaires, gardées dans le même
+        // cache (un identifiant de box n'appartient qu'à une organisation).
+        return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock)
+                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store);
     }
 
     /** Annonces et accusés signés par cette box, vérifiés avec l'annuaire à la réception. */
@@ -280,8 +283,8 @@ class DirectoryConfiguration {
     }
 
     @Bean
-    PeerAuthorization peerAuthorization(LocalDirectory directory) {
-        return new DirectoryPeerAuthorization(directory);
+    PeerAuthorization peerAuthorization(LocalDirectory directory, BoxIdentity identity) {
+        return new DirectoryPeerAuthorization(directory, identity.boxId());
     }
 
     @Bean
@@ -434,6 +437,13 @@ class DirectoryConfiguration {
         LocalDirectory.SyncStatus status = directory.synchronize(client::fetch);
         if (status.error() == null) {
             LOG.debug("Annuaire lu : {} entrée(s) retenue(s), {} écartée(s)", status.accepted(), status.rejected());
+        }
+        if (directory.federated()) {
+            directory.synchronizeRecognitions(client::fetchRecognitions);
+            for (com.imagunity.directory.Recognition r : directory.activeRecognitions()) {
+                String partner = r.partner().fingerprint();
+                directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
+            }
         }
         executor.execute(handshake::greetUnbound);
     }
