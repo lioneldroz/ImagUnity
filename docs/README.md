@@ -24,6 +24,7 @@
 | [Routage par champ DICOM](reference/routage-dicom.md) | choix du destinataire d'après le contenu de l'examen |
 | [Réception DICOMweb STOW-RS](reference/stow-rs.md) | dépôt des examens par HTTP |
 | [Fédération entre organisations](reference/federation-organisations.md) | conception : échanges entre box de régions ou de pays différents, reconnaissance mutuelle signée ; étape 1 arrêtée |
+| [Films explicatifs : plan](films/plan.md) | courtes vidéos animées sur l'enrôlement, l'organisation et le voyage d'un examen |
 
 ## Audit
 

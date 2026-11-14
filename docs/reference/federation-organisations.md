@@ -200,6 +200,7 @@ Deux organisations, chacune avec son service d'annuaire, son relais et une box, 
 | **3. Limites de débit** | Requêtes par minute et par box déposante sur le relais | Ouvrir un relais à d'autres organisations sans limite de débit n'est pas raisonnable. Ferme le constat R4. **Obligatoire avant une fédération réelle.** |
 | **4. Annuaires** | Synchronisation par différence (`GET /entries?since=<curseur>`), lecture réservée aux box enrôlées des organisations reconnues (requêtes signées) | Aujourd'hui, chaque box lit toutes les entrées (environ 7,5 Ko chacune) toutes les 5 minutes, et l'annuaire est public : 10 000 box feraient 75 Mo par lecture, et l'annuaire fédéré deviendrait un annuaire public des établissements |
 | **5. Versions** | Versions du protocole annoncées dans les entrées (`"protocols": ["iu1.0", "iu1.1"]`), choix de la plus haute version commune, refus propre sinon | Nécessaire dès que les organisations mettent à jour à des rythmes différents. Rendue possible par le § 6.7 |
+| **6. Films explicatifs** | Courtes vidéos animées et sous-titrées : vue d'ensemble, organisation, enrôlement d'une box, voyage d'un examen, incidents, et échange entre organisations ([plan](../films/plan.md)) | Faire comprendre le fonctionnement de bout en bout sans lire la spécification. Le film sur la fédération suit l'étape 1 |
 
 ## 8. Ce que ça change dans le code (étape 1)
 
