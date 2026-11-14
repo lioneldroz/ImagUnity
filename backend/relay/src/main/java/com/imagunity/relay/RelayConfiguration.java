@@ -64,7 +64,30 @@ class RelayConfiguration {
 
     @Bean
     LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, RelayDirectoryStore store, Clock clock) {
-        return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock);
+        // Fédération : les box des organisations reconnues par le responsable peuvent déposer des messages dans les
+        // files des box locales couvertes par l'accord (et rien d'autre).
+        return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock)
+                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store);
+    }
+
+    /**
+     * Une lecture de l'annuaire : entrées de l'organisation, reconnaissances, entrées des partenaires. Une erreur
+     * imprévue est journalisée sans sortir de la tâche planifiée, qui s'arrêterait sinon pour de bon.
+     */
+    static void synchronize(LocalDirectory directory, DirectoryClient client) {
+        try {
+            LocalDirectory.SyncStatus status = directory.synchronize(client::fetch);
+            LOG.log(Level.DEBUG, "Annuaire lu : {0} entrée(s) retenue(s)", status.accepted());
+            if (directory.federated()) {
+                directory.synchronizeRecognitions(client::fetchRecognitions);
+                for (com.imagunity.directory.Recognition r : directory.activeRecognitions()) {
+                    String partner = r.partner().fingerprint();
+                    directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
+                }
+            }
+        } catch (RuntimeException e) {
+            LOG.log(Level.ERROR, "Lecture de l''annuaire en échec, nouvel essai au prochain intervalle", e);
+        }
     }
 
     @Bean
@@ -83,10 +106,8 @@ class RelayConfiguration {
                 directory.load();
                 scheduler = Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform().name("annuaire").daemon().factory());
-                scheduler.scheduleWithFixedDelay(() -> {
-                    LocalDirectory.SyncStatus status = directory.synchronize(client::fetch);
-                    LOG.log(Level.DEBUG, "Annuaire lu : {0} entrée(s) retenue(s)", status.accepted());
-                }, 0, properties.directory().syncInterval().toMillis(), TimeUnit.MILLISECONDS);
+                scheduler.scheduleWithFixedDelay(() -> synchronize(directory, client), 0,
+                        properties.directory().syncInterval().toMillis(), TimeUnit.MILLISECONDS);
             }
 
             @Override

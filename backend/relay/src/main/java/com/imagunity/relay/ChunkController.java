@@ -62,7 +62,7 @@ public class ChunkController {
         if (body.length > MAX_CREATE) {
             throw new RelayException(HttpStatus.CONTENT_TOO_LARGE, "Demande de création trop longue");
         }
-        UUID box = auth.depositor(request, Codec.sha256Hex(body));
+        UUID box = auth.localDepositor(request, Codec.sha256Hex(body));
         ChunkService.CreateRequest create;
         try {
             create = Codec.json().readValue(body, ChunkService.CreateRequest.class);

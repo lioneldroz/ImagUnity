@@ -53,7 +53,7 @@ public class QueueController {
         if (body.length > MAX_CREATE) {
             throw new RelayException(HttpStatus.CONTENT_TOO_LARGE, "Demande de création trop longue");
         }
-        UUID box = auth.depositor(request, Codec.sha256Hex(body));
+        UUID box = auth.localDepositor(request, Codec.sha256Hex(body));
         QueueService.CreateRequest create;
         try {
             create = Codec.json().readValue(body, QueueService.CreateRequest.class);
@@ -69,6 +69,7 @@ public class QueueController {
         QueueStore.Queue queue = queues.bySendId(sendId);
         byte[] envelope = request.getInputStream().readNBytes(QueueService.MAX_ENVELOPE + 1);
         UUID box = auth.depositor(request, Codec.sha256Hex(envelope));
+        auth.requireExchange(queue.boxId(), box);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(queues.deposit(queue, box, envelope));
     }
 
