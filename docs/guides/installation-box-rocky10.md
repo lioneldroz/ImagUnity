@@ -187,6 +187,7 @@ Tout se règle dans `/etc/imagunity/box.env`, au format systemd : une variable p
 | `IMAGUNITY_PACS_HOST`, `…_PORT`, `…_AET`, `IMAGUNITY_BOX_AET` | Restitution des examens reçus au PACS | `192.168.1.10`, `104`, `PACS_CHU`, `IMAGUNITY` |
 | `IMAGUNITY_DIRECTORY_URL`, `IMAGUNITY_IU_RELAY` | Site central | `https://annuaire.exemple.org`, `https://relais.exemple.org` |
 | `IMAGUNITY_DIRECTORY_ORGANIZATION_CODE` | Empreinte du responsable | `XXXX-…` |
+| `IMAGUNITY_DIRECTORY_ENROLLMENT_CODE` | Code d'enrôlement donné par le responsable pour cette box (§ 9) | `2YFL-IRQX-LJOW-27MG-H45K` |
 | `IMAGUNITY_RELEASE_CODE` | Empreinte de l'éditeur | `XXXX-…` |
 | `IMAGUNITY_UPDATE_URL` | Canal de mises à jour : `pilote` ou `general` | `https://annuaire.exemple.org/mises-a-jour/general/` |
 
@@ -244,13 +245,15 @@ La **console** de la box s'ouvre dans un navigateur du poste d'exploitation, à 
 
 Le compte circule en HTTP sur le réseau du site : à réserver au poste d'exploitation (pare-feu, § 6) ou à placer derrière un proxy TLS.
 
-**Enrôlement.** Dans la carte « Annuaire de l'organisation » :
+**Enrôlement : automatique avec le code d'enrôlement.** Le responsable vous a donné un code pour cette box, recopié dans `box.env` (`IMAGUNITY_DIRECTORY_ENROLLMENT_CODE`, § 6). Au démarrage, la box envoie seule sa demande d'enrôlement à l'annuaire, avec la preuve de ce code ; son journal affiche « Demande d'enrôlement transmise à l'annuaire (avec la preuve du code d'enrôlement) ». Il n'y a rien d'autre à faire : le responsable enrôle la box depuis son poste ([guide du responsable, § 2.3](guide-responsable.md#23-enrôler-les-box-en-attente)). Dans les 5 minutes qui suivent la publication, la carte « Annuaire de l'organisation » affiche la box comme active, et le journal affiche « File de réception IU-T créée ».
+
+Un code mal recopié empêche la box de démarrer, avec un message qui le dit. Un code expiré ou déjà utilisé est refusé par le responsable : il vous en donne un autre.
+
+**Enrôlement sans code**, à la main. Dans la carte « Annuaire de l'organisation » :
 1. relever l'**empreinte** de la box ;
 2. cliquer sur **« Télécharger la demande d'enrôlement »** ;
 3. envoyer le fichier au responsable ;
 4. lui dicter l'empreinte quand il la demande.
-
-Le responsable signe et publie l'entrée ([guide du site central, § 8](installation-site-central-rocky10.md)). Dans les 5 minutes qui suivent, la carte affiche la box comme active, et le journal affiche « File de réception IU-T créée ».
 
 **Appairage** avec chaque partenaire. La même carte liste les box de l'annuaire. Pour chaque partenaire :
 1. saisir le nom utilisé par la route DICOM (par exemple `box-b`) ;

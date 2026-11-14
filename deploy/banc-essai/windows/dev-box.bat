@@ -62,6 +62,9 @@ set "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=%ORGANISATION_CODE%"
 rem Essai : l'annuaire relu toutes les 30 s (5 min par defaut).
 set "IMAGUNITY_DIRECTORY_SYNC_INTERVAL=30s"
 set "IMAGUNITY_IU_RELAY=http://localhost:%RELAIS_PORT%"
+rem Code d'enrolement donne par « admin.bat code-creer » : la box envoie seule sa demande a l'annuaire.
+rem   set CODE_ENROLEMENT=XXXX-XXXX-XXXX-XXXX-XXXX   puis   dev-box.bat
+if defined CODE_ENROLEMENT set "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=%CODE_ENROLEMENT%"
 if not exist "%IMAGUNITY_DATA_DIR%" mkdir "%IMAGUNITY_DATA_DIR%"
 cd /d "%IMAGUNITY_DATA_DIR%"
 echo Box %BOX% : console http://localhost:%HTTP_PORT%/  (compte %CONSOLE_UTILISATEUR%), entree DICOM sur le port %DICOM_PORT%, destination %DESTINATION_AET%

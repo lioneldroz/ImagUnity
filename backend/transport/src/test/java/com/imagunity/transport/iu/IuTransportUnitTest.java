@@ -93,6 +93,45 @@ class IuTransportUnitTest {
     }
 
     @Test
+    void theContactAddressDoesNotWaitForAQueueBeingCreated() throws Exception {
+        // Relais simulé dont la création de file reste bloquée jusqu'au feu vert du test.
+        java.util.concurrent.CountDownLatch creating = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/iu/v1/queues", exchange -> {
+            creating.countDown();
+            try {
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.sendResponseHeaders(503, -1);
+            exchange.close();
+        });
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
+        server.start();
+        URI relay = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/");
+        try (IuTransport transport = new IuTransport(new IuTransport.Settings(relay, dir.resolve("adresse"),
+                Duration.ofHours(1), 1, Duration.ofDays(8)), UUID.randomUUID(), HybridKeyPair.generate(),
+                HybridKemKeyPair.generate(), none, HttpClient.newHttpClient(), Clock.systemUTC(),
+                new Retry(Duration.ZERO, Duration.ofMillis(1), d -> { }))) {
+            Thread first = Thread.ofVirtual().start(transport::contactAddress); // crée la file, bloquée sur le relais
+            assertThat(creating.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+
+            long started = System.nanoTime();
+            String address = transport.contactAddresses().get("iu");
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).as("sans attendre").isLessThan(Duration.ofSeconds(2));
+            assertThat(address).as("adresse réservée").contains(relay.getHost());
+            release.countDown();
+            first.join(10_000);
+            assertThat(transport.contactAddress()).isEqualTo(address);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void aClosedTransportStartsNoTransfer() {
         IuTransport transport = transport(dir.resolve("ferme"));
         transport.store().save(new IuStore.Outgoing(7, 1, UUID.randomUUID(), "x", null, true, Instant.now()));

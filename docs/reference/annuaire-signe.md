@@ -132,6 +132,17 @@ Vérifié en réel sur PostgreSQL 17 :
 
 Le service fonctionne aussi dans le Compose. Les tests automatisés tournent sur H2 en mode PostgreSQL.
 
+## 5 bis. Enrôlement automatique par code d'enrôlement
+
+Pour éviter de faire circuler les demandes et de comparer les empreintes au téléphone (guide du responsable, [§ 2](../guides/guide-responsable.md#2-les-tâches-courantes-du-responsable)) :
+
+- **Code d'enrôlement** (`EnrollmentCode`) : 20 caractères base32 (100 bits aléatoires), tiré par le responsable (`code-creer`) et gardé dans son fichier des codes (droits 600), avec le nom et les groupes prévus pour la box. Il est transmis hors bande à l'installateur, qui le recopie dans `IMAGUNITY_DIRECTORY_ENROLLMENT_CODE`. À usage unique, expiré après 30 jours par défaut.
+- **Demande transmise** (`EnrollmentSubmission`) : tant qu'elle n'est pas dans l'annuaire, la box dépose à chaque lecture `POST /directory/v1/enrollment-requests` sa demande signée (preuve de possession), l'**identifiant** du code (`SHA-256("imagunity-enrolement-id:" ‖ code)`, 128 bits, qui ne révèle pas le code) et une **preuve** : `HMAC-SHA256(clé = SHA-256("imagunity-enrolement-cle:" ‖ code), contenu signé de la demande)`.
+- **Service d'annuaire** : il ne connaît pas les codes et ne peut ni vérifier ni fabriquer une preuve. Il vérifie la preuve de possession, refuse une box déjà active (409), garde une demande par box (la plus récente), plafonne le nombre de demandes (500, puis 429), les efface à la publication de l'entrée ou après 14 jours. La lecture (`GET`) est réservée au compte du responsable, et au réseau d'administration par Caddy.
+- **Outil du responsable** (`enroler-attente`) : il retrouve le code par son identifiant, vérifie la preuve en temps constant, refuse un code expiré ou déjà utilisé par une autre box, signe l'entrée avec le nom et les groupes du code (numéro suivant si la box a déjà une entrée), la publie, puis marque le code comme utilisé.
+- **Ce que cela change pour la sécurité** : rien pour la signature, qui reste hors ligne. La preuve du code remplace la comparaison d'empreinte : un tiers qui dépose une fausse demande au nom d'un établissement n'a pas le code, et sa demande est laissée de côté. Celui qui obtiendrait le code avant l'installateur pourrait faire enrôler sa propre box sous ce nom : d'où un code à usage unique, de courte validité, transmis hors bande. Une demande sans code reste traitée à la main, après comparaison de l'empreinte.
+- **Renouvellement** (`renouveler`) : réémet avec le numéro suivant, depuis l'entrée publiée elle-même, les entrées actives qui expirent bientôt (mêmes clés, adresses et groupes).
+
 ## 6. Intégration dans la box (étape C1)
 
 Activée par `IMAGUNITY_DIRECTORY_ENABLED=true`. Sans elle, la box fonctionne comme avant : tout partenaire appairé est accepté.

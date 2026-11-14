@@ -24,6 +24,8 @@ Corrections issues de la revue de novembre 2026 :
   - mises à jour : deux installations simultanées d'une même version ne laissent plus de dossier vide, et une version installée invalide est supprimée pour être téléchargée de nouveau ; plus de fausse alerte quand la box démarre sur une version plus récente que celle téléchargée ;
   - identité de la box : fichiers de clés écrits d'un coup ; une création interrompue reprend au démarrage suivant ;
   - annuaire : nom de box trop long refusé (422) et publication simultanée d'un même numéro en conflit (409), au lieu d'une erreur 500 ; fichier de règles de priorité `null` refusé proprement.
+- **Enrôlement automatique des box** : le responsable tire un code d'enrôlement par box (`code-creer`), recopié par l'installateur dans `box.env` (`IMAGUNITY_DIRECTORY_ENROLLMENT_CODE`). La box envoie seule sa demande à l'annuaire, avec la preuve du code ; `enroler-attente` vérifie la preuve, signe avec le nom et les groupes du code, et publie. `renouveler` renouvelle d'un coup les entrées qui expirent bientôt. L'enrôlement manuel reste possible. Mettre à jour **l'annuaire** (migration de sa base `V3`, appliquée seule) et le `Caddyfile` du site central (lecture des demandes réservée au réseau d'administration) **avant les box**.
+- **Transport** : la demande d'enrôlement et l'adresse de contact n'attendent plus la création de la file de réception quand le relais est injoignable (elles utilisent l'adresse réservée).
 - **Connu, non corrigé** : pendant une publication (`publier-version.sh`), une box peut lire l'ancien manifeste et télécharger le nouveau jar. L'empreinte ne correspond pas, la version est écartée et retentée la nuit suivante.
 
 ## 0.15.0
