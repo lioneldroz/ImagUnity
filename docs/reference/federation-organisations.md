@@ -1,66 +1,104 @@
 # Fédération entre organisations
 
 > Objectif : permettre à des box d'**organisations différentes** (régions, pays) d'échanger des examens, sans réseau unique ni autorité centrale imposée, et sans affaiblir les garanties actuelles (relais aveugles, chiffrement de bout en bout, aucun port entrant).
-> Statut : **proposition de conception** (novembre 2026), rien n'est mis en œuvre. Décisions à prendre : § 4 (modèle de confiance), § 8 (questions ouvertes). Recommandation : **reconnaissance mutuelle signée entre organisations** (option B, § 4), **sans relier les relais entre eux** (§ 3).
+>
+> Statut : **conception arrêtée pour l'étape 1** (novembre 2026), rien n'est encore mis en œuvre.
+>
+> Décisions prises :
+> - reconnaissance mutuelle signée entre organisations (§ 4) ;
+> - pas de liaison entre relais (§ 3) ;
+> - périmètre vide par défaut, un identifiant de box n'appartient qu'à une organisation, relais du partenaire listés dans l'accord (§ 5).
+>
+> Restent ouvertes les questions du § 11. La première version de cette note a été relue à la lumière du code : les verrous qu'elle n'avait pas vus sont au § 2.2.
 
 ## 1. Point de départ
 
-Aujourd'hui, **l'organisation est l'unique cercle de confiance**, dans le code comme dans les documents :
+Aujourd'hui, **l'organisation est l'unique cercle de confiance**. Le code le confirme :
 
-- une box épingle **une** clé de responsable et lit **un** annuaire (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`, `IMAGUNITY_DIRECTORY_URL`) ;
-- une entrée d'une autre organisation est une **erreur de sécurité**, pas un état ([annuaire signé § 3](annuaire-signe.md), règle 2) ;
-- le relais n'épingle lui aussi qu'**une** clé d'organisation (`IMAGUNITY_RELAY_ORGANIZATION_KEY`). La [spécification § 6.4](specification-protocole.md) prévoit pourtant qu'il serve « chaque organisation » ;
-- la note d'architecture prévoit qu'« une même box peut appartenir à plusieurs organisations », ce qui n'est pas réalisé.
+| Composant | Ce qui le rend mono-organisation |
+|---|---|
+| Box | Une clé de responsable et un annuaire : `DirectoryProperties` (une `url`, une `organizationKey`, un `organizationCode`). Un seul `LocalDirectory` et un seul `EntryVerifier`. |
+| Vérification des entrées | `EntryVerifier` lève « Entrée d'une autre organisation » : une entrée étrangère est une erreur de sécurité, pas un état. Le même vérificateur sert à la box, au relais et au service d'annuaire. |
+| Relais | Une clé épinglée (`IMAGUNITY_RELAY_ORGANIZATION_KEY`) et un annuaire lu toutes les 5 minutes. La [spécification § 6.4](specification-protocole.md) prévoit qu'il serve « chaque organisation », mais le code ne le permet pas. |
+| Caches d'annuaire | Box et relais : tables `directory_entry` et `directory_serial` indexées par `box_id` **seul**, sans organisation. |
+| Partenaires et autorisations | Table `peer` (nom local, `box_id`). L'envoi exige un partenaire lié dont l'entrée est active **dans l'annuaire local** (`DirectoryPeerAuthorization`). La réception exige que l'émetteur soit dans l'annuaire local (`MessageSigner`, `IuTransport`). |
 
 Une organisation régionale suffit donc pour un réseau sous une seule autorité. Au-delà, deux box de deux organisations ne peuvent pas se parler.
 
-## 2. Ce qui marche déjà entre relais différents
+## 2. Ce qui marche déjà, ce qui bloque
+
+### 2.1 Les relais n'ont pas à se parler
 
 Le protocole ne suppose **pas** que l'émetteur et le destinataire utilisent le même relais :
 
-| Étape | Où | Qui s'y connecte |
+| Étape | Où | Qui s'y connecte, et comment |
 |---|---|---|
-| Morceaux du paquet (IU-FILE) | relais **de l'émetteur** (`IMAGUNITY_IU_RELAYS`) | émetteur (dépôt), destinataire (retrait par capacité, sans contrôle d'identité) |
-| Annonce et accusé (IU-MSG) | file **du destinataire**, sur **son** relais (adresse dans son entrée d'annuaire) | émetteur (dépôt signé), destinataire (relève) |
+| Morceaux du paquet (IU-FILE) | relais **de l'émetteur** | l'émetteur dépose (requête signée, identité vérifiée par le relais) ; le destinataire retire **par capacité**, sans contrôle d'identité |
+| Annonce et accusé (IU-MSG) | file **du destinataire**, sur **son** relais : l'adresse complète, relais compris, figure dans son entrée d'annuaire | l'émetteur dépose (requête signée, identité vérifiée) ; le destinataire relève par capacité |
 
 Une box de la région A qui écrit à une box de la région B se connecte donc directement au relais de B pour déposer l'annonce. La box de B télécharge les morceaux sur le relais de A. Tout reste en connexions sortantes.
 
-Il manque deux choses, et aucune ne concerne les relais entre eux :
+### 2.2 Les quatre verrous
 
-1. **la confiance** : la box de B doit accepter l'entrée signée par le responsable de A, et inversement ;
-2. **le dépôt sur un relais étranger** : le relais de B doit accepter qu'une box de A dépose un message dans une file de B, donc reconnaître les box enrôlées de A.
+1. **Confiance dans les entrées** : la box de B rejette toute entrée signée par le responsable de A (`EntryVerifier`).
+2. **Dépôt sur un relais étranger** : le relais de B authentifie chaque dépôt d'après **son** annuaire. Une box de A n'y figure pas, donc son annonce est refusée (401).
+3. **Morceaux hors des relais connus** : à la réception, `IuTransport.knownReplicas` écarte toute copie hébergée sur un relais que la box n'a pas configuré (« morceau sur un relais hors de l'organisation »). Les morceaux de A, posés sur le relais de A, seraient donc refusés par B.
+4. **Identifiants de box** : tout est indexé par `box_id` seul (caches, messages signés, appairage, autorisations). Si l'on accepte des entrées étrangères sans précaution, une organisation partenaire peut publier une entrée portant l'identifiant d'une de nos box, ou de celle d'un autre partenaire, et **s'y substituer**. C'est le principal risque nouveau de la fédération (§ 5.2).
 
-## 3. Relier les relais entre eux : non, en tout cas pas comme fondation
+Aucun de ces verrous ne demande de relier les relais entre eux.
 
-L'idée serait de faire suivre les données de relais en relais, à la manière du courrier électronique (SMTP) : chaque box ne parlerait qu'au relais de sa région, et ce relais transmettrait au relais de la région destinataire. On l'écarte comme mécanisme de base.
+## 3. Relier les relais entre eux : non
 
-| Critère | Relais reliés entre eux | Box qui vont directement au relais du partenaire (recommandé) |
+L'idée serait de faire suivre les données de relais en relais, à la manière du courrier électronique : chaque box ne parlerait qu'au relais de sa région, qui transmettrait au relais de la région destinataire. On l'écarte comme mécanisme de base :
+
+- le relais deviendrait un **routeur avec état** (files de transit, nouvelles tentatives) au lieu d'un stockage aveugle ;
+- chaque relais traversé verrait volumes et horaires, et les morceaux seraient copiés de relais en relais (double stockage, double effacement à garantir) ;
+- chaque paire d'exploitants devrait s'authentifier, et chacun dépendrait de la disponibilité des autres ;
+- la responsabilité juridique de la donnée en transit deviendrait floue ;
+- il faudrait concevoir, sécuriser et auditer un protocole relais-relais.
+
+Son seul vrai atout : une seule adresse sortante à autoriser dans le pare-feu de l'établissement. Ce besoin se traite plus tard, sans toucher au modèle, par un **relais de sortie** facultatif (§ 9).
+
+## 4. Modèle de confiance : reconnaissance mutuelle signée
+
+| Option | Principe | Verdict |
 |---|---|---|
-| Rôle du relais | Devient un **routeur avec état** : files de transit, nouvelles tentatives, routage entre organisations | Reste un **stockage aveugle**, comme aujourd'hui |
-| Métadonnées | Chaque relais traversé voit passer volumes et horaires, et le relais de sortie sait vers quelle organisation partent les données | Seuls les relais de l'émetteur et du destinataire voient le trafic |
-| Stockage | Les morceaux sont copiés de relais en relais (double stockage, double effacement à garantir) | Une seule copie, sur le relais de l'émetteur, effacée au retrait |
-| Confiance entre exploitants | Chaque paire de relais doit s'authentifier, et chaque exploitant dépend de la disponibilité des autres | Aucun accord technique entre relais |
-| Responsabilité juridique | Floue : quel exploitant détient la donnée en transit, et dans quel pays ? | Claire : la donnée est chez l'exploitant de l'émetteur jusqu'au retrait |
-| Pare-feu des établissements | **Atout** : une seule adresse sortante à autoriser | Une adresse par région partenaire à autoriser |
-| Code | Nouveau protocole relais-relais, à concevoir, sécuriser et auditer | Peu de choses : confiance multi-organisations (§ 5) |
+| A. Box multi-organisations | La box épingle plusieurs clés et s'enrôle dans chaque organisation | Écartée : un CHU qui échange avec 30 régions s'enrôle 30 fois |
+| **B. Reconnaissance mutuelle signée** | Le responsable de A signe un document qui **reconnaît** l'organisation B (clé, relais, périmètre) ; B fait de même pour A | **Retenue** : chaque box n'épingle que **sa** clé de responsable, et les clés étrangères lui arrivent signées par son propre responsable. Accord bilatéral, révocable, borné ; chaque organisation reste souveraine |
+| C. Racine de fédération | Une autorité signe les clés des responsables | Plus tard peut-être : point critique unique, gouvernance lourde |
 
-Le seul vrai avantage des relais reliés concerne le pare-feu. Il se traite plus tard, sans toucher au modèle, par un **relais de sortie** facultatif (§ 7, étape 5).
+Le format reste le même si une autorité de fédération apparaît un jour : seule changerait la clé qui signe la reconnaissance, que le responsable accepterait (§ 9).
 
-## 4. Modèle de confiance : trois options
+## 5. Décisions
 
-| Option | Principe | Pour | Contre |
-|---|---|---|---|
-| A. Box multi-organisations | La box épingle plusieurs clés de responsable et s'enrôle dans chaque organisation | Proche de la note d'architecture, aucun nouveau document | Chaque box s'enrôle N fois (empreinte vérifiée hors bande chaque fois), chaque organisation tient l'entrée de la box. Ne passe pas à l'échelle : un CHU qui échange avec 30 régions s'enrôle 30 fois |
-| **B. Reconnaissance mutuelle signée** (recommandée) | Le responsable de A signe un document qui **reconnaît** l'organisation B (sa clé, son annuaire, un périmètre) ; B fait de même pour A | Chaque box n'épingle que **sa** clé de responsable. Les clés étrangères lui arrivent signées par son propre responsable. Accord bilatéral, révocable, borné. Chaque organisation reste souveraine | Nombre d'accords en N² dans un grand réseau, sans hiérarchie |
-| C. Racine de fédération | Une autorité (nationale, européenne) signe les clés des responsables ; les box épinglent la racine | Un seul geste par organisation, lisible pour les autorités | Point critique unique : une racine compromise ouvre tout le réseau. Gouvernance lourde, et un cercle de confiance trop large par défaut |
+### 5.1 Périmètre : rien par défaut
 
-**Recommandation : B**, conçue pour accueillir C plus tard. Une reconnaissance peut être signée par un responsable (B) ou, si un jour une autorité de fédération existe, par cette autorité et acceptée par le responsable (C). Le document et sa vérification restent les mêmes ; seule change la clé qui le signe. Le périmètre de chaque accord (§ 5.1) évite le « tout le monde parle à tout le monde » de C.
+Une reconnaissance sans groupes ne permet **aucun** échange. Le responsable désigne :
 
-## 5. Option B en détail
+- les **groupes locaux** autorisés à échanger avec le partenaire ;
+- les **groupes du partenaire** acceptés.
 
-### 5.1 Document de reconnaissance
+Il le fait explicitement, avec `*` pour « toute l'organisation ». Les groupes sont ceux, déjà signés, des entrées d'annuaire et de la [configuration centralisée](configuration-centralisee.md).
 
-Signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des octets exacts, comme les entrées), publié sur l'annuaire **de l'organisation qui reconnaît** :
+### 5.2 Un identifiant de box n'appartient qu'à une organisation
+
+Plutôt que d'ajouter l'organisation dans toutes les tables, tous les messages et toutes les autorisations, on garantit qu'un identifiant de box ne désigne jamais deux box :
+
+- une entrée de **l'organisation locale** l'emporte toujours ;
+- pour les partenaires, la **première organisation vue** garde l'identifiant. Ce propriétaire est enregistré dans le cache, pour qu'un redémarrage ne change rien ;
+- une entrée qui revendique un identifiant déjà tenu par une autre organisation est **rejetée** et signalée dans la console (« Identifiant de box revendiqué par deux organisations »). Si c'est l'organisation locale qui le publie, l'entrée étrangère est retirée du cache.
+
+Les identifiants sont tirés au hasard (UUID, 122 bits) : une collision ne peut être que malveillante ou une erreur grave. La règle s'applique à l'identique sur la box et sur le relais.
+
+### 5.3 Relais du partenaire listés dans l'accord
+
+La reconnaissance énumère les **relais autorisés** du partenaire. Une entrée du partenaire qui publie une adresse sur un autre relais est rejetée. Une box n'accepte des morceaux que sur ses propres relais ou sur ceux d'un partenaire reconnu pour l'organisation de l'émetteur. Le responsable maîtrise ainsi où vont les données de ses établissements, et dans quelle juridiction : aucun relais hors UE, par exemple.
+
+## 6. Conception de l'étape 1
+
+### 6.1 Document de reconnaissance
+
+Il est signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des octets exacts, comme les entrées) et publié sur l'annuaire **de l'organisation qui reconnaît** :
 
 ```json
 {
@@ -68,10 +106,9 @@ Signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des octets exa
   "type": "recognition",
   "organization": "grand-est",
   "partner": {
-    "organization": "bourgogne-fc",
+    "label": "bourgogne-fc",
     "key": { "ed25519": "<X.509 base64>", "mlDsa65": "<X.509 base64>" },
-    "fingerprint": "TVF3-WIAA-CQ6V-MZGC-HKTQ-5WEH",
-    "directory": "https://annuaire.bourgogne-fc.example/directory/v1"
+    "relays": ["https://relais.bourgogne-fc.example"]
   },
   "scope": { "localGroups": ["imagerie-nord"], "partnerGroups": ["neurochirurgie"] },
   "serial": 1,
@@ -81,80 +118,123 @@ Signé par la clé du responsable (Ed25519 + ML-DSA-65, signature des octets exa
 }
 ```
 
-- **Empreinte vérifiée hors bande** entre les deux responsables, une fois par accord (et non une fois par box).
-- **Périmètre** : groupes locaux autorisés à échanger avec l'organisation partenaire, et groupes du partenaire acceptés. Absent : toute l'organisation. On réutilise les groupes signés de la [configuration centralisée](configuration-centralisee.md).
-- **Numéro, validité courte, révocation** : mêmes règles que les entrées (pas de retour en arrière, réémission pour renouveler ou révoquer).
-- **Identifiant d'organisation** : unique dans un cercle de confiance, mais pas dans le monde. Deux organisations peuvent toutes deux s'appeler `chu-exemple`. La box identifie donc un partenaire par l'**empreinte de sa clé** ; le nom n'est qu'un libellé.
+- **Empreinte vérifiée hors bande** entre les deux responsables, une fois par accord et non une fois par box. L'outil l'affiche et la fait confirmer.
+- Le partenaire est identifié par **l'empreinte de sa clé**. Le libellé n'est qu'un nom affiché : deux organisations peuvent toutes deux s'appeler `chu-exemple`.
+- **Numéro, validité, révocation** : mêmes règles que les entrées (pas de retour en arrière, réémission pour renouveler ou révoquer). La validité est courte, 90 jours au plus, tant que la preuve de fraîcheur (§ 7) n'existe pas.
 
-### 5.2 Règles de vérification (côté box)
+### 6.2 Où les box et les relais trouvent les entrées des partenaires
 
-Une entrée étrangère, signée par l'organisation P, n'est retenue que si :
+Le **service d'annuaire de l'organisation relaie les entrées de ses partenaires**. Il les lit sur l'annuaire du partenaire et les sert telles quelles (`GET /directory/v1/partners/{empreinte}/entries`). Les entrées étant signées, ce relais n'a pas à être de confiance : box et relais les vérifient avec la clé du partenaire tirée de la reconnaissance.
 
-1. la box détient une reconnaissance de P **active**, signée par son propre responsable ;
-2. l'entrée est signée par la clé de P **figurant dans cette reconnaissance**, et son organisation est P ;
-3. les règles actuelles s'appliquent : validité, révocation, pas de retour en arrière ;
-4. la box locale et l'entrée étrangère sont dans le périmètre (groupes).
+- La box et le relais n'ont **qu'une adresse d'annuaire**, comme aujourd'hui. Pas d'ouverture de pare-feu vers les annuaires étrangers.
+- L'annuaire étranger n'est contacté que par le service d'annuaire, depuis le site central.
+- La box ne garde que les entrées du **périmètre** : groupes du partenaire acceptés.
 
-La réciprocité n'est pas vérifiée explicitement : une box de B refuse les messages d'une box de A tant que B n'a pas reconnu A. Un échange ne marche donc que si les deux responsables ont signé. La console signale un accord à sens unique (« A reconnaît B, réponse de B attendue »).
+Un annuaire qui retiendrait des entrées ou des révocations reste le risque connu (constat C2). L'étape 2 le traite pour tous les annuaires à la fois (§ 7).
 
-### 5.3 Relais
+### 6.3 Annuaire fédéré (module `directory`, partagé par la box et le relais)
 
-- Le relais épingle la clé **de son organisation** et lit ses reconnaissances. Il accepte le **dépôt de messages** des box actives des organisations reconnues, dans les files de ses propres box. Il ne le fait pas pour les morceaux : une box dépose toujours ses morceaux sur les relais de sa propre organisation (§ 2).
-- Les quotas par box déposante (§ 6.4 de la spécification) s'appliquent tels quels aux box étrangères. Les limites de débit (pré-audit, constat R4) deviennent nécessaires avant toute ouverture.
-- Le retrait des morceaux reste sans contrôle d'identité : une box de B retire sur le relais de A par capacité. **Rien ne change pour le relais de A**.
+C'est l'annuaire local plus un cache par partenaire reconnu. Une entrée étrangère, signée par l'organisation P, n'est retenue que si :
 
-### 5.4 Annuaires : découverte et taille
+1. une reconnaissance de P, **active** et signée par le responsable local, existe ;
+2. l'entrée est signée par la clé de P figurant dans cette reconnaissance, et son organisation est celle de P ;
+3. ses groupes rencontrent les groupes du partenaire acceptés ;
+4. ses adresses sont toutes sur des relais listés par la reconnaissance ;
+5. son identifiant n'est pas tenu par une autre organisation (§ 5.2) ;
+6. les règles actuelles s'appliquent : validité, révocation, pas de retour en arrière.
 
-Aujourd'hui, chaque box lit **toutes** les entrées de son organisation (`GET /directory/v1/entries`), environ 7,5 Ko chacune, toutes les 5 minutes par défaut. Pour 10 000 box, cela ferait 75 Mo par lecture et par box, et l'annuaire public laisserait aussi énumérer tout le réseau. Avec la fédération :
+Une reconnaissance expirée ou révoquée retire aussitôt les entrées de ce partenaire des box utilisables. Le cache est gardé, pour l'affichage.
 
-- **synchronisation par différence** : `GET /entries?since=<curseur>` ne renvoie que les entrées modifiées. C'est utile dès maintenant pour l'annuaire local ;
-- **annuaires étrangers lus à la demande** : seulement les entrées des box du périmètre, ou d'une box précise (`GET /entries/{boxId}`), avec mise en cache et nouvelle vérification de leur validité ;
-- **lecture réservée** aux box enrôlées des organisations reconnues (requêtes signées, piste déjà notée dans [annuaire signé](annuaire-signe.md)). Un annuaire fédéré ne doit pas devenir un annuaire public des établissements.
+### 6.4 Box
 
-### 5.5 Révocation entre organisations
+| Moment | Règle |
+|---|---|
+| Appairage | La console propose les box des partenaires dans le périmètre, rangées par organisation. Une box locale hors des groupes locaux de l'accord ne peut pas s'appairer avec ce partenaire. |
+| Envoi | En plus des contrôles actuels : accord actif, box locale dans les groupes locaux, box destinataire dans les groupes du partenaire. Sinon, le transfert échoue avec le motif (« Accord avec bourgogne-fc expiré »). |
+| Réception | Mêmes contrôles sur l'émetteur ; un message d'une box hors périmètre est écarté et journalisé. |
+| Morceaux | Relais admis = relais de la box + relais listés par la reconnaissance de l'organisation de l'émetteur. |
+| Console | Organisation de chaque partenaire, état de l'accord, accord **à sens unique** (« A reconnaît B, réponse de B attendue », visible quand le partenaire refuse les dépôts), collisions d'identifiant. |
 
-Le constat C2 du [pré-audit](../audit/pre-audit.md) s'aggrave avec la fédération : la box de B ne lit l'annuaire de A que de loin en loin, et un annuaire compromis peut retenir une révocation. Il faut une **preuve de fraîcheur** :
+La réciprocité n'est pas un champ du document : un échange ne marche que si les deux responsables ont signé, puisque chaque côté applique ses propres règles.
 
-- une **clé de fraîcheur** en ligne, déléguée par le responsable (qui la signe, avec une validité courte), signe à intervalle régulier un état daté de l'annuaire (numéros les plus hauts, révocations) ;
-- la box refuse d'**envoyer** vers une organisation dont la dernière preuve de fraîcheur est trop ancienne (seuil réglable, par exemple 24 h). C'est visible dans la console.
+### 6.5 Relais
 
-C'est le même mécanisme que celui qui manque déjà pour C2 : on le fait une fois, pour l'annuaire local et pour les annuaires étrangers.
+- Le relais lit son annuaire fédéré comme une box : les entrées de son organisation, et celles des partenaires dans le périmètre.
+- Une box d'un partenaire reconnu peut **déposer des messages**, et seulement cela, dans la file d'une box locale dont les groupes sont dans le périmètre de l'accord. Elle ne crée jamais de file ni de morceau sur un relais étranger : ses morceaux restent sur les relais de sa propre organisation.
+- Quotas existants (2 000 messages en attente par émetteur et par file, 10 000 par file) appliqués tels quels.
+- Le retrait des morceaux reste par capacité : **rien ne change pour le relais de l'émetteur**.
 
-### 5.6 Versions des box
+### 6.6 Outil du responsable et interface locale
 
-La [spécification § 8.4](specification-protocole.md) suppose que « toutes les box d'une organisation se mettent à jour ensemble ». Entre organisations, ce n'est plus possible : chacune a son rythme de mise à jour, voire son propre serveur de mises à jour. Il faut donc :
+- Commandes :
+  - `reconnaitre --cles --partenaire <fichier .pub.json> --relais <url,…> --groupes-locaux <…> --groupes-partenaire <…> [--validite-jours 90]` : affiche l'empreinte du partenaire et demande confirmation, puis signe et publie ;
+  - `reconnaissances` : liste ;
+  - renouveler et révoquer une reconnaissance.
+- Interface locale : onglet « Organisations partenaires » (liste, état, renouvellement, révocation), sur le modèle de l'onglet « Box ».
+- Le service d'annuaire publie et sert les reconnaissances (`POST` réservé au responsable, `GET` pour les box et le relais) et relaie les entrées des partenaires.
 
-- annoncer dans l'entrée d'annuaire les **versions du protocole** que la box comprend (par exemple `"protocols": ["iu1.0", "iu1.1"]`) ;
-- faire choisir à l'émetteur la plus haute version commune, et refuser proprement l'envoi s'il n'y en a pas, avec un message visible dans la console ;
-- tenir une règle de compatibilité : un changement de format sans version annoncée est interdit.
+### 6.7 Compatibilité : lire sans refuser les champs inconnus
 
-## 6. Ce que ça change dans le code
+Les entrées sont aujourd'hui lues avec **refus des champs inconnus**. Ajouter un champ à une entrée (versions de protocole, par exemple) rendrait donc ses entrées illisibles pour toutes les box pas encore mises à jour. Or entre organisations, les mises à jour ne sont plus simultanées.
+
+L'étape 1 change la lecture des documents signés (entrées, reconnaissances, configurations) : un champ inconnu est **ignoré**, et non plus refusé. La signature couvrant les octets exacts, rien n'est perdu pour l'intégrité. Aucun champ nouveau n'est écrit dans les entrées avant que toutes les box le comprennent.
+
+### 6.8 Banc d'essai et critères de réussite
+
+Deux organisations, chacune avec son service d'annuaire, son relais et une box, données synthétiques uniquement :
+
+- un examen va d'une box de A vers une box de B, arrive intact, et l'accusé revient ; puis l'inverse ;
+- refusés, chacun avec un motif visible dans la console :
+  - accord révoqué ;
+  - accord à sens unique ;
+  - box hors périmètre ;
+  - entrée du partenaire sur un relais non listé ;
+  - identifiant de box revendiqué par le partenaire ;
+- le relais de B refuse le dépôt d'une box de A hors périmètre ; le relais de A ne voit jamais la box de B autrement que par des retraits par capacité.
+
+## 7. Étapes suivantes
+
+| Étape | Contenu | Pourquoi |
+|---|---|---|
+| **2. Fraîcheur** | Une clé de fraîcheur en ligne, déléguée par le responsable avec une validité courte, signe à intervalle régulier un état daté de l'annuaire (numéros les plus hauts, révocations). La box refuse d'envoyer vers une organisation dont la dernière preuve est trop ancienne (24 h par exemple). | Une box de B ne lit l'annuaire de A que de loin en loin, et un annuaire compromis peut retenir une révocation. Ferme aussi le constat C2 du pré-audit. **Obligatoire avant une fédération réelle.** |
+| **3. Limites de débit** | Requêtes par minute et par box déposante sur le relais | Ouvrir un relais à d'autres organisations sans limite de débit n'est pas raisonnable. Ferme le constat R4. **Obligatoire avant une fédération réelle.** |
+| **4. Annuaires** | Synchronisation par différence (`GET /entries?since=<curseur>`), lecture réservée aux box enrôlées des organisations reconnues (requêtes signées) | Aujourd'hui, chaque box lit toutes les entrées (environ 7,5 Ko chacune) toutes les 5 minutes, et l'annuaire est public : 10 000 box feraient 75 Mo par lecture, et l'annuaire fédéré deviendrait un annuaire public des établissements |
+| **5. Versions** | Versions du protocole annoncées dans les entrées (`"protocols": ["iu1.0", "iu1.1"]`), choix de la plus haute version commune, refus propre sinon | Nécessaire dès que les organisations mettent à jour à des rythmes différents. Rendue possible par le § 6.7 |
+| **6. Films explicatifs** | Courtes vidéos animées et sous-titrées : vue d'ensemble, organisation, enrôlement d'une box, voyage d'un examen, incidents, et échange entre organisations ([plan](../films/plan.md)) | Faire comprendre le fonctionnement de bout en bout sans lire la spécification. Le film sur la fédération suit l'étape 1 |
+
+## 8. Ce que ça change dans le code (étape 1)
 
 | Module | Changement |
 |---|---|
-| `directory` | Document de reconnaissance (format, signature, vérification) ; règles du § 5.2 au lieu de « organisation = celle de la box » ; preuve de fraîcheur |
-| `directory-server` | Publication des reconnaissances ; synchronisation par différence ; lecture réservée ; signature des états de fraîcheur |
-| `release` (outil du responsable) | Commandes `reconnaitre`, `retirer-reconnaissance`, affichage de l'empreinte du partenaire à confirmer ; écran dans l'interface locale |
-| `app`, `transport` (`IuDirectory`) | Recherche d'un partenaire dans plusieurs annuaires ; cache des entrées étrangères ; organisation du partenaire dans l'appairage |
-| `relay` | Dépôt de messages ouvert aux box des organisations reconnues ; limites de débit |
-| `configuration`, `rules` | Routage DICOM vers des box étrangères ; périmètre appliqué à l'envoi |
-| `api`, `frontend` | Organisation et état de l'accord pour chaque partenaire ; accords à sens unique ; fraîcheur des annuaires étrangers |
-| `protocol` | Versions annoncées et choix de la version commune (§ 5.6) |
+| `directory` | Reconnaissance (format, signature, vérification) ; annuaire fédéré et règle des identifiants ; lecture tolérant les champs inconnus ; commandes et onglet de l'interface locale |
+| `directory-server` | Publication et lecture des reconnaissances ; relais des entrées des partenaires (migration de base) |
+| `app`, `transport` | Annuaire fédéré à la place de l'annuaire local ; relais admis pour les morceaux ; contrôles de périmètre à l'appairage, à l'envoi et à la réception |
+| `persistence` (box) et `relay` | Organisation propriétaire de chaque identifiant dans les caches (migrations) |
+| `relay` | Annuaire fédéré ; dépôt de messages ouvert aux box reconnues dans le périmètre |
+| `api`, `frontend` | Organisation et état de l'accord par partenaire, accords à sens unique, collisions |
+| `docs` | Guide du responsable (accords), guide d'installation, spécification (§ 6.4, et § 8.4 qui ne décrit plus les vrais types de messages IU-T : `iu.contact`, `iu.text`, `iu.file`) |
 
-## 7. Étapes proposées
+Découpage en lots, chacun fusionné avec la CI verte :
 
-1. **Relais multi-organisations et reconnaissance** (§ 5.1 à 5.3) : deux organisations sur le banc d'essai, deux annuaires et deux relais. Une box de A envoie à une box de B, l'examen arrive intact, et l'accusé revient. Un accord révoqué bloque les nouveaux envois.
-2. **Annuaires** (§ 5.4) : synchronisation par différence, lecture à la demande, lecture réservée.
-3. **Fraîcheur et révocation** (§ 5.5) : ferme aussi le constat C2.
-4. **Versions** (§ 5.6) : nécessaire avant la première fédération réelle entre organisations aux mises à jour indépendantes.
-5. **Plus tard, facultatif : relais de sortie.** Pour un établissement dont le pare-feu ne doit connaître qu'une adresse, un relais de sa région dépose **pour le compte** de la box sur les relais étrangers. Il ne fait que transmettre des requêtes déjà signées et des contenus déjà chiffrés (comme le routage privé de messages de SimpleX). Il ne stocke rien et ne déchiffre rien. Il masque en plus l'adresse IP de la box aux relais étrangers.
-6. **Si une autorité de fédération apparaît** : reconnaissances signées par elle et acceptées par chaque responsable (option C, § 4), sans changer le format.
+1. module `directory` et service d'annuaire ;
+2. box ;
+3. relais ;
+4. interface locale, banc d'essai à deux organisations, documentation.
 
-## 8. Questions ouvertes
+## 9. Plus tard, facultatif
 
-1. **Cadre juridique** : convention entre établissements, responsables de traitement, hébergement des relais (HDS en France), transferts hors de l'Union européenne au sens du RGPD. La technique peut aider : les morceaux restent sur le relais de l'émetteur, donc dans sa juridiction, jusqu'au retrait. Elle ne tranche rien.
-2. **Choix des relais par zone** : faut-il qu'une reconnaissance impose les relais admis (par exemple aucun relais hors UE), et que la box refuse un partenaire dont les relais sortent de cette liste ?
-3. **Périmètre par défaut** : toute l'organisation, ou rien tant que des groupes ne sont pas désignés ? La proposition va vers *rien*, ce qui est plus sûr mais demande plus de gestes au responsable.
-4. **Nombre d'accords** : à partir de combien d'organisations le N² de l'option B devient-il pénible, et une autorité de fédération (option C) se justifie-t-elle ?
-5. **Mises à jour** : un éditeur unique pour toutes les organisations, ou un serveur de mises à jour par organisation ? La clé de l'éditeur devient une cible d'autant plus grande que le réseau grandit (double signature prévue dans la note d'architecture).
-6. **Interopérabilité** : passerelle vers des infrastructures nationales qui exigent des profils IHE (XDS-I), hors du lien de box à box.
+- **Relais de sortie** : pour un établissement dont le pare-feu ne doit connaître qu'une adresse, un relais de sa région dépose **pour le compte** de la box sur les relais étrangers. Il ne transmet que des requêtes déjà signées et des contenus déjà chiffrés, ne stocke rien et ne déchiffre rien. Il masque en plus l'adresse IP de la box aux relais étrangers.
+- **Autorité de fédération** : reconnaissances signées par elle et acceptées par chaque responsable (option C), sans changer le format.
+
+## 10. Ce que la fédération ne change pas
+
+- Le contenu des examens reste chiffré de bout en bout, de box à box. Aucun relais ni service d'annuaire, local ou étranger, ne peut le lire.
+- La clé du responsable reste hors ligne, sur son poste.
+- Les morceaux restent sur le relais de l'émetteur, donc dans sa juridiction, jusqu'au retrait.
+
+## 11. Questions ouvertes
+
+1. **Cadre juridique** : convention entre établissements, responsables de traitement, hébergement des relais (HDS en France), transferts hors de l'Union européenne au sens du RGPD. La liste des relais autorisés (§ 5.3) aide, mais ne tranche rien.
+2. **Nombre d'accords** : à partir de combien d'organisations les accords deux à deux (N²) deviennent-ils pénibles, et une autorité de fédération se justifie-t-elle ?
+3. **Mises à jour** : un éditeur unique pour toutes les organisations, ou un serveur de mises à jour par organisation ? La clé de l'éditeur devient une cible d'autant plus grande que le réseau grandit.
+4. **Interopérabilité** : passerelle vers des infrastructures nationales qui exigent des profils IHE (XDS-I), hors du lien de box à box.
