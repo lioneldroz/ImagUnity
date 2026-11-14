@@ -24,6 +24,7 @@
   <button type="button" role="tab" data-onglet="demandes">Demandes en attente <span class="compteur" id="compte-demandes"></span></button>
   <button type="button" role="tab" data-onglet="box">Box de l'organisation <span class="compteur" id="compte-box"></span></button>
   <button type="button" role="tab" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
+  <button type="button" role="tab" data-onglet="partenaires">Organisations partenaires <span class="compteur" id="compte-partenaires"></span></button>
 </nav>
 <main>
   <p class="message" id="message" hidden></p>
@@ -83,6 +84,41 @@
         <tbody id="codes"></tbody>
       </table>
     </div>
+  </section>
+  <section id="onglet-partenaires" role="tabpanel" hidden>
+    <h2>Organisations partenaires</h2>
+    <p class="aide">Pour échanger avec les box d'une autre organisation, chaque responsable reconnaît l'autre : il
+      signe un accord qui fixe la clé du partenaire, ses relais autorisés et les groupes qui peuvent échanger. Un
+      échange ne marche que lorsque les deux responsables ont signé. Sans groupes désignés, aucun échange.</p>
+    <div class="tableau">
+      <table>
+        <thead><tr><th>Organisation</th><th>Accord</th><th>Périmètre</th><th>Relais autorisés</th><th></th></tr></thead>
+        <tbody id="partenaires"></tbody>
+      </table>
+    </div>
+    <h2 class="bloc">Reconnaître une organisation</h2>
+    <form id="formulaire-partenaire" class="formulaire-partenaire">
+      <label>Clé publique du partenaire : contenu de son fichier <code>organisation.json.pub.json</code>
+        <textarea id="partenaire-cle" rows="4" required spellcheck="false" placeholder='{"suite":"IU1","organization":"…","signingKeys":{…}}'></textarea>
+      </label>
+      <div class="actions"><button type="button" class="secondaire" id="partenaire-lire">Lire la clé</button>
+        <span id="partenaire-empreinte" class="discret"></span></div>
+      <label>Adresse de l'annuaire du partenaire
+        <input type="text" id="partenaire-annuaire" required placeholder="https://annuaire.partenaire.example">
+      </label>
+      <label>Relais autorisés du partenaire (séparés par des virgules)
+        <input type="text" id="partenaire-relais" required placeholder="https://relais.partenaire.example">
+      </label>
+      <label>Groupes locaux autorisés à échanger avec lui (* : tous ; vide : aucun)
+        <input type="text" id="partenaire-locaux" placeholder="imagerie-nord, urgences">
+      </label>
+      <label>Groupes du partenaire acceptés (* : tous ; vide : aucun)
+        <input type="text" id="partenaire-distants" placeholder="neurochirurgie">
+      </label>
+      <label class="choix"><input type="checkbox" id="partenaire-verifiee" disabled>
+        J'ai comparé l'empreinte ci-dessus avec le responsable partenaire, hors bande : elle est identique</label>
+      <div class="actions"><button type="submit" id="partenaire-signer" disabled>Signer et publier</button></div>
+    </form>
   </section>
 </main>
 

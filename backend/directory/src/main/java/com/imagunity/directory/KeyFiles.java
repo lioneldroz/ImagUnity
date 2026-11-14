@@ -300,10 +300,19 @@ public final class KeyFiles {
     }
 
     public static OrganizationPublicKey readOrganizationPublic(Path file) throws IOException {
-        OrganizationPublicKey key = Json.read(Files.readString(file, StandardCharsets.UTF_8),
-                OrganizationPublicKey.class, "Clé publique d'organisation");
+        return parseOrganizationPublic(Files.readString(file, StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Clé publique d'organisation lue depuis le contenu d'un fichier {@code .pub.json} (collé dans l'interface locale).
+     *
+     * @throws DirectoryException ou IllegalArgumentException si le contenu est illisible ou invalide
+     */
+    public static OrganizationPublicKey parseOrganizationPublic(String json) {
+        OrganizationPublicKey key = Json.read(json, OrganizationPublicKey.class, "Clé publique d'organisation");
         Suite.require(key.suite());
         Organization.requireValidId(key.organization());
+        key.key();
         return key;
     }
 

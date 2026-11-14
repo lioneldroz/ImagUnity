@@ -2,14 +2,14 @@
 
 > Objectif : permettre à des box d'**organisations différentes** (régions, pays) d'échanger des examens, sans réseau unique ni autorité centrale imposée, et sans affaiblir les garanties actuelles (relais aveugles, chiffrement de bout en bout, aucun port entrant).
 >
-> Statut : **conception arrêtée pour l'étape 1** (novembre 2026), rien n'est encore mis en œuvre.
+> Statut : **étape 1 réalisée** (novembre 2026), essayée sur le banc à deux organisations ([`deploy/banc-essai/federation`](../../deploy/banc-essai/federation/README.md)). Étapes 2 à 6 à venir (§ 7).
 >
 > Décisions prises :
 > - reconnaissance mutuelle signée entre organisations (§ 4) ;
 > - pas de liaison entre relais (§ 3) ;
 > - périmètre vide par défaut, un identifiant de box n'appartient qu'à une organisation, relais du partenaire listés dans l'accord (§ 5).
 >
-> Restent ouvertes les questions du § 11. La première version de cette note a été relue à la lumière du code : les verrous qu'elle n'avait pas vus sont au § 2.2.
+> Restent ouvertes les questions du § 11. La première version de cette note a été relue à la lumière du code : les verrous qu'elle n'avait pas vus sont au § 2.2. Le mode d'emploi pour le responsable est au [guide du responsable, § 2.9](../guides/guide-responsable.md).
 
 ## 1. Point de départ
 
@@ -155,7 +155,7 @@ Une reconnaissance expirée ou révoquée retire aussitôt les entrées de ce pa
 | Envoi | En plus des contrôles actuels : accord actif, box locale dans les groupes locaux, box destinataire dans les groupes du partenaire. Sinon, le transfert échoue avec le motif (« Accord avec bourgogne-fc expiré »). |
 | Réception | Mêmes contrôles sur l'émetteur ; un message d'une box hors périmètre est écarté et journalisé. |
 | Morceaux | Relais admis = relais de la box + relais listés par la reconnaissance de l'organisation de l'émetteur. |
-| Console | Organisation de chaque partenaire, état de l'accord, accord **à sens unique** (« A reconnaît B, réponse de B attendue », visible quand le partenaire refuse les dépôts), collisions d'identifiant. |
+| Console | Organisation de chaque box, organisations partenaires (état de l'accord, périmètre, relais, dernière lecture), motif quand une box du partenaire ne peut pas échanger avec celle-ci, collisions d'identifiant. Un accord **à sens unique** se voit au refus des dépôts par le relais du partenaire : la box garde le message et l'écrit dans son journal, une fois par heure. |
 
 La réciprocité n'est pas un champ du document : un échange ne marche que si les deux responsables ont signé, puisque chaque côté applique ses propres règles.
 

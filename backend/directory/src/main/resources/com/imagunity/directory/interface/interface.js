@@ -80,7 +80,7 @@ function afficherEtat() {
 
 function ongletActif(nom) {
   document.querySelectorAll("[data-onglet]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.onglet === nom)));
-  ["demandes", "box", "codes"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
+  ["demandes", "box", "codes", "partenaires"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
   try { sessionStorage.setItem("onglet", nom); } catch (e) { /* sans stockage : onglet non retenu */ }
 }
 
@@ -379,16 +379,128 @@ function retirerCode(c) {
   });
 }
 
+// --- Organisations partenaires ---
+
+let clePartenaire = null;
+
+function portee(groupes) {
+  if (!groupes.length) return "aucun";
+  return groupes.includes("*") ? "tous" : groupes.join(", ");
+}
+
+function afficherPartenaires(partenaires) {
+  const corps = $("partenaires");
+  corps.replaceChildren();
+  if (!partenaires.length) {
+    const td = element("td", "discret", "Aucune organisation reconnue.");
+    td.colSpan = 5;
+    const vide = element("tr");
+    vide.append(td);
+    corps.append(vide);
+  }
+  for (const p of partenaires) {
+    const tr = element("tr");
+    const nom = element("td");
+    nom.append(element("strong", null, p.organisation), element("span", "discret mono", p.empreinteCourte),
+      element("span", "discret", p.annuaire));
+    const accord = element("td", "statut-" + p.statut, STATUTS_BOX[p.statut] || p.statut);
+    accord.append(element("span", "discret", p.statut === "REVOKED" ? "le " + jour(p.revoqueeLe) + " : " + p.motif
+      : "jusqu'au " + jour(p.valideJusquau) + ", n° " + p.serie));
+    const perimetre = element("td");
+    perimetre.append(element("span", null, "locaux : " + portee(p.groupesLocaux)),
+      element("span", "discret", "partenaire : " + portee(p.groupesPartenaire)));
+    const action = element("td");
+    action.append(bouton("Renouveler", "secondaire petit", () => renouvelerAccord(p)));
+    if (p.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquerAccord(p)));
+    tr.append(nom, accord, perimetre, element("td", "small", p.relais.join(", ")), action);
+    corps.append(tr);
+  }
+  const actifs = partenaires.filter((p) => p.statut === "ACTIVE").length;
+  $("compte-partenaires").textContent = partenaires.length ? "(" + actifs + " actif" + (actifs > 1 ? "s" : "") + ")" : "";
+}
+
+async function lireCle() {
+  clePartenaire = null;
+  $("partenaire-verifiee").checked = false;
+  $("partenaire-verifiee").disabled = true;
+  $("partenaire-signer").disabled = true;
+  try {
+    clePartenaire = await api("POST", "/api/partenaires/cle", { cle: $("partenaire-cle").value });
+    $("partenaire-empreinte").textContent = "« " + clePartenaire.organisation + " », empreinte "
+      + clePartenaire.empreinteCourte;
+    $("partenaire-empreinte").className = "empreinte";
+    $("partenaire-verifiee").disabled = false;
+  } catch (e) {
+    $("partenaire-empreinte").textContent = "";
+    message(e.message, "erreur");
+  }
+}
+
+function reconnaitre(evenement) {
+  evenement.preventDefault();
+  const corps = {
+    cle: $("partenaire-cle").value, empreinte: clePartenaire.empreinte, empreinteVerifiee: $("partenaire-verifiee").checked,
+    annuaire: $("partenaire-annuaire").value, relais: listeGroupes($("partenaire-relais").value),
+    groupesLocaux: listeGroupes($("partenaire-locaux").value), groupesPartenaire: listeGroupes($("partenaire-distants").value),
+  };
+  signer({
+    titre: "Reconnaître une organisation",
+    resume: "Signer la reconnaissance de « " + clePartenaire.organisation + " » (empreinte " + clePartenaire.empreinteCourte
+      + ", groupes locaux " + portee(corps.groupesLocaux) + ", groupes du partenaire " + portee(corps.groupesPartenaire)
+      + ", " + etat.validiteJours + " jours) avec la clé de l'organisation, puis la publier.",
+    libelle: "Signer et publier",
+    action: async (phrase, garder) => {
+      const r = await api("POST", "/api/partenaires", Object.assign(corps, { phrase, garder }));
+      $("formulaire-partenaire").reset();
+      $("partenaire-empreinte").textContent = "";
+      $("partenaire-signer").disabled = true;
+      $("partenaire-verifiee").disabled = true;
+      clePartenaire = null;
+      return r;
+    },
+  });
+}
+
+function renouvelerAccord(p) {
+  signer({
+    titre: "Renouveler l'accord",
+    resume: "Signer une nouvelle reconnaissance de « " + p.organisation + " » (même clé, mêmes relais, même périmètre), "
+      + "valable " + etat.validiteJours + " jours à partir d'aujourd'hui" + (p.statut === "REVOKED" ? " : l'accord révoqué est rétabli." : "."),
+    libelle: "Signer et publier",
+    action: (phrase, garder) => api("POST", "/api/partenaires/renouveler", { empreinte: p.empreinte, phrase, garder }),
+  });
+}
+
+function revoquerAccord(p) {
+  const bloc = element("div", "verification");
+  const motif = champ("Motif (publié dans l'annuaire)", "", { maxLength: 500, placeholder: "fin du partenariat…" });
+  const nom = champ("Pour confirmer, recopiez le nom de l'organisation : " + p.organisation, "", { maxLength: 64 });
+  bloc.append(motif.label, nom.label);
+  signer({
+    titre: "Révoquer l'accord",
+    resume: "Révoquer la reconnaissance de « " + p.organisation + " » : les box des deux organisations cesseront "
+      + "d'échanger à leur prochaine lecture de l'annuaire.",
+    libelle: "Révoquer",
+    danger: true,
+    extra: bloc,
+    action: (phrase, garder) => api("POST", "/api/partenaires/revoquer", {
+      empreinte: p.empreinte, motif: motif.input.value, confirmation: nom.input.value, phrase, garder,
+    }),
+  });
+}
+
 // --- Chargement ---
 
 async function charger() {
   try {
     etat = await api("GET", "/api/etat");
     afficherEtat();
-    const [demandes, boites, codes] = await Promise.all([api("GET", "/api/demandes"), api("GET", "/api/box"), api("GET", "/api/codes")]);
+    const [demandes, boites, codes, partenaires] = await Promise.all([api("GET", "/api/demandes"),
+      api("GET", "/api/box"), api("GET", "/api/codes"), api("GET", "/api/partenaires")]);
     afficherDemandes(demandes);
     afficherBox(boites);
     afficherCodes(codes);
+    afficherPartenaires(partenaires);
   } catch (e) {
     message(e.message, "erreur");
   }
@@ -405,6 +517,18 @@ document.addEventListener("DOMContentLoaded", () => {
   $("confirmer-non").addEventListener("click", () => $("dialogue-confirmer").close());
   $("renouveler").addEventListener("click", renouveler);
   $("formulaire-code").addEventListener("submit", tirerCode);
+  $("partenaire-lire").addEventListener("click", lireCle);
+  $("partenaire-cle").addEventListener("input", () => {
+    clePartenaire = null;
+    $("partenaire-empreinte").textContent = "";
+    $("partenaire-verifiee").checked = false;
+    $("partenaire-verifiee").disabled = true;
+    $("partenaire-signer").disabled = true;
+  });
+  $("partenaire-verifiee").addEventListener("change", () => {
+    $("partenaire-signer").disabled = !($("partenaire-verifiee").checked && clePartenaire);
+  });
+  $("formulaire-partenaire").addEventListener("submit", reconnaitre);
   $("copier").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText($("nouveau-ligne").textContent);
@@ -441,7 +565,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => {
     const actif = document.activeElement;
     const saisie = document.querySelector("dialog[open], .verification input:checked")
-      || (actif && actif.closest(".verification, #formulaire-code, #box"));
+      || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire"));
     if (!saisie) charger();
   }, 30000);
 });

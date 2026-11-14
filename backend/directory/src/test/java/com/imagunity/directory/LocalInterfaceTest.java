@@ -71,6 +71,8 @@ class LocalInterfaceTest {
     private final AtomicInteger listStatus = new AtomicInteger(200);
     private final AtomicInteger publishStatus = new AtomicInteger(201);
     private final AtomicInteger deleteStatus = new AtomicInteger(204);
+    private final AtomicInteger recognitionsStatus = new AtomicInteger(200);
+    private final Map<String, SignedDocument> recognitions = new ConcurrentHashMap<>();
     private String directoryUrl;
     private LocalInterface ui;
 
@@ -82,7 +84,19 @@ class LocalInterfaceTest {
             String method = exchange.getRequestMethod();
             int status;
             String body = "";
-            if (path.equals("/directory/v1/enrollment-requests")) {
+            if (path.equals("/directory/v1/recognitions") && method.equals("POST")) {
+                SignedDocument document = SignedDocument.fromJson(new String(exchange.getRequestBody().readAllBytes(),
+                        StandardCharsets.UTF_8));
+                status = publishStatus.get();
+                if (status == 201) {
+                    recognitions.put(Json.read(document.payload(), Recognition.class, "r").partner().fingerprint(),
+                            document);
+                }
+            } else if (path.equals("/directory/v1/recognitions")) {
+                status = recognitionsStatus.get();
+                body = "{\"organization\":\"chu-exemple\",\"recognitions\":[" + String.join(",",
+                        recognitions.values().stream().map(SignedDocument::toJson).toList()) + "]}";
+            } else if (path.equals("/directory/v1/enrollment-requests")) {
                 status = listStatus.get();
                 body = "[" + String.join(",", pending) + "]";
             } else if (path.startsWith("/directory/v1/enrollment-requests/") && method.equals("DELETE")) {
@@ -526,6 +540,85 @@ class LocalInterfaceTest {
         assertThat(json(call("GET", "/api/codes", null)).size()).isEqualTo(1);
         assertThat(call("POST", "/api/codes/retirer", "{\"id\":\"inconnu\"}").statusCode()).isEqualTo(404);
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("retiré");
+    }
+
+    @Test
+    void partnerOrganizationsAreRecognizedRenewedAndRevoked() throws Exception {
+        prepare(false, "Box d'essai");
+        open(null);
+        HybridKeyPair partnerKeys = HybridKeyPair.generate();
+        Path partnerFile = dir.resolve("partenaire.pub.json");
+        KeyFiles.writeOrganizationPublic(partnerFile, "bourgogne-fc", partnerKeys.publicKey());
+        String pasted = java.nio.file.Files.readString(partnerFile);
+        String fp = partnerKeys.publicKey().fingerprint();
+        assertThat(json(call("GET", "/api/partenaires", null)).size()).isZero();
+
+        JsonNode key = json(call("POST", "/api/partenaires/cle", Json.write(Map.of("cle", pasted))));
+        assertThat(key.get("organisation").asString()).isEqualTo("bourgogne-fc");
+        assertThat(key.get("empreinteCourte").asString()).isEqualTo(partnerKeys.publicKey().shortCode());
+        assertThat(call("POST", "/api/partenaires/cle", "{\"cle\":\" \"}").statusCode()).isEqualTo(422);
+        assertThat(call("POST", "/api/partenaires/cle", "{\"cle\":\"pas une clé\"}").statusCode()).isEqualTo(422);
+        assertThat(json(call("POST", "/api/partenaires/cle", Json.write(Map.of("cle", java.nio.file.Files.readString(
+                Path.of(p("org.json.pub.json"))))))).get("erreur").asString()).contains("cette organisation");
+
+        Map<String, Object> request = new java.util.LinkedHashMap<>(Map.of("cle", pasted, "empreinte", fp,
+                "annuaire", "https://annuaire.bourgogne-fc.example", "relais", List.of("https://relais.b.example"),
+                "groupesLocaux", List.of("*"), "groupesPartenaire", List.of("neuro"), "phrase", PHRASE));
+        assertThat(json(call("POST", "/api/partenaires", Json.write(request))).get("erreur").asString())
+                .contains("Comparer d'abord");
+        request.put("empreinteVerifiee", true);
+        request.put("empreinte", "autre");
+        assertThat(call("POST", "/api/partenaires", Json.write(request)).statusCode()).isEqualTo(409);
+        request.put("empreinte", fp);
+        request.put("relais", List.of());
+        assertThat(call("POST", "/api/partenaires", Json.write(request)).statusCode()).isEqualTo(422);
+        request.put("relais", List.of("https://relais.b.example", " "));
+        HttpResponse<String> done = call("POST", "/api/partenaires", Json.write(request));
+        assertThat(done.statusCode()).as(done.body()).isEqualTo(200);
+        assertThat(json(done).get("message").asString()).contains("reconnue").contains("à son tour");
+        request.put("groupesPartenaire", List.of());
+        assertThat(json(call("POST", "/api/partenaires", Json.write(request))).get("message").asString())
+                .as("réémission, périmètre vide").contains("périmètre vide");
+
+        JsonNode listed = json(call("GET", "/api/partenaires", null)).get(0);
+        assertThat(listed.get("organisation").asString()).isEqualTo("bourgogne-fc");
+        assertThat(listed.get("statut").asString()).isEqualTo("ACTIVE");
+        assertThat(listed.get("serie").asLong()).isEqualTo(2);
+        assertThat(listed.get("relais").get(0).asString()).isEqualTo("https://relais.b.example");
+
+        clock.now = clock.now.plus(Duration.ofDays(10));
+        HttpResponse<String> renewed = call("POST", "/api/partenaires/renouveler", "{\"empreinte\":\"" + fp
+                + "\",\"phrase\":\"" + PHRASE + "\"}");
+        assertThat(renewed.statusCode()).as(renewed.body()).isEqualTo(200);
+        assertThat(call("POST", "/api/partenaires/renouveler", "{\"empreinte\":\"inconnue\"}").statusCode())
+                .isEqualTo(404);
+
+        String revoke = "{\"empreinte\":\"" + fp + "\",\"phrase\":\"" + PHRASE + "\",\"motif\":\"fin\",";
+        assertThat(call("POST", "/api/partenaires/revoquer", "{\"empreinte\":\"" + fp + "\"}").statusCode())
+                .as("sans motif").isEqualTo(422);
+        assertThat(call("POST", "/api/partenaires/revoquer", revoke + "\"confirmation\":\"bourgogne\"}")
+                .statusCode()).isEqualTo(422);
+        assertThat(call("POST", "/api/partenaires/revoquer", revoke + "\"confirmation\":\"bourgogne-fc\"}")
+                .statusCode()).isEqualTo(200);
+        JsonNode revoked = json(call("GET", "/api/partenaires", null)).get(0);
+        assertThat(revoked.get("statut").asString()).isEqualTo("REVOKED");
+        assertThat(revoked.get("motif").asString()).isEqualTo("fin");
+        assertThat(call("POST", "/api/partenaires/revoquer", revoke + "\"confirmation\":\"bourgogne-fc\"}")
+                .statusCode()).isEqualTo(409);
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("reconnue").contains("révoquée");
+
+        // Reconnaissance publiée par une autre clé : ignorée ; annuaire en panne ou antérieur à la fédération.
+        recognitions.put("x", new Organization("chu-exemple", HybridKeyPair.generate()).recognize(
+                new Recognition.Partner("autre", HybridKeyPair.generate().publicKey().encoded(), "https://a.example",
+                        List.of("https://r.example")), Recognition.Scope.none(), clock.now, Duration.ofDays(1)));
+        assertThat(json(call("GET", "/api/partenaires", null)).size()).isEqualTo(1);
+        publishStatus.set(500);
+        assertThat(call("POST", "/api/partenaires/renouveler", "{\"empreinte\":\"" + fp + "\",\"phrase\":\""
+                + PHRASE + "\"}").statusCode()).isEqualTo(502);
+        recognitionsStatus.set(500);
+        assertThat(call("GET", "/api/partenaires", null).statusCode()).isEqualTo(502);
+        recognitionsStatus.set(404);
+        assertThat(json(call("GET", "/api/partenaires", null)).size()).isZero();
     }
 
     @Test
