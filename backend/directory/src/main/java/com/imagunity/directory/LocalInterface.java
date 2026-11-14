@@ -220,6 +220,11 @@ final class LocalInterface implements AutoCloseable {
             case "GET /api/codes" -> codes();
             case "POST /api/codes" -> createCode(body);
             case "POST /api/codes/retirer" -> removeCode(body);
+            case "GET /api/partenaires" -> partners();
+            case "POST /api/partenaires/cle" -> partnerKey(body);
+            case "POST /api/partenaires" -> recognize(body);
+            case "POST /api/partenaires/renouveler" -> renewRecognition(body);
+            case "POST /api/partenaires/revoquer" -> revokeRecognition(body);
             case "POST /api/oublier" -> {
                 forget();
                 yield state();
@@ -574,6 +579,170 @@ final class LocalInterface implements AutoCloseable {
         codes.without(entry).write(codesFile);
         out.println("Code d'enrôlement de la box « " + entry.name() + " » retiré");
         return Map.of("message", "Code de la box « " + entry.name() + " » retiré");
+    }
+
+    // --- Organisations partenaires (fédération) ---
+
+    /** Reconnaissance publiée, vérifiée avec la clé publique de l'organisation. */
+    private record PublishedRecognition(Recognition recognition, SignedDocument document) {
+    }
+
+    private List<PublishedRecognition> recognitions() throws IOException {
+        HttpResponse<String> response = calls.get("/directory/v1/recognitions", false);
+        if (response.statusCode() == 404) {
+            return List.of();
+        }
+        if (response.statusCode() != 200) {
+            throw new Refusal(502, "Lecture des reconnaissances refusée par l'annuaire (HTTP " + response.statusCode()
+                    + ")");
+        }
+        List<PublishedRecognition> list = new ArrayList<>();
+        for (JsonNode item : Json.MAPPER.readTree(response.body()).path("recognitions")) {
+            try {
+                SignedDocument document = SignedDocument.fromJson(item.toString());
+                list.add(new PublishedRecognition(new RecognitionVerifier(publicKey.organization(), publicKey.key(),
+                        SerialMemory.inMemory()).verify(document), document));
+            } catch (DirectoryException | IllegalArgumentException e) {
+                // publiée par une autre clé, ou altérée : ni montrée ni réémise
+            }
+        }
+        return list;
+    }
+
+    private PublishedRecognition recognition(JsonNode body) throws IOException {
+        String fingerprint = body.path("empreinte").asString("");
+        return recognitions().stream().filter(r -> r.recognition().partner().fingerprint().equals(fingerprint))
+                .findFirst().orElseThrow(() -> new Refusal(404, "Organisation partenaire inconnue"));
+    }
+
+    private List<Map<String, Object>> partners() throws IOException {
+        Instant now = clock.instant();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (PublishedRecognition p : recognitions()) {
+            Recognition r = p.recognition();
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("organisation", r.partner().organization());
+            m.put("empreinte", r.partner().fingerprint());
+            m.put("empreinteCourte", r.partner().shortCode());
+            m.put("statut", r.statusAt(now).name());
+            m.put("serie", r.serial());
+            m.put("valideJusquau", r.validUntil().toString());
+            m.put("annuaire", r.partner().directory());
+            m.put("relais", r.partner().relays());
+            m.put("groupesLocaux", r.scope().localGroups());
+            m.put("groupesPartenaire", r.scope().partnerGroups());
+            if (r.revoked()) {
+                m.put("revoqueeLe", r.revokedAt().toString());
+                m.put("motif", r.revocationReason());
+            }
+            list.add(m);
+        }
+        list.sort(java.util.Comparator.comparing(m -> (String) m.get("organisation")));
+        return list;
+    }
+
+    private static KeyFiles.OrganizationPublicKey pastedKey(JsonNode body) {
+        String text = body.path("cle").asString("");
+        if (text.isBlank()) {
+            throw new Refusal(422, "Coller le contenu du fichier de clé publique du partenaire (.pub.json)");
+        }
+        try {
+            return KeyFiles.parseOrganizationPublic(text);
+        } catch (DirectoryException | IllegalArgumentException e) {
+            throw new Refusal(422, "Clé publique du partenaire illisible : " + e.getMessage());
+        }
+    }
+
+    /** Organisation et empreinte de la clé collée, à comparer hors bande avant de signer. */
+    private Map<String, Object> partnerKey(JsonNode body) {
+        KeyFiles.OrganizationPublicKey key = pastedKey(body);
+        if (key.key().fingerprint().equals(publicKey.key().fingerprint())) {
+            throw new Refusal(422, "C'est la clé de cette organisation");
+        }
+        return Map.of("organisation", key.organization(), "empreinteCourte", key.key().shortCode(),
+                "empreinte", key.key().fingerprint());
+    }
+
+    private static List<String> list(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        node.forEach(v -> values.add(v.asString().strip()));
+        return values.stream().filter(v -> !v.isEmpty()).toList();
+    }
+
+    /** Reconnaît une organisation (ou réémet sa reconnaissance), après confirmation de son empreinte. */
+    private Map<String, Object> recognize(JsonNode body) throws IOException {
+        KeyFiles.OrganizationPublicKey key = pastedKey(body);
+        if (!key.key().fingerprint().equals(body.path("empreinte").asString(""))) {
+            throw new Refusal(409, "La clé collée a changé depuis l'affichage de son empreinte");
+        }
+        if (!body.path("empreinteVerifiee").asBoolean(false)) {
+            throw new Refusal(422, "Comparer d'abord l'empreinte avec le responsable partenaire, hors bande");
+        }
+        Recognition.Partner partner;
+        Recognition.Scope scope;
+        try {
+            partner = new Recognition.Partner(key.organization(), key.signingKeys(), body.path("annuaire")
+                    .asString(""), list(body.path("relais")));
+            scope = new Recognition.Scope(list(body.path("groupesLocaux")), list(body.path("groupesPartenaire")));
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new Refusal(422, e.getMessage());
+        }
+        Optional<PublishedRecognition> current = recognitions().stream()
+                .filter(r -> r.recognition().partner().fingerprint().equals(partner.fingerprint())).findFirst();
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        SignedDocument document = current.isEmpty()
+                ? organization.recognize(partner, scope, clock.instant(), Duration.ofDays(days))
+                : organization.renewRecognition(current.get().document(), partner, scope, clock.instant(),
+                Duration.ofDays(days));
+        publishRecognition(document);
+        String message = "Organisation « " + partner.organization() + " » reconnue (" + days + " jours)"
+                + (scope.empty() ? " ; périmètre vide : aucun échange tant que des groupes ne sont pas désignés" : "")
+                + ". L'échange ne marchera qu'une fois cette organisation reconnue à son tour par le partenaire";
+        out.println(message);
+        return Map.of("message", message, "phrase", phraseState());
+    }
+
+    private Map<String, Object> renewRecognition(JsonNode body) throws IOException {
+        PublishedRecognition p = recognition(body);
+        Recognition r = p.recognition();
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        publishRecognition(organization.renewRecognition(p.document(), r.partner(), r.scope(), clock.instant(),
+                Duration.ofDays(days)));
+        String message = "Reconnaissance de « " + r.partner().organization() + " » renouvelée pour " + days + " jours";
+        out.println(message);
+        return Map.of("message", message, "phrase", phraseState());
+    }
+
+    private Map<String, Object> revokeRecognition(JsonNode body) throws IOException {
+        PublishedRecognition p = recognition(body);
+        Recognition r = p.recognition();
+        String reason = body.path("motif").asString("").strip();
+        if (reason.isEmpty() || reason.length() > 500) {
+            throw new Refusal(422, "Motif de révocation obligatoire (500 caractères au plus)");
+        }
+        if (r.revoked()) {
+            throw new Refusal(409, "Reconnaissance déjà révoquée");
+        }
+        if (!r.partner().organization().equals(body.path("confirmation").asString(""))) {
+            throw new Refusal(422, "Recopier exactement le nom de l'organisation pour confirmer la révocation");
+        }
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        publishRecognition(organization.revokeRecognition(p.document(), clock.instant(), reason));
+        String message = "Reconnaissance de « " + r.partner().organization() + " » révoquée : les échanges avec ses "
+                + "box cessent à la prochaine lecture de l'annuaire";
+        out.println(message);
+        return Map.of("message", message, "phrase", phraseState());
+    }
+
+    private void publishRecognition(SignedDocument document) throws IOException {
+        HttpResponse<String> response = calls.post("/directory/v1/recognitions", document);
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new Refusal(502, "Publication refusée par l'annuaire (HTTP " + response.statusCode() + ") : "
+                    + response.body());
+        }
     }
 
     // --- Clé de l'organisation ---
