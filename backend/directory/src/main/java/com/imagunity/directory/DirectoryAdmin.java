@@ -115,6 +115,9 @@ public final class DirectoryAdmin {
                 case "enroler-attente" -> enrollPending(options);
                 case "renouveler" -> renewAll(options);
                 case "interface" -> localInterface(options);
+                case "reconnaitre" -> recognize(options);
+                case "reconnaissances" -> listRecognitions(options);
+                case "reconnaissance-revoquer" -> revokeRecognition(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -420,6 +423,125 @@ public final class DirectoryAdmin {
         }
     }
 
+    // --- Fédération ---
+
+    /** Reconnaissance publiée, vérifiée, avec son document signé. */
+    record Published(Recognition recognition, SignedDocument document) {
+    }
+
+    /** Reconnaissances courantes publiées sur l'annuaire, vérifiées avec la clé publique de l'organisation. */
+    private java.util.List<Published> recognitions(Map<String, String> o) throws IOException {
+        KeyFiles.OrganizationPublicKey own = KeyFiles.readOrganizationPublic(Path.of(require(o, "cles") + ".pub.json"));
+        HttpResponse<String> response = get(o, "/directory/v1/recognitions", false);
+        if (response.statusCode() != 200) {
+            throw new DirectoryException("Lecture des reconnaissances refusée (HTTP " + response.statusCode() + ")");
+        }
+        java.util.List<Published> list = new java.util.ArrayList<>();
+        for (tools.jackson.databind.JsonNode item : Json.MAPPER.readTree(response.body()).path("recognitions")) {
+            SignedDocument document = SignedDocument.fromJson(item.toString());
+            try {
+                list.add(new Published(new RecognitionVerifier(own.organization(), own.key(), SerialMemory.inMemory())
+                        .verify(document), document));
+            } catch (DirectoryException e) {
+                err.println("Reconnaissance écartée : " + e.getMessage());
+            }
+        }
+        return list;
+    }
+
+    /**
+     * Reconnaît une organisation partenaire, ou réémet sa reconnaissance (périmètre, relais, validité) : signe après
+     * confirmation de l'empreinte du partenaire, vérifiée hors bande, puis publie.
+     */
+    private int recognize(Map<String, String> o) throws IOException {
+        KeyFiles.OrganizationPublicKey key = KeyFiles.readOrganizationPublic(Path.of(require(o, "partenaire")));
+        Recognition.Partner partner = new Recognition.Partner(key.organization(), key.signingKeys(),
+                require(o, "annuaire-partenaire"), java.util.Arrays.stream(require(o, "relais").split(","))
+                .map(String::strip).filter(r -> !r.isEmpty()).toList());
+        Recognition.Scope scope = new Recognition.Scope(scopeOption(o, "groupes-locaux"),
+                scopeOption(o, "groupes-partenaire"));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
+        if (days < 1 || days > 365) {
+            throw new IllegalArgumentException("Validité de la reconnaissance : de 1 à 365 jours");
+        }
+        Optional<Published> current = recognitions(o).stream()
+                .filter(p -> p.recognition().partner().fingerprint().equals(partner.fingerprint())).findFirst();
+        out.println("Organisation partenaire « " + partner.organization() + " », empreinte " + partner.shortCode());
+        out.println("  relais autorisés : " + String.join(", ", partner.relays()));
+        out.println("  groupes locaux : " + describe(scope.localGroups()) + " ; groupes du partenaire : "
+                + describe(scope.partnerGroups()) + (scope.empty() ? " (aucun échange possible)" : ""));
+        out.println("  " + (current.isEmpty() ? "nouvelle reconnaissance" : "réémission (n° "
+                + (current.get().recognition().serial() + 1) + ")") + ", valable " + days + " jours");
+        if (!confirmed(o, "Empreinte vérifiée avec le responsable partenaire, hors bande ? Tapez « oui »")) {
+            err.println("Reconnaissance abandonnée");
+            return 1;
+        }
+        Organization organization = organization(o);
+        SignedDocument document = current.isEmpty()
+                ? organization.recognize(partner, scope, clock.instant(), Duration.ofDays(days))
+                : organization.renewRecognition(current.get().document(), partner, scope, clock.instant(),
+                Duration.ofDays(days));
+        HttpResponse<String> published = post(o, "/directory/v1/recognitions", document);
+        if (published.statusCode() != 201 && published.statusCode() != 200) {
+            err.println("Publication refusée (HTTP " + published.statusCode() + ") : " + published.body());
+            return 1;
+        }
+        out.println("Reconnaissance signée et publiée. L'échange ne marchera que lorsque « " + partner.organization()
+                + " » aura reconnu cette organisation à son tour.");
+        return 0;
+    }
+
+    private int listRecognitions(Map<String, String> o) throws IOException {
+        java.util.List<Published> list = recognitions(o);
+        if (list.isEmpty()) {
+            out.println("Aucune organisation partenaire reconnue");
+        }
+        for (Published p : list) {
+            Recognition r = p.recognition();
+            out.println("« " + r.partner().organization() + " », empreinte " + r.partner().shortCode() + " : "
+                    + switch (r.statusAt(clock.instant())) {
+                        case ACTIVE -> "active jusqu'au " + day(r.validUntil());
+                        case EXPIRED -> "expirée le " + day(r.validUntil());
+                        case REVOKED -> "révoquée le " + day(r.revokedAt()) + " (" + r.revocationReason() + ")";
+                        case NOT_YET_VALID -> "valable à partir du " + day(r.validFrom());
+                    } + ", n° " + r.serial());
+            out.println("  groupes locaux : " + describe(r.scope().localGroups()) + " ; groupes du partenaire : "
+                    + describe(r.scope().partnerGroups()) + " ; relais : " + String.join(", ", r.partner().relays()));
+        }
+        return 0;
+    }
+
+    private int revokeRecognition(Map<String, String> o) throws IOException {
+        String wanted = require(o, "empreinte").strip();
+        String reason = require(o, "motif");
+        Published p = recognitions(o).stream().filter(r -> r.recognition().partner().fingerprint().equals(wanted)
+                        || r.recognition().partner().shortCode().equalsIgnoreCase(wanted)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Aucune reconnaissance de l'organisation d'empreinte "
+                        + wanted));
+        if (!confirmed(o, "Révoquer la reconnaissance de « " + p.recognition().partner().organization()
+                + " » ? Les échanges avec ses box cesseront. Tapez « oui »")) {
+            err.println("Révocation abandonnée");
+            return 1;
+        }
+        HttpResponse<String> published = post(o, "/directory/v1/recognitions", organization(o).revokeRecognition(
+                p.document(), clock.instant(), reason));
+        if (published.statusCode() != 201 && published.statusCode() != 200) {
+            err.println("Publication refusée (HTTP " + published.statusCode() + ") : " + published.body());
+            return 1;
+        }
+        out.println("Reconnaissance de « " + p.recognition().partner().organization() + " » révoquée");
+        return 0;
+    }
+
+    private static java.util.List<String> scopeOption(Map<String, String> o, String name) {
+        return o.containsKey(name) ? java.util.Arrays.stream(o.get(name).split(",")).map(String::strip)
+                .filter(g -> !g.isEmpty()).toList() : java.util.List.of();
+    }
+
+    private static String describe(java.util.List<String> groups) {
+        return groups.isEmpty() ? "aucun" : groups.contains(Recognition.ALL) ? "tous" : String.join(", ", groups);
+    }
+
     /** Renouvelle d'un coup les entrées actives qui expirent bientôt (mêmes clés, adresses et groupes). */
     private int renewAll(Map<String, String> o) throws IOException {
         Organization organization = organization(o);
@@ -620,6 +742,12 @@ public final class DirectoryAdmin {
                                      [--confirmer]
                   interface          --cles <clé organisation> --codes <fichier> --annuaire <url> [--validite-jours 90]
                                      [--port 0] [--ouvrir]
+                  reconnaitre        --cles <clé organisation> --annuaire <url> --partenaire <clé publique partenaire>
+                                     --annuaire-partenaire <url> --relais <url,url> [--groupes-locaux a,b|*]
+                                     [--groupes-partenaire c,d|*] [--validite-jours 90] [--confirmer]
+                  reconnaissances    --cles <clé organisation> --annuaire <url>
+                  reconnaissance-revoquer --cles <clé organisation> --annuaire <url> --empreinte <empreinte du partenaire>
+                                     --motif <texte> [--confirmer]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;

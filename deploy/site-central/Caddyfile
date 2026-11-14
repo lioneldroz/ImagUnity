@@ -25,7 +25,7 @@
 	handle /directory/v1/* {
 		@depot_hors_admin {
 			method POST
-			path /directory/v1/entries /directory/v1/configurations
+			path /directory/v1/entries /directory/v1/configurations /directory/v1/recognitions
 			not remote_ip {$RESEAU_ADMIN}
 		}
 		respond @depot_hors_admin 403
