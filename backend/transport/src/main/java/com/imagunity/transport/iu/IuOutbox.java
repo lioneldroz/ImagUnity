@@ -175,7 +175,7 @@ final class IuOutbox implements AutoCloseable {
         Thread thread = sender;
         sender = null;
         if (thread != null) {
-            thread.interrupt();
+            Threads.stop(List.of(thread), Threads.STOP_WAIT);
         }
     }
 }

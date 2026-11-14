@@ -241,7 +241,7 @@ public final class IuMailbox implements AutoCloseable {
         Thread thread = poller;
         poller = null;
         if (thread != null) {
-            thread.interrupt();
+            Threads.stop(List.of(thread), Threads.STOP_WAIT);
         }
     }
 }

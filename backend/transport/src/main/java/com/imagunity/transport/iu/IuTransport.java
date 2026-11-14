@@ -694,8 +694,13 @@ public final class IuTransport implements TransportPort {
                 }
             }));
         }
-        for (Thread thread : threads) {
-            thread.join();
+        try {
+            for (Thread thread : threads) {
+                thread.join();
+            }
+        } catch (InterruptedException e) {
+            Threads.stop(threads, Threads.STOP_WAIT); // arrêt de la box : les copies aussi
+            throw e;
         }
         if (closed) {
             throw new InterruptedException("arrêt de la box");
@@ -1036,9 +1041,10 @@ public final class IuTransport implements TransportPort {
     @Override
     public void close() {
         closed = true;
+        // Chaque fil est attendu : une fois fermé, le transport n'écrit plus dans son dossier d'état.
         outbox.close();
-        starters.forEach(Thread::interrupt);
+        Threads.stop(starters, Threads.STOP_WAIT); // avant les relèves : plus aucune ne s'ajoute ensuite
         mailboxes.forEach(IuMailbox::close);
-        workers.forEach(Thread::interrupt);
+        Threads.stop(List.copyOf(workers), Threads.STOP_WAIT);
     }
 }
