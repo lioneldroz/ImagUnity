@@ -306,20 +306,12 @@ public final class DirectoryAdmin {
     /** Tire un code d'enrôlement pour une box à venir, et le garde dans le fichier des codes du responsable. */
     private int createCode(Map<String, String> o) throws IOException {
         Path file = Path.of(require(o, "codes"));
-        String name = require(o, "nom").strip();
-        if (name.isEmpty() || name.length() > 256) {
-            throw new IllegalArgumentException("Nom de box vide ou trop long (256 caractères au plus)");
-        }
+        String name = require(o, "nom");
         java.util.List<String> groups = BoxEntry.groups(groupsOption(o));
-        long days = Long.parseLong(o.getOrDefault("validite-jours", "30"));
-        if (days < 1 || days > 365) {
-            throw new IllegalArgumentException("Validité du code : de 1 à 365 jours");
-        }
-        Instant now = clock.instant();
-        EnrollmentCodes.Entry entry = new EnrollmentCodes.Entry(EnrollmentCode.generate(), name, groups, now,
-                now.plus(Duration.ofDays(days)), null, null);
+        EnrollmentCodes.Entry entry = EnrollmentCodes.create(name, groups,
+                Long.parseLong(o.getOrDefault("validite-jours", "30")), clock.instant());
         EnrollmentCodes.read(file).with(entry).write(file);
-        out.println("Code d'enrôlement de la box « " + name + " »" + (groups.isEmpty() ? "" : ", groupes "
+        out.println("Code d'enrôlement de la box « " + entry.name() + " »" + (groups.isEmpty() ? "" : ", groupes "
                 + groups) + ", valable jusqu'au " + day(entry.expiresAt()) + " : " + entry.code());
         out.println("À donner à l'installateur de la box, qui le recopie dans sa configuration :");
         out.println("  IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=" + entry.code());

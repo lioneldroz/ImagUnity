@@ -101,6 +101,10 @@ class LocalInterfaceTest {
                     published.put(box, entry);
                     pending.removeIf(item -> item.contains(box.toString()));
                 }
+            } else if (path.equals("/directory/v1/entries")) {
+                status = listStatus.get();
+                body = "{\"organization\":\"chu-exemple\",\"entries\":[" + String.join(",",
+                        published.values().stream().map(SignedDocument::toJson).toList()) + "]}";
             } else {
                 SignedDocument entry = published.get(UUID.fromString(path.substring(path.lastIndexOf('/') + 1)));
                 status = entry == null ? 404 : 200;
@@ -386,6 +390,142 @@ class LocalInterfaceTest {
         HttpResponse<String> down = call("GET", "/api/demandes", null);
         assertThat(down.statusCode()).isEqualTo(502);
         assertThat(json(down).get("erreur").asString()).contains("Annuaire injoignable");
+    }
+
+    /** Box enrôlée par l'interface (code de ce responsable) ; rend son identifiant. */
+    private UUID enrolled(String name) throws Exception {
+        UUID box = boxSubmits("nom local", prepare(false, name));
+        HttpResponse<String> done = call("POST", "/api/valider", validation(box,
+                request(box).get("empreinte").asString(), PHRASE, true));
+        assertThat(done.statusCode()).as(done.body()).isEqualTo(200);
+        return box;
+    }
+
+    private JsonNode box(UUID box) throws Exception {
+        HttpResponse<String> response = call("GET", "/api/box", null);
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        return json(response).valueStream().filter(b -> b.get("boxId").asString().equals(box.toString())).findFirst()
+                .orElseThrow();
+    }
+
+    @Test
+    void entriesAreRenewedAndRevokedFromTheInterface() throws Exception {
+        prepare(false, "Préparation");
+        open(null);
+        UUID nord = enrolled("CHU Exemple — imagerie Nord");
+        UUID sud = enrolled("CHU Exemple — imagerie Sud");
+        // Entrée signée par une autre organisation : ni montrée, ni réémise.
+        Organization other = new Organization("chu-exemple", HybridKeyPair.generate());
+        UUID foreign = UUID.randomUUID();
+        published.put(foreign, other.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), null, foreign,
+                "Intruse", Map.of(), clock.now), clock.now, Duration.ofDays(90), 1));
+        assertThat(json(call("GET", "/api/box", null)).size()).isEqualTo(2);
+        assertThat(json(call("GET", "/api/etat", null)).get("renouvelerAvantJours").asLong()).isEqualTo(15);
+
+        JsonNode b = box(nord);
+        assertThat(b.get("statut").asString()).isEqualTo("ACTIVE");
+        assertThat(b.get("aRenouveler").asBoolean()).isFalse();
+        assertThat(b.get("serie").asLong()).isEqualTo(1);
+        assertThat(b.get("nom").asString()).isEqualTo("CHU Exemple — imagerie Nord");
+
+        // 80 jours plus tard : à renouveler ; 100 jours : expirée, renouvelable aussi.
+        clock.now = clock.now.plus(Duration.ofDays(80));
+        assertThat(box(nord).get("aRenouveler").asBoolean()).isTrue();
+        clock.now = clock.now.plus(Duration.ofDays(20));
+        assertThat(box(sud).get("statut").asString()).isEqualTo("EXPIRED");
+        assertThat(box(sud).get("aRenouveler").asBoolean()).isTrue();
+
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[]}").statusCode()).isEqualTo(400);
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[\"x\"]}").statusCode()).isEqualTo(400);
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[\"" + foreign + "\"]}").statusCode())
+                .as("entrée d'une autre organisation").isEqualTo(404);
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[\"" + nord + "\"]}").statusCode())
+                .as("clé oubliée après 15 minutes").isEqualTo(422);
+        HttpResponse<String> renewed = call("POST", "/api/renouveler", "{\"boxIds\":[\"" + nord + "\",\"" + sud
+                + "\"],\"phrase\":\"" + PHRASE + "\",\"garder\":true}");
+        assertThat(renewed.statusCode()).as(renewed.body()).isEqualTo(200);
+        assertThat(json(renewed).get("message").asString()).startsWith("2 entrée(s) renouvelée(s)");
+        assertThat(box(sud).get("statut").asString()).isEqualTo("ACTIVE");
+        assertThat(box(sud).get("serie").asLong()).isEqualTo(2);
+        assertThat(entry(sud).validUntil()).isEqualTo(clock.now.plus(Duration.ofDays(90)));
+        assertThat(entry(sud).groups()).isEmpty();
+
+        publishStatus.set(409);
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[\"" + nord + "\"]}").statusCode()).isEqualTo(502);
+        assertThat(call("POST", "/api/revoquer", "{\"boxId\":\"" + nord + "\",\"motif\":\"essai\","
+                + "\"confirmation\":\"CHU Exemple — imagerie Nord\"}").statusCode()).isEqualTo(502);
+        publishStatus.set(201);
+
+        String revoke = "{\"boxId\":\"" + nord + "\",\"motif\":\"box remplacée\",\"confirmation\":\"";
+        assertThat(call("POST", "/api/revoquer", "{\"boxId\":\"" + nord + "\"}").statusCode()).as("sans motif")
+                .isEqualTo(422);
+        HttpResponse<String> unconfirmed = call("POST", "/api/revoquer", revoke + "CHU Exemple\"}");
+        assertThat(unconfirmed.statusCode()).isEqualTo(422);
+        assertThat(json(unconfirmed).get("erreur").asString()).contains("Recopier exactement le nom");
+        assertThat(call("POST", "/api/revoquer", "{\"boxId\":\"" + foreign + "\",\"motif\":\"x\"}")
+                .statusCode()).isEqualTo(404);
+        HttpResponse<String> revoked = call("POST", "/api/revoquer", revoke + "CHU Exemple — imagerie Nord\"}");
+        assertThat(revoked.statusCode()).as(revoked.body()).isEqualTo(200);
+        JsonNode r = box(nord);
+        assertThat(r.get("statut").asString()).isEqualTo("REVOKED");
+        assertThat(r.get("motif").asString()).isEqualTo("box remplacée");
+        assertThat(r.get("aRenouveler").asBoolean()).isFalse();
+        assertThat(entry(nord).serial()).isEqualTo(3);
+        assertThat(call("POST", "/api/revoquer", revoke + "CHU Exemple — imagerie Nord\"}").statusCode())
+                .isEqualTo(409);
+        assertThat(call("POST", "/api/renouveler", "{\"boxIds\":[\"" + nord + "\"]}").statusCode()).isEqualTo(409);
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("révoquée").contains("renouvelée");
+
+        listStatus.set(500);
+        assertThat(call("GET", "/api/box", null).statusCode()).isEqualTo(502);
+    }
+
+    @Test
+    void enrollmentCodesAreDrawnListedAndWithdrawn() throws Exception {
+        prepare(false, "Box d'essai");
+        open(null);
+        HttpResponse<String> created = call("POST", "/api/codes", "{\"nom\":\" Clinique Exemple \","
+                + "\"groupes\":[\"urgences\",\" \"],\"validiteJours\":10}");
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+        JsonNode c = json(created);
+        String code = c.get("code").asString();
+        assertThat(code).matches("[A-Z2-7]{4}(-[A-Z2-7]{4}){4}");
+        assertThat(c.get("ligne").asString()).isEqualTo("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=" + code);
+        assertThat(c.get("nom").asString()).isEqualTo("Clinique Exemple");
+        assertThat(c.get("expireLe").asString()).isEqualTo(clock.now.plus(Duration.ofDays(10)).toString());
+        assertThat(call("POST", "/api/codes", "{\"nom\":\" \"}").statusCode()).isEqualTo(422);
+        assertThat(call("POST", "/api/codes", "{\"nom\":\"x\",\"validiteJours\":0}").statusCode()).isEqualTo(422);
+        assertThat(call("POST", "/api/codes", "{\"nom\":\"x\",\"groupes\":[\"Pas Valide\"]}").statusCode())
+                .isEqualTo(422);
+
+        JsonNode codes = json(call("GET", "/api/codes", null));
+        assertThat(codes.size()).isEqualTo(2);
+        JsonNode first = codes.get(0);
+        assertThat(first.get("nom").asString()).as("le plus récent d'abord").isEqualTo("Clinique Exemple");
+        assertThat(first.get("statut").asString()).isEqualTo("libre");
+        assertThat(first.get("code").asString()).isEqualTo(code);
+        assertThat(first.get("groupes").get(0).asString()).isEqualTo("urgences");
+
+        // Code utilisé par une box : gardé pour mémoire, sans le code lui-même.
+        UUID box = boxSubmits("Box", code);
+        assertThat(call("POST", "/api/valider", validation(box, request(box).get("empreinte").asString(), PHRASE,
+                false)).statusCode()).isEqualTo(200);
+        JsonNode used = json(call("GET", "/api/codes", null)).get(0);
+        assertThat(used.get("statut").asString()).isEqualTo("utilise");
+        assertThat(used.get("boxId").asString()).isEqualTo(box.toString());
+        assertThat(used.has("code")).isFalse();
+        assertThat(call("POST", "/api/codes/retirer", "{\"id\":\"" + used.get("id").asString() + "\"}")
+                .statusCode()).isEqualTo(409);
+
+        // Le premier code expire au bout de 30 jours ; il peut être retiré.
+        clock.now = clock.now.plus(Duration.ofDays(31));
+        JsonNode expired = json(call("GET", "/api/codes", null)).get(1);
+        assertThat(expired.get("statut").asString()).isEqualTo("expire");
+        assertThat(call("POST", "/api/codes/retirer", "{\"id\":\"" + expired.get("id").asString() + "\"}")
+                .statusCode()).isEqualTo(200);
+        assertThat(json(call("GET", "/api/codes", null)).size()).isEqualTo(1);
+        assertThat(call("POST", "/api/codes/retirer", "{\"id\":\"inconnu\"}").statusCode()).isEqualTo(404);
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("retiré");
     }
 
     @Test

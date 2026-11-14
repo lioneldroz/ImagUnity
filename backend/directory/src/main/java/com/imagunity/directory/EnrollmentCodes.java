@@ -76,6 +76,28 @@ record EnrollmentCodes(List<Entry> codes) {
         return new EnrollmentCodes(all);
     }
 
+    /** Retire un code (non utilisé, ou dont on ne veut plus garder la trace). */
+    EnrollmentCodes without(Entry entry) {
+        return new EnrollmentCodes(codes.stream().filter(c -> !c.equals(entry)).toList());
+    }
+
+    /**
+     * Tire un nouveau code pour une box à venir.
+     *
+     * @throws IllegalArgumentException si le nom, les groupes ou la validité sont hors limites
+     */
+    static Entry create(String name, List<String> groups, long days, Instant now) {
+        String n = name == null ? "" : name.strip();
+        if (n.isEmpty() || n.length() > 256) {
+            throw new IllegalArgumentException("Nom de box vide ou trop long (256 caractères au plus)");
+        }
+        if (days < 1 || days > 365) {
+            throw new IllegalArgumentException("Validité du code : de 1 à 365 jours");
+        }
+        return new Entry(EnrollmentCode.generate(), n, BoxEntry.groups(groups), now, now.plus(java.time.Duration
+                .ofDays(days)), null, null);
+    }
+
     EnrollmentCodes replace(Entry before, Entry after) {
         return new EnrollmentCodes(codes.stream().map(c -> c.equals(before) ? after : c).toList());
     }
