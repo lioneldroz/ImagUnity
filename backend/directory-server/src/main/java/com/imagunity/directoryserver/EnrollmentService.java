@@ -31,6 +31,8 @@ public class EnrollmentService {
 
     /** Durée de conservation d'une demande sans suite. */
     static final Duration KEPT = Duration.ofDays(14);
+    /** Durée pendant laquelle les envois d'une box refusée sont ignorés. */
+    static final Duration REFUSAL_KEPT = Duration.ofDays(30);
     /** Nombre maximal de demandes en attente. */
     static final int MAX_PENDING = 500;
 
@@ -89,7 +91,11 @@ public class EnrollmentService {
             throw new PublicationService.ConflictException("Box " + request.boxId() + " déjà enrôlée");
         }
         Instant now = clock.instant();
-        store.purgeBefore(now.minus(KEPT));
+        purge(now);
+        if (store.refused(request.boxId())) {
+            throw new PublicationService.ConflictException("Demande de la box " + request.boxId()
+                    + " refusée par le responsable");
+        }
         if (!store.exists(request.boxId()) && store.count() >= MAX_PENDING) {
             throw new TooManyException("Trop de demandes d'enrôlement en attente (" + MAX_PENDING + ")");
         }
@@ -104,9 +110,27 @@ public class EnrollmentService {
 
     /** Demandes en attente, de la plus récente à la plus ancienne. */
     public List<Pending> pending() {
-        store.purgeBefore(clock.instant().minus(KEPT));
+        purge(clock.instant());
         return store.all().stream().map(p -> new Pending(p.boxId(), p.displayName(), p.fingerprint(),
                 p.codeId() != null, p.receivedAt(), EnrollmentSubmission.fromJson(p.submission()))).toList();
+    }
+
+    /**
+     * Refuse la demande d'une box : elle n'est plus listée, et les nouveaux envois de cette box sont ignorés pendant
+     * {@link #REFUSAL_KEPT}.
+     *
+     * @throws java.util.NoSuchElementException si aucune demande de cette box n'attend
+     */
+    @Transactional
+    public void refuse(UUID boxId) {
+        if (!store.refuse(boxId, clock.instant())) {
+            throw new java.util.NoSuchElementException("Aucune demande d'enrôlement de la box " + boxId);
+        }
+        LOG.info("Demande d'enrôlement de la box {} refusée par le responsable", boxId);
+    }
+
+    private void purge(Instant now) {
+        store.purgeBefore(now.minus(KEPT), now.minus(REFUSAL_KEPT));
     }
 
     /** L'entrée de la box vient d'être publiée : sa demande n'attend plus. */

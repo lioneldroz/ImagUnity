@@ -92,6 +92,15 @@ class EnrollmentApiTest {
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    private HttpResponse<String> refuse(UUID box, String account) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri("/directory/v1/enrollment-requests/" + box)).DELETE();
+        if (account != null) {
+            request.header("Authorization", "Basic " + Base64.getEncoder()
+                    .encodeToString(account.getBytes(StandardCharsets.UTF_8)));
+        }
+        return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private static SignedDocument request(UUID box, String name) {
         return EnrollmentRequest.create(HybridKeyPair.generate(), HybridKemKeyPair.generate().publicKey(), box, name,
                 Map.of(), Instant.now());
@@ -135,6 +144,30 @@ class EnrollmentApiTest {
         HttpResponse<String> enrolled = submit(EnrollmentSubmission.of(request(box, "CHU Exemple"), code));
         assertThat(enrolled.statusCode()).isEqualTo(409);
         assertThat(enrolled.body()).contains("déjà enrôlée");
+    }
+
+    @Test
+    void theResponsibleRefusesARequestAndTheBoxIsThenIgnored() throws Exception {
+        UUID box = UUID.randomUUID();
+        assertThat(submit(EnrollmentSubmission.of(request(box, "Box inconnue"), null)).statusCode()).isEqualTo(202);
+        assertThat(refuse(box, null).statusCode()).as("sans compte").isEqualTo(401);
+        assertThat(refuse(box, ACCOUNT).statusCode()).isEqualTo(204);
+        assertThat(list(ACCOUNT).body()).doesNotContain(box.toString());
+        assertThat(refuse(box, ACCOUNT).statusCode()).as("déjà refusée").isEqualTo(404);
+        assertThat(refuse(UUID.randomUUID(), ACCOUNT).statusCode()).isEqualTo(404);
+
+        HttpResponse<String> again = submit(EnrollmentSubmission.of(request(box, "Box inconnue"), null));
+        assertThat(again.statusCode()).isEqualTo(409);
+        assertThat(again.body()).contains("refusée par le responsable");
+        assertThat(list(ACCOUNT).body()).doesNotContain(box.toString());
+
+        // Trente et un jours plus tard, le refus est oublié : la box peut demander à nouveau.
+        EnrollmentStore store = new EnrollmentStore(dataSource);
+        EnrollmentService later = new EnrollmentService(store, entries, "chu-exemple", ORG_KEYS.publicKey(),
+                Clock.fixed(Instant.now().plus(Duration.ofDays(31)), ZoneOffset.UTC));
+        later.pending();
+        assertThat(store.refused(box)).isFalse();
+        assertThat(store.exists(box)).isFalse();
     }
 
     @Test

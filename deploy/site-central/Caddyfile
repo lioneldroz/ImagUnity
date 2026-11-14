@@ -29,10 +29,10 @@
 			not remote_ip {$RESEAU_ADMIN}
 		}
 		respond @depot_hors_admin 403
-		# Demandes d'enrôlement : déposées par les box depuis leurs sites, lues seulement depuis l'administration.
+		# Demandes d'enrôlement : déposées par les box depuis leurs sites, lues et refusées seulement depuis l'administration.
 		@demandes_hors_admin {
-			method GET
-			path /directory/v1/enrollment-requests
+			method GET DELETE
+			path /directory/v1/enrollment-requests /directory/v1/enrollment-requests/*
 			not remote_ip {$RESEAU_ADMIN}
 		}
 		respond @demandes_hors_admin 403
