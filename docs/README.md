@@ -23,7 +23,7 @@
 | [Priorité des séries](reference/priorite-dicom.md) | séries utiles au diagnostic envoyées et restituées d'abord |
 | [Routage par champ DICOM](reference/routage-dicom.md) | choix du destinataire d'après le contenu de l'examen |
 | [Réception DICOMweb STOW-RS](reference/stow-rs.md) | dépôt des examens par HTTP |
-| [Fédération entre organisations](reference/federation-organisations.md) | proposition : échanges entre box de régions ou de pays différents, reconnaissance mutuelle signée |
+| [Fédération entre organisations](reference/federation-organisations.md) | conception : échanges entre box de régions ou de pays différents, reconnaissance mutuelle signée ; étape 1 arrêtée |
 
 ## Audit
 
