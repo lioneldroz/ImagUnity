@@ -112,7 +112,7 @@ L'enrôlement est **automatique** dès que la box a reçu un **code d'enrôlemen
 
 Plus de fichier à faire circuler ni d'empreinte à comparer au téléphone : le code, connu seulement du responsable et de l'installateur, prouve que la demande vient bien de la box prévue.
 
-Les demandes en attente se traitent au choix en ligne de commande (`enroler-attente`, § 2.3) ou depuis l'**interface locale du responsable**, une page servie par l'outil sur son poste, avec un bouton « Valider » par demande (§ 2.4).
+Toutes ces tâches se font au choix en ligne de commande ou depuis l'**interface locale du responsable**, une page servie par l'outil sur son poste (§ 2.4) : bouton « Valider » par demande, renouvellement et révocation des box, tirage des codes.
 
 ### 2.1 Créer la clé de l'organisation (une seule fois)
 
@@ -155,6 +155,8 @@ Code d'enrôlement de la box « CHU Exemple — imagerie Nord », groupes [image
 | `--groupes` | Groupes de la box, séparés par des virgules : minuscules, chiffres et tirets, 16 groupes au plus | aucun |
 | `--validite-jours` | Durée pendant laquelle le code est accepté, de 1 à 365 jours | 30 |
 
+Le code peut aussi se tirer depuis l'interface locale, onglet « Codes d'enrôlement » (§ 2.4), qui liste aussi les codes libres, utilisés et expirés.
+
 Au démarrage, la box envoie seule sa **demande d'enrôlement** à l'annuaire, avec la preuve du code, et la renvoie tant qu'elle n'est pas enrôlée. Elle apparaît dans l'interface, partie « Demandes d'enrôlement en attente » (§ 3.3).
 
 ### 2.3 Enrôler les box en attente
@@ -184,9 +186,9 @@ La box se voit enrôlée à sa lecture suivante de l'annuaire (toutes les 5 minu
 
 La durée de validité des entrées se règle avec `--validite-jours` (90 jours par défaut).
 
-### 2.4 Valider les demandes depuis l'interface locale
+### 2.4 L'interface locale du responsable
 
-Plutôt qu'en ligne de commande, les demandes peuvent se traiter une à une depuis une page web servie par l'outil du responsable, **sur son poste** :
+Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a trois onglets : « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement ».
 
 ```bash
 admin interface --cles organisation.json --codes codes.json --annuaire https://annuaire.exemple.org
@@ -197,7 +199,11 @@ Interface du responsable : http://127.0.0.1:52817/#jeton=TV1vrcQWjDYVb15-c7tFmhx
 À ouvrir dans le navigateur de ce poste (adresse personnelle, ne pas la partager) ; arrêt par le bouton « Quitter » ou Ctrl+C.
 ```
 
-Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement). La page liste les demandes en attente dans l'annuaire, revérifiées par l'outil :
+Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement).
+
+#### Onglet « Demandes en attente »
+
+L'onglet liste les demandes en attente dans l'annuaire, revérifiées par l'outil :
 
 ![Interface locale du responsable : une carte par demande, avec son empreinte, l'état de son code et les boutons Valider et Refuser](../images/guide-responsable/11-interface-demandes.png)
 
@@ -223,7 +229,40 @@ Pour une **demande sans code**, le bouton « Valider » ne s'active qu'une fois 
 
 ![Confirmation du refus d'une demande](../images/guide-responsable/14-interface-refus.png)
 
-**Ce qui reste sur votre poste.** La clé de l'organisation et sa phrase de passe ne quittent jamais le poste : la page ne parle qu'à l'outil qui l'a servie, qui signe lui-même. Seuls l'entrée signée et le refus partent vers l'annuaire. L'interface n'écoute que sur `127.0.0.1` ; son adresse contient un jeton tiré au démarrage, exigé à chaque appel, si bien qu'aucun autre site ouvert dans le navigateur ni aucun autre utilisateur du poste ne peut s'en servir. Ne partagez pas cette adresse.
+#### Onglet « Box de l'organisation »
+
+Les entrées publiées dans l'annuaire, revérifiées avec la clé de l'organisation (une entrée signée par une autre clé n'est pas montrée) : nom, identifiant et empreinte de chaque box, statut, groupes, date de fin de validité, numéro de l'entrée.
+
+![Onglet Box de l'organisation : deux box actives qui expirent bientôt, cochées pour le renouvellement](../images/guide-responsable/15-interface-box.png)
+
+- **Renouveler la sélection** : les entrées actives qui expirent dans les 15 jours, et les entrées expirées, sont cochées d'office ; décochez ou cochez à votre gré. Après la phrase de passe, l'outil relit chaque entrée dans l'annuaire, signe une entrée de numéro suivant (mêmes clés, adresses et groupes, valable `--validite-jours` à partir d'aujourd'hui) et la publie. C'est l'équivalent de `renouveler` (§ 2.6), box par box.
+- **Révoquer** : demande un motif, publié dans l'annuaire, et le **nom de la box recopié exactement**, pour éviter de révoquer la mauvaise box d'un clic. C'est l'équivalent de `revoquer` puis `publier` (§ 2.8), sans fichier à manipuler.
+
+![Fenêtre de révocation : motif, nom de la box à recopier, phrase de passe](../images/guide-responsable/16-interface-revoquer.png)
+
+Une box révoquée reste dans la liste, en rouge, avec la date et le motif ; elle ne peut plus être renouvelée ni révoquée de nouveau :
+
+![Liste des box après le renouvellement de l'une et la révocation de l'autre](../images/guide-responsable/17-interface-box-apres.png)
+
+#### Onglet « Codes d'enrôlement »
+
+Le formulaire tire un code pour une box à venir, comme `code-creer` (§ 2.2) : nom de la box, groupes facultatifs, durée de validité (30 jours par défaut, 365 au plus). Le code s'affiche en grand, avec la ligne à recopier dans `box.env` et un bouton pour la copier. Tirer un code ne demande pas la phrase de passe : rien n'est signé, le code est seulement ajouté à `codes.json`.
+
+![Onglet Codes d'enrôlement : formulaire, code tiré, liste des codes](../images/guide-responsable/18-interface-codes.png)
+
+La liste montre tous les codes de `codes.json`, du plus récent au plus ancien :
+
+| Statut | Signification | Action possible |
+|---|---|---|
+| **libre** | Pas encore utilisé, encore valable ; le code est affiché pour pouvoir le redonner à l'installateur | Retirer |
+| **utilisé** | A servi à enrôler la box indiquée ; le code n'est plus affiché | — (gardé pour mémoire) |
+| **expiré** | Plus accepté ; tirer un nouveau code si la box n'est pas encore installée | Retirer |
+
+**Retirer** un code le supprime de `codes.json` : une box qui le présenterait ne serait plus reconnue, et sa demande attendrait comme une demande sans code. Utile si un code a été transmis par erreur ou si la box prévue est abandonnée.
+
+#### Ce qui reste sur votre poste
+
+La clé de l'organisation et sa phrase de passe ne quittent jamais le poste : la page ne parle qu'à l'outil qui l'a servie, qui signe lui-même. Seuls les entrées signées (enrôlement, renouvellement, révocation) et les refus partent vers l'annuaire ; `codes.json` reste sur le poste. L'interface n'écoute que sur `127.0.0.1` ; son adresse contient un jeton tiré au démarrage, exigé à chaque appel, si bien qu'aucun autre site ouvert dans le navigateur ni aucun autre utilisateur du poste ne peut s'en servir. Ne partagez pas cette adresse.
 
 | Option de `interface` | Rôle | Par défaut |
 |---|---|---|
@@ -275,6 +314,7 @@ Renouveler ces 1 entrée(s) pour 90 jours ? Tapez « oui » : oui
 - Par défaut, elle retient les entrées qui expirent dans les **15 jours** (`--avant-jours`), et les renouvelle pour **90 jours** (`--validite-jours`).
 - Une box révoquée n'est jamais renouvelée.
 - Lancez-la régulièrement, par exemple chaque semaine : la colonne « Statut » de l'interface montre les box expirées (§ 3.4).
+- Depuis l'interface locale, onglet « Box de l'organisation » (§ 2.4), les entrées qui expirent bientôt sont cochées d'office : un bouton les renouvelle.
 
 ### 2.7 Changer les groupes d'une box
 
@@ -300,6 +340,8 @@ admin publier --annuaire https://annuaire.exemple.org --entree revocation-nord.j
 - `--entree` : la **dernière** entrée publiée de la box. Si vous n'avez pas le fichier, téléchargez-la depuis l'annuaire : `https://annuaire.exemple.org/directory/v1/entries/<identifiant de la box>`. La révocation reçoit automatiquement le numéro suivant.
 - Les autres box voient la révocation à leur lecture suivante de l'annuaire et refusent dès lors tout échange avec cette box. Le relais refuse aussi ses dépôts.
 - Dans l'interface, la box passe au statut « révoquée ». Une box révoquée n'envoie plus de demande d'enrôlement.
+
+Depuis l'interface locale, onglet « Box de l'organisation » (§ 2.4), le bouton « Révoquer » fait les deux étapes d'un coup, après le motif et le nom de la box recopié.
 
 Pour réintégrer plus tard un établissement, mieux vaut repartir d'une **nouvelle** box (nouvelle identité, nouveau code) que réutiliser celle qui a été révoquée.
 
@@ -522,6 +564,7 @@ Messages de `enroler-attente` (les mêmes cas apparaissent en étiquette dans l'
 | « Lecture des demandes refusée (HTTP 401) » | Mauvais compte de l'annuaire | Vérifier `IMAGUNITY_ANNUAIRE_COMPTE` |
 | « Phrase de passe incorrecte, ou fichier de clé altéré » (interface) | Phrase mal saisie | La ressaisir ; rien n'a été signé |
 | « La demande de cette box a changé depuis l'affichage » (interface) | La box a renvoyé une demande avec d'autres clés entre l'affichage et la validation | Actualiser et comparer de nouveau l'empreinte |
+| « Recopier exactement le nom de la box pour confirmer la révocation » (interface) | Nom mal recopié dans la fenêtre de révocation | Le recopier tel qu'affiché, tirets compris ; rien n'a été signé |
 | « Jeton absent ou incorrect » (interface) | Page ouverte sans l'adresse complète, ou interface relancée depuis | Rouvrir l'adresse affichée par la dernière commande `interface` |
 
 Côté box, une demande refusée depuis l'interface fait écrire au journal « Demande d'enrôlement écartée par l'annuaire : box déjà enrôlée, ou demande refusée par le responsable ».
@@ -559,7 +602,7 @@ Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'
 | `organisation-creer --organisation <id> --cles <fichier>` | Crée la clé de l'organisation et affiche son empreinte (§ 2.1) |
 | `code-creer --codes <fichier> --nom <nom> [--groupes …] [--validite-jours 30]` | Tire un code d'enrôlement pour une box à venir (§ 2.2) |
 | `enroler-attente --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--confirmer]` | Enrôle les box en attente qui ont prouvé leur code (§ 2.3) |
-| `interface --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--port 0] [--ouvrir]` | Interface locale : valider ou refuser les demandes en attente, une à une (§ 2.4) |
+| `interface --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--port 0] [--ouvrir]` | Interface locale : demandes en attente, renouvellement et révocation des box, codes d'enrôlement (§ 2.4) |
 | `renouveler --cles <clé> --annuaire <url> [--avant-jours 15] [--validite-jours 90] [--confirmer]` | Renouvelle les entrées qui expirent bientôt (§ 2.6) |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte d'une clé publique d'organisation |
 | `enroler --cles <clé> --demande <fichier> [--groupes …] [--validite-jours 90] [--serie 1] --sortie <fichier>` | Signe l'entrée d'une box, à la main (§ 2.5, § 2.7) |

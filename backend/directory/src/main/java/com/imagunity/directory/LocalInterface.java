@@ -40,6 +40,8 @@ import tools.jackson.databind.JsonNode;
  */
 final class LocalInterface implements AutoCloseable {
 
+    /** Entrées actives qui expirent dans ce délai : proposées au renouvellement. */
+    static final Duration RENEW_BEFORE = Duration.ofDays(15);
     /** Durée sans usage après laquelle la clé gardée en mémoire est oubliée. */
     static final Duration KEEP = Duration.ofMinutes(15);
     static final int MAX_BODY = 16 * 1024;
@@ -212,6 +214,12 @@ final class LocalInterface implements AutoCloseable {
             case "GET /api/demandes" -> pending();
             case "POST /api/valider" -> validate(body);
             case "POST /api/refuser" -> refuse(body);
+            case "GET /api/box" -> boxes();
+            case "POST /api/renouveler" -> renew(body);
+            case "POST /api/revoquer" -> revoke(body);
+            case "GET /api/codes" -> codes();
+            case "POST /api/codes" -> createCode(body);
+            case "POST /api/codes/retirer" -> removeCode(body);
             case "POST /api/oublier" -> {
                 forget();
                 yield state();
@@ -240,6 +248,7 @@ final class LocalInterface implements AutoCloseable {
         state.put("empreinteOrganisation", publicKey.key().shortCode());
         state.put("annuaire", calls.directory());
         state.put("validiteJours", days);
+        state.put("renouvelerAvantJours", RENEW_BEFORE.toDays());
         state.put("phrase", phraseState());
         return state;
     }
@@ -370,6 +379,201 @@ final class LocalInterface implements AutoCloseable {
         }
         out.println("Demande de la box " + boxId + " refusée");
         return Map.of("message", "Demande refusée : les nouveaux envois de cette box seront ignorés 30 jours");
+    }
+
+    // --- Box de l'organisation : renouvellement, révocation ---
+
+    /** Entrée publiée d'une box, vérifiée avec la clé de l'organisation. */
+    private record Published(SignedDocument document, BoxEntry entry) {
+    }
+
+    /** Entrées publiées dans l'annuaire et signées par cette organisation (les autres sont ignorées). */
+    private Map<UUID, Published> published() throws IOException {
+        HttpResponse<String> response = calls.get("/directory/v1/entries", false);
+        if (response.statusCode() != 200) {
+            throw new Refusal(502, "Lecture de l'annuaire refusée (HTTP " + response.statusCode() + ")");
+        }
+        EntryVerifier verifier = new EntryVerifier(publicKey.organization(), publicKey.key(),
+                SerialMemory.inMemory(), clock);
+        Map<UUID, Published> all = new LinkedHashMap<>();
+        for (JsonNode item : Json.MAPPER.readTree(response.body()).path("entries")) {
+            try {
+                SignedDocument document = SignedDocument.fromJson(item.toString());
+                BoxEntry entry = verifier.verify(document).entry();
+                all.put(entry.boxId(), new Published(document, entry));
+            } catch (DirectoryException | IllegalArgumentException e) {
+                // entrée d'un autre responsable, ou altérée : ni montrée ni réémise
+            }
+        }
+        return all;
+    }
+
+    private List<Map<String, Object>> boxes() throws IOException {
+        Instant now = clock.instant();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Published p : published().values()) {
+            BoxEntry e = p.entry();
+            BoxEntry.Status status = e.statusAt(now);
+            Map<String, Object> b = new LinkedHashMap<>();
+            b.put("boxId", e.boxId().toString());
+            b.put("nom", e.displayName());
+            b.put("groupes", e.groups());
+            b.put("statut", status.name());
+            b.put("serie", e.serial());
+            b.put("valideDu", e.validFrom().toString());
+            b.put("valideJusquau", e.validUntil().toString());
+            b.put("empreinte", HybridPublicKey.decode(e.signingKeys()).shortCode());
+            if (e.revoked()) {
+                b.put("revoqueeLe", e.revokedAt().toString());
+                b.put("motif", e.revocationReason());
+            }
+            b.put("aRenouveler", status == BoxEntry.Status.EXPIRED || status == BoxEntry.Status.ACTIVE
+                    && e.validUntil().isBefore(now.plus(RENEW_BEFORE)));
+            list.add(b);
+        }
+        list.sort(java.util.Comparator.comparing(b -> ((String) b.get("nom")).toLowerCase(java.util.Locale.ROOT)));
+        return list;
+    }
+
+    private static List<UUID> boxIds(JsonNode body) {
+        List<UUID> ids = new ArrayList<>();
+        try {
+            body.path("boxIds").forEach(id -> ids.add(UUID.fromString(id.asString())));
+        } catch (IllegalArgumentException e) {
+            throw new Refusal(400, "Identifiant de box mal formé");
+        }
+        if (ids.isEmpty() || ids.size() > 500) {
+            throw new Refusal(400, "Choisir de 1 à 500 box à renouveler");
+        }
+        return ids;
+    }
+
+    /** Renouvelle les entrées choisies (mêmes clés, adresses et groupes), relues dans l'annuaire à l'instant. */
+    private Map<String, Object> renew(JsonNode body) throws IOException {
+        List<UUID> ids = boxIds(body);
+        Map<UUID, Published> all = published();
+        for (UUID id : ids) {
+            Published p = all.get(id);
+            if (p == null) {
+                throw new Refusal(404, "Box " + id + " absente de l'annuaire");
+            }
+            if (p.entry().revoked()) {
+                throw new Refusal(409, "Box « " + p.entry().displayName() + " » révoquée : pas de renouvellement");
+            }
+        }
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        List<String> done = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+        for (UUID id : ids) {
+            Published p = all.get(id);
+            HttpResponse<String> response = calls.post("/directory/v1/entries",
+                    organization.renew(p.document(), clock.instant(), Duration.ofDays(days)));
+            if (response.statusCode() == 201 || response.statusCode() == 200) {
+                done.add(p.entry().displayName());
+            } else {
+                failed.add(p.entry().displayName() + " (HTTP " + response.statusCode() + " : " + response.body()
+                        + ")");
+            }
+        }
+        String message = done.size() + " entrée(s) renouvelée(s) pour " + days + " jours"
+                + (failed.isEmpty() ? "" : " ; refusée(s) par l'annuaire : " + String.join(", ", failed));
+        out.println(message);
+        if (done.isEmpty()) {
+            throw new Refusal(502, message);
+        }
+        return Map.of("message", message, "phrase", phraseState());
+    }
+
+    /** Révoque une box : entrée de numéro suivant, marquée révoquée, avec le motif. */
+    private Map<String, Object> revoke(JsonNode body) throws IOException {
+        UUID boxId = boxId(body);
+        String reason = body.path("motif").asString("").strip();
+        if (reason.isEmpty() || reason.length() > 500) {
+            throw new Refusal(422, "Motif de révocation obligatoire (500 caractères au plus)");
+        }
+        Published p = published().get(boxId);
+        if (p == null) {
+            throw new Refusal(404, "Box " + boxId + " absente de l'annuaire");
+        }
+        if (p.entry().revoked()) {
+            throw new Refusal(409, "Box « " + p.entry().displayName() + " » déjà révoquée");
+        }
+        if (!p.entry().displayName().equals(body.path("confirmation").asString(""))) {
+            throw new Refusal(422, "Recopier exactement le nom de la box pour confirmer la révocation");
+        }
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        HttpResponse<String> response = calls.post("/directory/v1/entries",
+                organization.revoke(p.document(), clock.instant(), reason));
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new Refusal(502, "Révocation refusée par l'annuaire (HTTP " + response.statusCode() + ") : "
+                    + response.body());
+        }
+        String message = "Box « " + p.entry().displayName() + " » révoquée : les autres box cessent d'échanger avec "
+                + "elle à leur prochaine lecture de l'annuaire";
+        out.println(message + " (" + boxId + ", motif : " + reason + ")");
+        return Map.of("message", message, "phrase", phraseState());
+    }
+
+    // --- Codes d'enrôlement ---
+
+    private List<Map<String, Object>> codes() throws IOException {
+        Instant now = clock.instant();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (EnrollmentCodes.Entry c : EnrollmentCodes.read(codesFile).codes()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", EnrollmentCode.id(c.code()));
+            m.put("nom", c.name());
+            m.put("groupes", c.groups());
+            m.put("creeLe", c.createdAt().toString());
+            m.put("expireLe", c.expiresAt().toString());
+            if (c.usedAt() != null) {
+                m.put("statut", "utilise");
+                m.put("utiliseLe", c.usedAt().toString());
+                m.put("boxId", c.boxId().toString());
+            } else if (!now.isBefore(c.expiresAt())) {
+                m.put("statut", "expire");
+            } else {
+                m.put("statut", "libre");
+                m.put("code", c.code());
+            }
+            list.add(m);
+        }
+        java.util.Collections.reverse(list);
+        return list;
+    }
+
+    private Map<String, Object> createCode(JsonNode body) throws IOException {
+        List<String> groups = new ArrayList<>();
+        body.path("groupes").forEach(g -> groups.add(g.asString().strip()));
+        EnrollmentCodes.Entry entry = EnrollmentCodes.create(body.path("nom").asString(""),
+                groups.stream().filter(g -> !g.isEmpty()).toList(), body.path("validiteJours").asLong(30),
+                clock.instant());
+        EnrollmentCodes.read(codesFile).with(entry).write(codesFile);
+        out.println("Code d'enrôlement tiré pour la box « " + entry.name() + " », valable jusqu'au "
+                + entry.expiresAt().atZone(java.time.ZoneOffset.UTC).toLocalDate());
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("message", "Code tiré pour la box « " + entry.name() + " » : à transmettre hors bande à l'installateur");
+        m.put("code", entry.code());
+        m.put("nom", entry.name());
+        m.put("groupes", entry.groups());
+        m.put("expireLe", entry.expiresAt().toString());
+        m.put("ligne", "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=" + entry.code());
+        return m;
+    }
+
+    /** Retire un code pas encore utilisé : une box qui le présenterait n'est plus reconnue. */
+    private Map<String, Object> removeCode(JsonNode body) throws IOException {
+        String id = body.path("id").asString("");
+        EnrollmentCodes codes = EnrollmentCodes.read(codesFile);
+        EnrollmentCodes.Entry entry = codes.byId(id).orElseThrow(() -> new Refusal(404, "Code inconnu"));
+        if (entry.usedAt() != null) {
+            throw new Refusal(409, "Code déjà utilisé par la box " + entry.boxId() + " : gardé pour mémoire");
+        }
+        codes.without(entry).write(codesFile);
+        out.println("Code d'enrôlement de la box « " + entry.name() + " » retiré");
+        return Map.of("message", "Code de la box « " + entry.name() + " » retiré");
     }
 
     // --- Clé de l'organisation ---
