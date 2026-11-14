@@ -7,6 +7,7 @@
 | [Installation du site central sur Rocky Linux 10](guides/installation-site-central-rocky10.md) | exploitant de l'organisation : relais IU-T, annuaire, serveur de mises à jour (Docker) |
 | [Installation d'une box sur Rocky Linux 10](guides/installation-box-rocky10.md) | exploitant d'un établissement : box sous systemd, sans root, mises à jour automatiques |
 | [Livrer une version](guides/livraison.md) | éditeur : version, registre des numéros, construction, signature hors ligne, publication |
+| [Guide du responsable de l'organisation](guides/guide-responsable.md) | responsable : composants d'ImagUnity, annuaire, enrôlement et révocation des box, interface d'administration |
 | [Notes de version](guides/notes-de-version.md) | tous : ce qu'il faut faire avant une mise à jour |
 
 ## Référence : comment ça marche

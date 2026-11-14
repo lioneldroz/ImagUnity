@@ -108,6 +108,7 @@ Banc d'essai complet sur une machine (relais, deux box, deux Orthanc), pour la c
 
 Index complet : [docs/README.md](docs/README.md).
 
+- **Administrer le réseau** : [guide du responsable de l'organisation](docs/guides/guide-responsable.md) (annuaire, enrôlement des box, règles communes).
 - **Installer et livrer** : [site central](docs/guides/installation-site-central-rocky10.md), [box](docs/guides/installation-box-rocky10.md), [livrer une version](docs/guides/livraison.md), [notes de version](docs/guides/notes-de-version.md).
 - **Comprendre** : [spécification du protocole IU-T](docs/reference/specification-protocole.md), [annuaire signé](docs/reference/annuaire-signe.md), [chiffrement applicatif](docs/reference/chiffrement-applicatif.md), [configuration centralisée](docs/reference/configuration-centralisee.md), [mises à jour signées](docs/reference/mises-a-jour-signees.md).
 - **Auditer** : [dossier d'audit](docs/audit/dossier-audit.md), [cahier des charges](docs/audit/cahier-des-charges.md), [pré-audit interne](docs/audit/pre-audit.md).
