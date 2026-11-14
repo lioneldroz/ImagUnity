@@ -46,12 +46,20 @@ public class PublicationService {
     private final EntryStore store;
     private final EntryVerifier verifier;
     private final Clock clock;
+    private final java.util.function.Consumer<java.util.UUID> published;
 
     public PublicationService(EntryStore store, String organization, HybridPublicKey organizationKey, Clock clock) {
+        this(store, organization, organizationKey, clock, boxId -> { });
+    }
+
+    /** @param published prévenu de chaque entrée publiée (sa demande d'enrôlement n'attend plus) */
+    public PublicationService(EntryStore store, String organization, HybridPublicKey organizationKey, Clock clock,
+                              java.util.function.Consumer<java.util.UUID> published) {
         this.store = store;
         // Le contrôle des numéros se fait ici, contre la base : la mémoire du vérificateur reste vide.
         this.verifier = new EntryVerifier(organization, organizationKey, noMemory(), clock);
         this.clock = clock;
+        this.published = published;
     }
 
     /** Longueur maximale du nom de box (colonne {@code display_name}). */
@@ -87,6 +95,7 @@ public class PublicationService {
             throw new ConflictException("Une autre entrée n° " + entry.serial() + " vient d'être publiée pour la box "
                     + entry.boxId());
         }
+        published.accept(entry.boxId());
         LOG.info("Entrée publiée : box {} « {} », n° {}{}", entry.boxId(), entry.displayName(), entry.serial(),
                 entry.revoked() ? " (révocation)" : "");
         return Outcome.PUBLISHED;

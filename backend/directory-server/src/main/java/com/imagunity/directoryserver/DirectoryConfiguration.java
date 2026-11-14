@@ -65,8 +65,15 @@ class DirectoryConfiguration {
     }
 
     @Bean
-    PublicationService publicationService(EntryStore store, KeyFiles.OrganizationPublicKey key, Clock clock) {
-        return new PublicationService(store, key.organization(), key.key(), clock);
+    PublicationService publicationService(EntryStore store, EnrollmentStore enrollments,
+                                          KeyFiles.OrganizationPublicKey key, Clock clock) {
+        return new PublicationService(store, key.organization(), key.key(), clock, enrollments::delete);
+    }
+
+    @Bean
+    EnrollmentService enrollmentService(EnrollmentStore store, EntryStore entries, KeyFiles.OrganizationPublicKey key,
+                                        Clock clock) {
+        return new EnrollmentService(store, entries, key.organization(), key.key(), clock);
     }
 
     @Bean
@@ -86,6 +93,9 @@ class DirectoryConfiguration {
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations").hasRole("PUBLISHER")
                         // Comptes rendus : signés par la box, vérifiés par le service ; sans compte.
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations/reports").permitAll()
+                        // Demandes d'enrôlement : déposées par les box (sans compte), lues par le responsable.
+                        .requestMatchers(HttpMethod.POST, "/directory/v1/enrollment-requests").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/directory/v1/enrollment-requests").hasRole("PUBLISHER")
                         .requestMatchers("/admin", "/admin/", "/admin/**").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.GET, "/directory/v1/**", "/actuator/health",
                                 "/actuator/health/**").permitAll()

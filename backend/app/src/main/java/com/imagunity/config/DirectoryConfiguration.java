@@ -349,12 +349,25 @@ class DirectoryConfiguration {
         return rules;
     }
 
+    /** Envoi automatique de la demande d'enrôlement, tant que la box n'est pas dans l'annuaire. */
+    @Bean
+    AutomaticEnrollment automaticEnrollment(LocalDirectory directory, DirectoryClient client, BoxIdentity identity,
+                                            TransportPort transport, com.imagunity.api.BoxProperties box,
+                                            DirectoryProperties properties, Clock clock) {
+        try {
+            return new AutomaticEnrollment(directory, client, identity, transport, box.name(),
+                    properties.enrollmentCode(), clock);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE : " + e.getMessage(), e);
+        }
+    }
+
     /** Synchronisation périodique (la première au démarrage), puis nouvelle poignée de main avec les non-liés. */
     @Bean
     SmartLifecycle directoryLifecycle(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                                       DirectoryProperties properties, ExecutorService orchestrationExecutor,
                                       org.springframework.beans.factory.ObjectProvider<CentralRules> central,
-                                      BoxIdentity identity) {
+                                      BoxIdentity identity, AutomaticEnrollment enrollment) {
         return new SmartLifecycle() {
             private ScheduledExecutorService scheduler;
 
@@ -365,7 +378,7 @@ class DirectoryConfiguration {
                         Thread.ofPlatform().name("annuaire").daemon().factory());
                 CentralRules rules = central.getIfAvailable();
                 scheduler.scheduleWithFixedDelay(() -> synchronizeAll(directory, client, handshake,
-                        orchestrationExecutor, rules, identity), 0, properties.syncInterval().toMillis(),
+                        orchestrationExecutor, rules, identity, enrollment), 0, properties.syncInterval().toMillis(),
                         TimeUnit.MILLISECONDS);
             }
 
@@ -393,11 +406,19 @@ class DirectoryConfiguration {
      * révocations ni de configurations reçues jusqu'au redémarrage de la box).
      */
     static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
-                               java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity) {
+                               java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity,
+                               AutomaticEnrollment enrollment) {
         try {
             synchronize(directory, client, handshake, executor);
         } catch (RuntimeException e) {
             LOG.error("Lecture de l'annuaire en échec, nouvel essai au prochain intervalle", e);
+        }
+        if (enrollment != null) {
+            try {
+                enrollment.submitIfNeeded();
+            } catch (RuntimeException e) {
+                LOG.error("Envoi de la demande d'enrôlement en échec, nouvel essai au prochain intervalle", e);
+            }
         }
         if (rules != null) {
             try {

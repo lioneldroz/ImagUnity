@@ -153,8 +153,32 @@ async function charger() {
   try {
     etat = await api("GET", "/admin/api/state");
     afficher();
+    afficherDemandes(await api("GET", "/directory/v1/enrollment-requests"));
   } catch (e) {
     message("Lecture de l'état impossible : " + e.message, "erreur");
+  }
+}
+
+function afficherDemandes(demandes) {
+  const corps = $("demandes");
+  corps.replaceChildren();
+  for (const d of demandes) {
+    const ligne = document.createElement("tr");
+    const nom = cellule(ligne, d.displayName);
+    const id = document.createElement("div");
+    id.className = "discret";
+    id.textContent = d.boxId;
+    nom.appendChild(id);
+    cellule(ligne, d.fingerprint, "mono");
+    cellule(ligne, d.withCode ? "joint (vérifié par l'outil du responsable)" : "aucun : comparer l'empreinte",
+      d.withCode ? "" : "refus");
+    cellule(ligne, date(d.receivedAt));
+    corps.appendChild(ligne);
+  }
+  if (!demandes.length) {
+    const ligne = document.createElement("tr");
+    cellule(ligne, "Aucune demande en attente").colSpan = 4;
+    corps.appendChild(ligne);
   }
 }
 

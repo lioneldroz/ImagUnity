@@ -22,6 +22,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param identityTpm            protège les clés de la box par un secret scellé dans son TPM (au lieu de la phrase de
  *                               passe, qui ne sert plus qu'une dernière fois pour la migration)
  * @param identityTpmPcrs        registres PCR auxquels lier le secret, par exemple {@code sha256:0,7} (vide : aucun)
+ * @param enrollmentCode         code d'enrôlement donné par le responsable (vide : aucun) ; la box l'utilise pour
+ *                               prouver l'origine de la demande d'enrôlement qu'elle envoie à l'annuaire
  */
 @ConfigurationProperties("imagunity.directory")
 public record DirectoryProperties(
@@ -34,7 +36,8 @@ public record DirectoryProperties(
         String identityPassphrase,
         String identityPassphraseFile,
         @DefaultValue("false") boolean identityTpm,
-        String identityTpmPcrs) {
+        String identityTpmPcrs,
+        String enrollmentCode) {
 
     /** Constructeur utilisé pour lier la configuration. */
     @ConstructorBinding
@@ -44,7 +47,8 @@ public record DirectoryProperties(
     /** Annuaire sans phrase de passe pour l'identité (tests). */
     public DirectoryProperties(boolean enabled, URI url, Path organizationKey, String organizationCode,
                                Path identityFile, Duration syncInterval) {
-        this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, null, null, false, null);
+        this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, null, null, false, null,
+                null);
     }
 
     /** Annuaire sans TPM (tests). */
@@ -52,7 +56,7 @@ public record DirectoryProperties(
                                Path identityFile, Duration syncInterval, String identityPassphrase,
                                String identityPassphraseFile) {
         this(enabled, url, organizationKey, organizationCode, identityFile, syncInterval, identityPassphrase,
-                identityPassphraseFile, false, null);
+                identityPassphraseFile, false, null, null);
     }
 
     /** Phrase de passe de l'identité ({@code null} : aucune). */

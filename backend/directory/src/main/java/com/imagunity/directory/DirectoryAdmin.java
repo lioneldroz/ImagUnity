@@ -11,10 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -111,6 +113,9 @@ public final class DirectoryAdmin {
                 case "proteger" -> protect(options);
                 case "configuration-signer" -> signConfiguration(options);
                 case "configuration-publier" -> publishConfiguration(options);
+                case "code-creer" -> createCode(options);
+                case "enroler-attente" -> enrollPending(options);
+                case "renouveler" -> renewAll(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -197,8 +202,7 @@ public final class DirectoryAdmin {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
         long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
         long serial = Long.parseLong(o.getOrDefault("serie", "1"));
-        java.util.List<String> groups = o.containsKey("groupes") ? java.util.Arrays.stream(o.get("groupes")
-                .split(",")).map(String::strip).filter(g -> !g.isEmpty()).toList() : java.util.List.of();
+        java.util.List<String> groups = groupsOption(o);
         SignedDocument entry = organization.enroll(request, clock.instant(), Duration.ofDays(days), serial, groups);
         write(Path.of(require(o, "sortie")), entry);
         out.println("Box « " + r.displayName() + " » (" + r.boxId() + ") enrôlée pour " + days + " jours, n° "
@@ -298,15 +302,212 @@ public final class DirectoryAdmin {
         return 0;
     }
 
-    /** Dépôt d'un document signé sur le service d'annuaire, avec le compte du responsable. */
-    private HttpResponse<String> post(Map<String, String> o, String path, SignedDocument document)
-            throws IOException {
+    // --- Enrôlement automatique ---
+
+    /** Tire un code d'enrôlement pour une box à venir, et le garde dans le fichier des codes du responsable. */
+    private int createCode(Map<String, String> o) throws IOException {
+        Path file = Path.of(require(o, "codes"));
+        String name = require(o, "nom").strip();
+        if (name.isEmpty() || name.length() > 256) {
+            throw new IllegalArgumentException("Nom de box vide ou trop long (256 caractères au plus)");
+        }
+        java.util.List<String> groups = BoxEntry.groups(groupsOption(o));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "30"));
+        if (days < 1 || days > 365) {
+            throw new IllegalArgumentException("Validité du code : de 1 à 365 jours");
+        }
+        Instant now = clock.instant();
+        EnrollmentCodes.Entry entry = new EnrollmentCodes.Entry(EnrollmentCode.generate(), name, groups, now,
+                now.plus(Duration.ofDays(days)), null, null);
+        EnrollmentCodes.read(file).with(entry).write(file);
+        out.println("Code d'enrôlement de la box « " + name + " »" + (groups.isEmpty() ? "" : ", groupes "
+                + groups) + ", valable jusqu'au " + day(entry.expiresAt()) + " : " + entry.code());
+        out.println("À donner à l'installateur de la box, qui le recopie dans sa configuration :");
+        out.println("  IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=" + entry.code());
+        return 0;
+    }
+
+    /**
+     * Enrôle les box dont la demande attend dans l'annuaire et porte la preuve d'un code d'enrôlement de ce
+     * responsable : signe leur entrée (nom et groupes du code), la publie, et marque le code comme utilisé.
+     */
+    private int enrollPending(Map<String, String> o) throws IOException {
+        Organization organization = organization(o);
+        Path file = Path.of(require(o, "codes"));
+        EnrollmentCodes codes = EnrollmentCodes.read(file);
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
+        HttpResponse<String> response = get(o, "/directory/v1/enrollment-requests", true);
+        if (response.statusCode() != 200) {
+            err.println("Lecture des demandes refusée (HTTP " + response.statusCode() + ") : " + response.body());
+            return 1;
+        }
+        tools.jackson.databind.JsonNode pending = Json.MAPPER.readTree(response.body());
+        int enrolled = 0;
+        int skipped = 0;
+        for (tools.jackson.databind.JsonNode item : pending) {
+            EnrollmentSubmission submission = EnrollmentSubmission.fromJson(item.get("submission").toString());
+            EnrollmentRequest request;
+            try {
+                request = EnrollmentRequest.verify(submission.request());
+            } catch (DirectoryException e) {
+                err.println("Demande illisible ou mal signée : laissée de côté (" + e.getMessage() + ")");
+                skipped++;
+                continue;
+            }
+            String label = "« " + request.displayName() + " » (" + request.boxId() + ", empreinte "
+                    + HybridPublicKey.decode(request.signingKeys()).shortCode() + ")";
+            Optional<EnrollmentCodes.Entry> code = codes.byId(submission.code());
+            String refusal = code.isEmpty() ? "sans code d'enrôlement de ce responsable : à traiter à la main, après "
+                    + "comparaison de l'empreinte avec l'installateur (enroler)"
+                    : !submission.provenBy(code.get().code()) ? "preuve du code invalide : demande refusée"
+                    : code.get().usedAt() != null && !request.boxId().equals(code.get().boxId())
+                    ? "code déjà utilisé par la box " + code.get().boxId()
+                    : !clock.instant().isBefore(code.get().expiresAt()) ? "code expiré le "
+                    + day(code.get().expiresAt()) + " : en tirer un autre (code-creer)" : null;
+            if (refusal != null) {
+                out.println(label + " : " + refusal);
+                skipped++;
+                continue;
+            }
+            EnrollmentCodes.Entry c = code.get();
+            long serial = nextSerial(o, request.boxId());
+            out.println("Box « " + c.name() + " »" + (c.name().equals(request.displayName()) ? ""
+                    : " (nom proposé par la box : « " + request.displayName() + " »)") + ", " + request.boxId());
+            out.println("  empreinte " + HybridPublicKey.decode(request.signingKeys()).shortCode() + ", code d'enrôlement "
+                    + "vérifié, groupes " + (c.groups().isEmpty() ? "aucun" : c.groups()) + ", n° " + serial + ", "
+                    + days + " jours");
+            if (!confirmed(o, "Enrôler cette box ? Tapez « oui » pour confirmer")) {
+                out.println("  Laissée en attente");
+                skipped++;
+                continue;
+            }
+            SignedDocument entry = organization.enroll(submission.request(), clock.instant(), Duration.ofDays(days),
+                    serial, c.groups(), c.name());
+            HttpResponse<String> published = post(o, "/directory/v1/entries", entry);
+            if (published.statusCode() != 201 && published.statusCode() != 200) {
+                err.println("  Publication refusée (HTTP " + published.statusCode() + ") : " + published.body());
+                skipped++;
+                continue;
+            }
+            codes = codes.replace(c, c.used(request.boxId(), clock.instant()));
+            codes.write(file);
+            out.println("  Enrôlée et publiée");
+            enrolled++;
+        }
+        out.println(enrolled + " box enrôlée(s), " + skipped + " demande(s) laissée(s) de côté");
+        return 0;
+    }
+
+    /** Renouvelle d'un coup les entrées actives qui expirent bientôt (mêmes clés, adresses et groupes). */
+    private int renewAll(Map<String, String> o) throws IOException {
+        Organization organization = organization(o);
+        long before = Long.parseLong(o.getOrDefault("avant-jours", "15"));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
+        HttpResponse<String> response = get(o, "/directory/v1/entries", false);
+        if (response.statusCode() != 200) {
+            err.println("Lecture de l'annuaire refusée (HTTP " + response.statusCode() + ") : " + response.body());
+            return 1;
+        }
+        EntryVerifier verifier = new EntryVerifier(organization.id(), organization.publicKey(),
+                SerialMemory.inMemory(), clock);
+        Instant limit = clock.instant().plus(Duration.ofDays(before));
+        java.util.List<SignedDocument> due = new java.util.ArrayList<>();
+        for (tools.jackson.databind.JsonNode item : Json.MAPPER.readTree(response.body()).path("entries")) {
+            SignedDocument document = SignedDocument.fromJson(item.toString());
+            BoxEntry e;
+            try {
+                e = verifier.verify(document).entry();
+            } catch (DirectoryException ex) {
+                continue; // entrée d'un autre responsable, ou altérée : jamais renouvelée
+            }
+            if (e.statusAt(clock.instant()) == BoxEntry.Status.ACTIVE && e.validUntil().isBefore(limit)) {
+                out.println("« " + e.displayName() + " » (" + e.boxId() + ") : expire le " + day(e.validUntil()));
+                due.add(document);
+            }
+        }
+        if (due.isEmpty()) {
+            out.println("Aucune entrée n'expire dans les " + before + " jours");
+            return 0;
+        }
+        if (!confirmed(o, "Renouveler ces " + due.size() + " entrée(s) pour " + days + " jours ? Tapez « oui »")) {
+            err.println("Renouvellement abandonné");
+            return 1;
+        }
+        int failures = 0;
+        for (SignedDocument document : due) {
+            HttpResponse<String> published = post(o, "/directory/v1/entries",
+                    organization.renew(document, clock.instant(), Duration.ofDays(days)));
+            if (published.statusCode() != 201 && published.statusCode() != 200) {
+                err.println("Publication refusée (HTTP " + published.statusCode() + ") : " + published.body());
+                failures++;
+            }
+        }
+        out.println((due.size() - failures) + " entrée(s) renouvelée(s)" + (failures == 0 ? "" : ", " + failures
+                + " refusée(s)"));
+        return failures == 0 ? 0 : 1;
+    }
+
+    /** Numéro de la prochaine entrée de cette box : 1, ou le suivant de son entrée publiée. */
+    private long nextSerial(Map<String, String> o, UUID boxId) throws IOException {
+        HttpResponse<String> current = get(o, "/directory/v1/entries/" + boxId, false);
+        if (current.statusCode() == 404) {
+            return 1;
+        }
+        if (current.statusCode() != 200) {
+            throw new DirectoryException("Lecture de l'entrée de la box " + boxId + " refusée (HTTP "
+                    + current.statusCode() + ")");
+        }
+        return Json.read(SignedDocument.fromJson(current.body()).payload(), BoxEntry.class, "Entrée de box").serial()
+                + 1;
+    }
+
+    private boolean confirmed(Map<String, String> o, String question) {
+        if (o.containsKey("confirmer")) {
+            return true;
+        }
+        String answer = prompt.answer(question);
+        return answer != null && answer.strip().equalsIgnoreCase("oui");
+    }
+
+    private static java.util.List<String> groupsOption(Map<String, String> o) {
+        return o.containsKey("groupes") ? java.util.Arrays.stream(o.get("groupes").split(",")).map(String::strip)
+                .filter(g -> !g.isEmpty()).toList() : java.util.List.of();
+    }
+
+    private static String day(Instant instant) {
+        return instant.atZone(java.time.ZoneOffset.UTC).toLocalDate().toString();
+    }
+
+    /** Lecture sur le service d'annuaire ; avec le compte du responsable si {@code account}. */
+    private HttpResponse<String> get(Map<String, String> o, String path, boolean account) throws IOException {
         String directory = require(o, "annuaire").replaceAll("/+$", "");
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(directory + path)).GET();
+        if (account) {
+            request.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(account(o)
+                    .getBytes(StandardCharsets.UTF_8)));
+        }
+        try (HttpClient http = HttpClient.newHttpClient()) {
+            return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Lecture interrompue", e);
+        }
+    }
+
+    private String account(Map<String, String> o) {
         String account = o.getOrDefault("compte", environment.get(ACCOUNT_VARIABLE));
         if (account == null || !account.contains(":")) {
             throw new MissingOptionException("Compte de dépôt manquant : --compte utilisateur:mot-de-passe ou "
                     + ACCOUNT_VARIABLE);
         }
+        return account;
+    }
+
+    /** Dépôt d'un document signé sur le service d'annuaire, avec le compte du responsable. */
+    private HttpResponse<String> post(Map<String, String> o, String path, SignedDocument document)
+            throws IOException {
+        String directory = require(o, "annuaire").replaceAll("/+$", "");
+        String account = account(o);
         HttpRequest request = HttpRequest.newBuilder(URI.create(directory + path))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Basic " + Base64.getEncoder()
@@ -422,6 +623,11 @@ public final class DirectoryAdmin {
                   proteger           --cles <fichier> [--box]
                   configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier> [--confirmer]
                   configuration-publier --annuaire <url> --configuration <fichier> [--compte <utilisateur:mot de passe>]
+                  code-creer         --codes <fichier> --nom <nom de la box> [--groupes a,b] [--validite-jours 30]
+                  enroler-attente    --cles <clé organisation> --codes <fichier> --annuaire <url> [--validite-jours 90]
+                                     [--confirmer]
+                  renouveler         --cles <clé organisation> --annuaire <url> [--avant-jours 15] [--validite-jours 90]
+                                     [--confirmer]
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;

@@ -40,6 +40,7 @@ button:disabled { opacity: .5; cursor: default; }
 .statut-ACTIVE { color: var(--ok); }
 .statut-REVOKED, .statut-EXPIRED, .refus { color: var(--alerte); }
 .discret { color: var(--discret); font-size: 13px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
 .version { border-top: 1px solid var(--bord); padding: 10px 0; }
 .version:first-child { border-top: 0; }
 .version h3 { font-size: 15px; margin: 0 0 4px; }

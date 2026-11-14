@@ -118,6 +118,12 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
     }
 
     /** Même box, révoquée : numéro suivant. */
+    /** Entrée renouvelée : numéro suivant, valide à partir de {@code from} pour {@code validity}. */
+    BoxEntry renew(Instant from, java.time.Duration validity) {
+        return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
+                from, from.plus(validity), false, null, null, groups);
+    }
+
     BoxEntry revoke(Instant at, String reason) {
         return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
                 validFrom,
