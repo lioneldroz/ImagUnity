@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" font-family="Inter, Arial, sans-serif" role="img" aria-label="Les composants d'ImagUnity : une box dans chaque établissement, le relais et l'annuaire sur le site central, le responsable qui signe hors ligne">
+  <defs>
+    <marker id="fleche" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3A4556"/>
+    </marker>
+  </defs>
+  <rect width="960" height="470" fill="#F6F7F4"/>
+  <!-- Établissement A -->
+  <rect x="20" y="40" width="250" height="250" rx="16" fill="#FDFDFB" stroke="#C9D2DC"/>
+  <text x="145" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1B2433">Établissement A</text>
+  <rect x="55" y="95" width="180" height="56" rx="10" fill="#E3E6EA"/>
+  <text x="145" y="128" text-anchor="middle" font-size="16" fill="#1B2433">PACS</text>
+  <rect x="55" y="205" width="180" height="62" rx="10" fill="#DCE8F5" stroke="#2563A8" stroke-width="2"/>
+  <text x="145" y="232" text-anchor="middle" font-size="17" font-weight="700" fill="#2563A8">Box A</text>
+  <text x="145" y="253" text-anchor="middle" font-size="13" fill="#1B2433">empaquette, chiffre, envoie</text>
+  <line x1="145" y1="151" x2="145" y2="203" stroke="#3A4556" stroke-width="2" marker-end="url(#fleche)"/>
+  <text x="155" y="182" font-size="12" fill="#4A5568">DICOM</text>
+  <!-- Établissement B -->
+  <rect x="690" y="40" width="250" height="250" rx="16" fill="#FDFDFB" stroke="#C9D2DC"/>
+  <text x="815" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1B2433">Établissement B</text>
+  <rect x="725" y="95" width="180" height="56" rx="10" fill="#E3E6EA"/>
+  <text x="815" y="128" text-anchor="middle" font-size="16" fill="#1B2433">PACS</text>
+  <rect x="725" y="205" width="180" height="62" rx="10" fill="#DCE8F5" stroke="#2563A8" stroke-width="2"/>
+  <text x="815" y="232" text-anchor="middle" font-size="17" font-weight="700" fill="#2563A8">Box B</text>
+  <text x="815" y="253" text-anchor="middle" font-size="13" fill="#1B2433">vérifie, déchiffre, restitue</text>
+  <line x1="815" y1="203" x2="815" y2="153" stroke="#3A4556" stroke-width="2" marker-end="url(#fleche)"/>
+  <text x="825" y="182" font-size="12" fill="#4A5568">DICOM</text>
+  <!-- Site central -->
+  <rect x="320" y="40" width="320" height="250" rx="16" fill="#FDFDFB" stroke="#C9D2DC"/>
+  <text x="480" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1B2433">Site central de l'organisation</text>
+  <rect x="355" y="95" width="250" height="62" rx="10" fill="#FBE3D3" stroke="#B84A12" stroke-width="2"/>
+  <text x="480" y="122" text-anchor="middle" font-size="17" font-weight="700" fill="#B84A12">Relais</text>
+  <text x="480" y="143" text-anchor="middle" font-size="13" fill="#1B2433">garde des morceaux chiffrés, aveugle</text>
+  <rect x="355" y="200" width="250" height="68" rx="10" fill="#E8E2F4" stroke="#5B3FA3" stroke-width="2"/>
+  <text x="480" y="227" text-anchor="middle" font-size="17" font-weight="700" fill="#5B3FA3">Annuaire</text>
+  <text x="480" y="248" text-anchor="middle" font-size="13" fill="#1B2433">box de confiance, règles communes</text>
+  <!-- Flux -->
+  <path d="M235 222 C 290 200, 300 135, 353 128" fill="none" stroke="#3A4556" stroke-width="2" marker-end="url(#fleche)"/>
+  <text x="252" y="160" font-size="12" fill="#4A5568">dépose</text>
+  <path d="M725 222 C 670 200, 660 135, 607 128" fill="none" stroke="#3A4556" stroke-width="2" marker-end="url(#fleche)"/>
+  <text x="660" y="160" font-size="12" fill="#4A5568">relève</text>
+  <line x1="235" y1="250" x2="353" y2="240" stroke="#5B3FA3" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#fleche)"/>
+  <line x1="725" y1="250" x2="607" y2="240" stroke="#5B3FA3" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#fleche)"/>
+  <text x="250" y="280" font-size="12" fill="#5B3FA3">lit</text>
+  <text x="695" y="280" font-size="12" fill="#5B3FA3">lit</text>
+  <!-- Responsable -->
+  <rect x="330" y="350" width="300" height="80" rx="16" fill="#14213D"/>
+  <text x="480" y="382" text-anchor="middle" font-size="17" font-weight="700" fill="#F3F4EE">Responsable de l'organisation</text>
+  <text x="480" y="406" text-anchor="middle" font-size="13" fill="#D5DEEA">signe hors ligne avec sa clé</text>
+  <line x1="480" y1="348" x2="480" y2="270" stroke="#5B3FA3" stroke-width="2" marker-end="url(#fleche)"/>
+  <text x="490" y="318" font-size="12" fill="#5B3FA3">publie des documents signés</text>
+  <text x="20" y="455" font-size="12" fill="#6B7480">Toutes les connexions partent des box : aucun port entrant n'est ouvert dans les établissements.</text>
+</svg>
