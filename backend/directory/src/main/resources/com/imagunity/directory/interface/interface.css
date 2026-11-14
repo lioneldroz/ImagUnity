@@ -68,3 +68,4 @@ input[type=number] { width: 100%; font: inherit; color: inherit; background: var
 .code-grand { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 24px; letter-spacing: .06em; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--code); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; }
 button.petit { padding: 2px 10px; font-size: 13px; }
+td.mono { white-space: nowrap; }

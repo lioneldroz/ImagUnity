@@ -62,7 +62,7 @@ La box envoie seule sa demande à l'annuaire. Puis, dans une autre fenêtre :
 admin.bat enroler-attente --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090
 ```
 
-Ou, pour valider les demandes une à une depuis le navigateur (bouton « Valider » ; une demande sans code se valide après comparaison de l'empreinte) :
+Ou, depuis le navigateur, avec l'interface locale du responsable : valider les demandes une à une (une demande sans code se valide après comparaison de l'empreinte), renouveler ou révoquer les box, tirer les codes d'enrôlement :
 
 ```bat
 admin.bat interface --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090 --ouvrir

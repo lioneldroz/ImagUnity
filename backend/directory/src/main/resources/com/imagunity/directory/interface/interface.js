@@ -356,14 +356,14 @@ async function tirerCode(evenement) {
     const r = await api("POST", "/api/codes", {
       nom: $("code-nom").value, groupes: listeGroupes($("code-groupes").value), validiteJours: Number($("code-jours").value),
     });
+    $("formulaire-code").reset();
+    await charger();
     $("nouveau-nom").textContent = r.nom;
     $("nouveau-expire").textContent = jour(r.expireLe);
     $("nouveau-valeur").textContent = r.code;
     $("nouveau-ligne").textContent = r.ligne;
     $("nouveau-code").hidden = false;
-    $("formulaire-code").reset();
     message(r.message, "ok");
-    await charger();
   } catch (e) {
     message(e.message, "erreur");
   }
