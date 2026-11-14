@@ -188,7 +188,7 @@ La durée de validité des entrées se règle avec `--validite-jours` (90 jours 
 
 ### 2.4 L'interface locale du responsable
 
-Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a trois onglets : « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement ».
+Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a quatre onglets : « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement », et « Organisations partenaires » pour la fédération (§ 2.9).
 
 ```bash
 admin interface --cles organisation.json --codes codes.json --annuaire https://annuaire.exemple.org
@@ -344,6 +344,53 @@ admin publier --annuaire https://annuaire.exemple.org --entree revocation-nord.j
 Depuis l'interface locale, onglet « Box de l'organisation » (§ 2.4), le bouton « Révoquer » fait les deux étapes d'un coup, après le motif et le nom de la box recopié.
 
 Pour réintégrer plus tard un établissement, mieux vaut repartir d'une **nouvelle** box (nouvelle identité, nouveau code) que réutiliser celle qui a été révoquée.
+
+### 2.9 Échanger avec une autre organisation (fédération)
+
+Les box de deux organisations différentes (deux régions, deux pays) peuvent échanger des examens si **les deux responsables se reconnaissent mutuellement**. Rien ne relie les relais entre eux : la box émettrice dépose l'annonce directement sur le relais du destinataire, et la box destinataire retire les morceaux sur le relais de l'émetteur. Le principe et ses limites sont dans la [note de fédération](../reference/federation-organisations.md).
+
+**Ce que signe chaque responsable : une reconnaissance**, qui fixe :
+
+- la **clé du partenaire**, identifiée par son empreinte, à comparer de vive voix (téléphone, visioconférence) avec le responsable partenaire ;
+- l'**adresse de son annuaire**, où le service d'annuaire de votre organisation lira ses entrées ;
+- ses **relais autorisés** : une box du partenaire qui publierait une autre adresse est ignorée. Ce choix fixe aussi la juridiction où peuvent séjourner les morceaux (par exemple, aucun relais hors UE) ;
+- le **périmètre** : les groupes de vos box autorisés à échanger avec lui, et les groupes de ses box acceptés. `*` veut dire tous. **Sans groupes, aucun échange** ;
+- une validité (90 jours par défaut, comme les entrées), renouvelable et révocable.
+
+```bash
+admin reconnaitre --cles organisation.json --annuaire https://annuaire.exemple.org \
+    --partenaire bourgogne-fc.pub.json --annuaire-partenaire https://annuaire.bourgogne-fc.example \
+    --relais https://relais.bourgogne-fc.example \
+    --groupes-locaux imagerie-nord --groupes-partenaire neurochirurgie
+```
+
+```text
+Organisation partenaire « bourgogne-fc », empreinte Q2EJ-PEZ7-GJE3-UW6C-QL7O-J7GV
+  relais autorisés : https://relais.bourgogne-fc.example
+  groupes locaux : imagerie-nord ; groupes du partenaire : neurochirurgie
+  nouvelle reconnaissance, valable 90 jours
+Empreinte vérifiée avec le responsable partenaire, hors bande ? Tapez « oui » : oui
+Reconnaissance signée et publiée. L'échange ne marchera que lorsque « bourgogne-fc » aura reconnu cette organisation à son tour.
+```
+
+- La clé du partenaire est son fichier `organisation.json.pub.json`, qu'il vous transmet. Seule compte l'empreinte confirmée de vive voix.
+- Relancer `reconnaitre` avec d'autres groupes, d'autres relais ou pour une nouvelle période **réémet** la reconnaissance (numéro suivant).
+- `reconnaissances` liste les accords et leur état. `reconnaissance-revoquer --empreinte <empreinte> --motif <texte>` met fin à un accord ; relancer `reconnaitre` le rétablit.
+- L'interface locale fait la même chose, onglet « Organisations partenaires » : coller la clé, lire l'empreinte, cocher la comparaison, signer.
+
+**Ensuite**, sans rien d'autre à faire de votre côté :
+
+1. le service d'annuaire de votre organisation lit les entrées du partenaire et les relaie à vos box et à votre relais ;
+2. les box couvertes par l'accord apparaissent dans la console des exploitants, avec le nom de leur organisation ; l'exploitant les **appaire** comme une box de l'organisation ;
+3. votre relais accepte que les box du partenaire couvertes par l'accord **déposent des messages** dans les files de vos box. C'est tout : elles n'y créent ni file ni morceau ;
+4. chaque box vérifie tout elle-même : signature de l'entrée par la clé de l'accord, périmètre, relais, état.
+
+**Un échange ne marche que si les deux responsables ont signé.** Si seul l'un l'a fait, le relais de l'autre refuse les dépôts : la box émettrice garde ses messages et l'écrit dans son journal (« accord à sens unique »).
+
+**Un identifiant de box n'appartient qu'à une organisation.** Si le partenaire publie une entrée sous l'identifiant d'une de vos box, ou de celle d'un autre partenaire, cette entrée est écartée, et la console des box le signale (« identifiant(s) de box revendiqué(s) par deux organisations »). Prévenez le responsable partenaire, et en cas de doute révoquez l'accord.
+
+À mettre en place avant toute fédération réelle : les limites de débit du relais et la preuve de fraîcheur des annuaires (étapes 2 et 3 de la [note de fédération](../reference/federation-organisations.md)).
+
 
 ---
 
@@ -565,6 +612,7 @@ Messages de `enroler-attente` (les mêmes cas apparaissent en étiquette dans l'
 | « Phrase de passe incorrecte, ou fichier de clé altéré » (interface) | Phrase mal saisie | La ressaisir ; rien n'a été signé |
 | « La demande de cette box a changé depuis l'affichage » (interface) | La box a renvoyé une demande avec d'autres clés entre l'affichage et la validation | Actualiser et comparer de nouveau l'empreinte |
 | « Recopier exactement le nom de la box pour confirmer la révocation » (interface) | Nom mal recopié dans la fenêtre de révocation | Le recopier tel qu'affiché, tirets compris ; rien n'a été signé |
+| « La clé collée a changé depuis l'affichage de son empreinte » (interface, partenaires) | Clé modifiée après « Lire la clé » | Relire la clé et comparer de nouveau l'empreinte |
 | « Jeton absent ou incorrect » (interface) | Page ouverte sans l'adresse complète, ou interface relancée depuis | Rouvrir l'adresse affichée par la dernière commande `interface` |
 
 Côté box, une demande refusée depuis l'interface fait écrire au journal « Demande d'enrôlement écartée par l'annuaire : box déjà enrôlée, ou demande refusée par le responsable ».
@@ -603,6 +651,9 @@ Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'
 | `code-creer --codes <fichier> --nom <nom> [--groupes …] [--validite-jours 30]` | Tire un code d'enrôlement pour une box à venir (§ 2.2) |
 | `enroler-attente --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--confirmer]` | Enrôle les box en attente qui ont prouvé leur code (§ 2.3) |
 | `interface --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--port 0] [--ouvrir]` | Interface locale : demandes en attente, renouvellement et révocation des box, codes d'enrôlement (§ 2.4) |
+| `reconnaitre --cles <clé> --annuaire <url> --partenaire <clé publique> --annuaire-partenaire <url> --relais <url,…> [--groupes-locaux …] [--groupes-partenaire …] [--validite-jours 90]` | Reconnaît une organisation partenaire, ou réémet sa reconnaissance (§ 2.9) |
+| `reconnaissances --cles <clé> --annuaire <url>` | Liste les organisations partenaires et l'état des accords (§ 2.9) |
+| `reconnaissance-revoquer --cles <clé> --annuaire <url> --empreinte <empreinte> --motif <texte>` | Met fin à un accord (§ 2.9) |
 | `renouveler --cles <clé> --annuaire <url> [--avant-jours 15] [--validite-jours 90] [--confirmer]` | Renouvelle les entrées qui expirent bientôt (§ 2.6) |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte d'une clé publique d'organisation |
 | `enroler --cles <clé> --demande <fichier> [--groupes …] [--validite-jours 90] [--serie 1] --sortie <fichier>` | Signe l'entrée d'une box, à la main (§ 2.5, § 2.7) |
