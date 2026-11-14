@@ -158,7 +158,7 @@ public final class IuTransport implements TransportPort {
     private final IuMsgClient messages;
     /** Un envoyeur de morceaux par relais. */
     private final java.util.Map<URI, IuFileUploader> uploaders = new java.util.LinkedHashMap<>();
-    private final java.util.Map<URI, Object> queueLocks = new ConcurrentHashMap<>();
+    private final java.util.Map<URI, java.util.concurrent.locks.ReentrantLock> queueLocks = new ConcurrentHashMap<>();
     /** Mêmes relais, un seul essai : relais écartés récemment. */
     private final java.util.Map<URI, IuFileUploader> onceUploaders = new java.util.LinkedHashMap<>();
     private final java.util.Map<URI, Instant> unreachable = new ConcurrentHashMap<>();
@@ -279,9 +279,17 @@ public final class IuTransport implements TransportPort {
      */
     private IuMailbox.Queue queue(URI relay, boolean patient) {
         // Un verrou par relais : un relais injoignable au démarrage ne retient pas la création des autres files.
-        synchronized (queueLocks.computeIfAbsent(relay, r -> new Object())) {
+        java.util.concurrent.locks.ReentrantLock lock = queueLock(relay);
+        lock.lock();
+        try {
             return queueLocked(relay, patient);
+        } finally {
+            lock.unlock();
         }
+    }
+
+    private java.util.concurrent.locks.ReentrantLock queueLock(URI relay) {
+        return queueLocks.computeIfAbsent(relay, r -> new java.util.concurrent.locks.ReentrantLock());
     }
 
     private IuMailbox.Queue queueLocked(URI relay, boolean patient) {
@@ -359,12 +367,21 @@ public final class IuTransport implements TransportPort {
     }
 
     private String address(URI relay) {
+        // File en cours de création (relais injoignable : nouvelles tentatives pendant plusieurs minutes) : l'adresse
+        // réservée, sans attendre. La demande d'enrôlement ne reste pas bloquée derrière un relais absent.
+        java.util.concurrent.locks.ReentrantLock lock = queueLock(relay);
+        if (!lock.tryLock()) {
+            return store.queue(relay).map(q -> q.address().toString())
+                    .orElseGet(() -> new QueueAddress(relay, reservedSendId(relay)).toString());
+        }
         try {
-            return queue(relay, false).address().toString();
+            return queueLocked(relay, false).address().toString();
         } catch (TransportException e) {
             LOG.log(Level.INFO, "File IU-T sur {0} pas encore créée ({1}) : adresse réservée publiée", relay,
                     e.getMessage());
             return new QueueAddress(relay, reservedSendId(relay)).toString();
+        } finally {
+            lock.unlock();
         }
     }
 

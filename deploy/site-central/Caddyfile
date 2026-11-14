@@ -19,7 +19,8 @@
 	}
 }
 
-# Annuaire : lecture publique (documents signés), dépôt et administration réservés au réseau d'administration.
+# Annuaire : lecture publique (documents signés), dépôt et administration réservés au réseau d'administration ;
+# les box déposent leurs comptes rendus et leurs demandes d'enrôlement.
 {$ANNUAIRE_HOTE} {
 	handle /directory/v1/* {
 		@depot_hors_admin {
@@ -28,6 +29,13 @@
 			not remote_ip {$RESEAU_ADMIN}
 		}
 		respond @depot_hors_admin 403
+		# Demandes d'enrôlement : déposées par les box depuis leurs sites, lues seulement depuis l'administration.
+		@demandes_hors_admin {
+			method GET
+			path /directory/v1/enrollment-requests
+			not remote_ip {$RESEAU_ADMIN}
+		}
+		respond @demandes_hors_admin 403
 		reverse_proxy directory:8090
 	}
 	handle /admin* {

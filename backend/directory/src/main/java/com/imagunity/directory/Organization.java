@@ -45,11 +45,38 @@ public final class Organization {
      */
     public SignedDocument enroll(SignedDocument request, Instant now, Duration validity, long serial,
                                  java.util.List<String> groups) {
+        return enroll(request, now, validity, serial, groups, null);
+    }
+
+    /**
+     * Enrôle la box qui a signé cette demande, sous le nom choisi par le responsable (code d'enrôlement).
+     *
+     * @param displayName nom de la box dans l'annuaire ({@code null} : celui de la demande)
+     */
+    public SignedDocument enroll(SignedDocument request, Instant now, Duration validity, long serial,
+                                 java.util.List<String> groups, String displayName) {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
-        BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), r.displayName(), r.signingKeys(), r.encryptionKeys(),
-                r.transport(),
+        BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), displayName == null ? r.displayName() : displayName,
+                r.signingKeys(), r.encryptionKeys(), r.transport(),
                 serial, now, now.plus(validity), false, null, null, groups);
         return SignedDocument.sign(Json.write(entry), keys);
+    }
+
+    /**
+     * Renouvelle l'entrée d'une box : mêmes clés, adresses et groupes, nouvelle période de validité à partir de
+     * maintenant, numéro suivant.
+     *
+     * @throws DirectoryException si l'entrée n'est pas signée par cette organisation, ou si la box est révoquée
+     */
+    public SignedDocument renew(SignedDocument entry, Instant now, Duration validity) {
+        if (!entry.isSignedBy(publicKey())) {
+            throw new DirectoryException("Entrée non signée par cette organisation");
+        }
+        BoxEntry current = Json.read(entry.payload(), BoxEntry.class, "Entrée de box");
+        if (current.revoked()) {
+            throw new DirectoryException("Box révoquée : pas de renouvellement");
+        }
+        return SignedDocument.sign(Json.write(current.renew(now, validity)), keys);
     }
 
     /**

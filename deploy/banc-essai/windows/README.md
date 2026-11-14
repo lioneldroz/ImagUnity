@@ -48,6 +48,22 @@ dev-box.bat b
 
 Au premier démarrage, chaque box crée son identité dans `donnees\box-a` ou `donnees\box-b`.
 
+## Enrôler les box automatiquement (code d'enrôlement)
+
+```bat
+admin.bat code-creer --codes donnees\codes.json --nom "Box d'essai A"
+set CODE_ENROLEMENT=<code affiché>
+dev-box.bat
+```
+
+La box envoie seule sa demande à l'annuaire. Puis, dans une autre fenêtre :
+
+```bat
+admin.bat enroler-attente --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090
+```
+
+Même chose pour la box B (`set CODE_ENROLEMENT=…` avec un autre code, puis `dev-box.bat b`). Détails : [guide du responsable, § 2](../../../docs/guides/guide-responsable.md).
+
 ## Enrôler et appairer les box (à la main)
 
 Ces étapes suivent le [guide d'installation d'une box, § 9](../../../docs/guides/installation-box-rocky10.md).

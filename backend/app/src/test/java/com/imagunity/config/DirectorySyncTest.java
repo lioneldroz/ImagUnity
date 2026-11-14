@@ -27,9 +27,11 @@ class DirectorySyncTest {
 
         // Erreur imprévue dans chacune des deux lectures (ici, des dépendances absentes) : journalisée, jamais
         // propagée, sinon le planificateur annulerait toutes les lectures suivantes.
-        assertThatCode(() -> DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, rules, null))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, null, null))
-                .doesNotThrowAnyException();
+        // Erreur imprévue aussi dans l'envoi de la demande d'enrôlement (box sans annuaire local).
+        AutomaticEnrollment broken = new AutomaticEnrollment(null, client, null, null, "Box", null, Clock.systemUTC());
+        assertThatCode(() -> DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, rules, null,
+                broken)).doesNotThrowAnyException();
+        assertThatCode(() -> DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, null, null,
+                null)).doesNotThrowAnyException();
     }
 }

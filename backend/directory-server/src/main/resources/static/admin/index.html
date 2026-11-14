@@ -31,6 +31,19 @@
   </section>
 
   <section>
+    <h2>Demandes d'enrôlement en attente</h2>
+    <p class="aide">Envoyées par les box qui ne sont pas encore enrôlées. Elles se signent sur le poste du responsable, hors ligne :
+      <code>admin enroler-attente --cles organisation.json --codes codes.json --annuaire …</code>. L'outil reconnaît les box
+      à leur code d'enrôlement ; une demande sans code se traite à la main, après comparaison de l'empreinte avec l'installateur.</p>
+    <div class="tableau">
+      <table>
+        <thead><tr><th>Box</th><th>Empreinte</th><th>Code d'enrôlement</th><th>Reçue le</th></tr></thead>
+        <tbody id="demandes"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
     <h2>Brouillon</h2>
     <p class="aide">Les règles suivent la syntaxe de la configuration locale : <code>and</code> (tous les champs), <code>or</code> (un champ suffit), valeurs exactes, <code>*</code>, <code>?</code>, alternatives <code>|</code>, négation <code>!</code>. Laisser un bloc vide pour garder la configuration locale des box.</p>
     <div class="grille">

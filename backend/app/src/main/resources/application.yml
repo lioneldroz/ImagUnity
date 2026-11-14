@@ -73,6 +73,9 @@ imagunity:
     # à l’état de démarrage mesuré (par exemple sha256:0,7).
     identity-tpm: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM:false}
     identity-tpm-pcrs: ${IMAGUNITY_DIRECTORY_IDENTITY_TPM_PCRS:}
+    # Code d'enrôlement donné par le responsable : tant qu'elle n'est pas dans l'annuaire, la box lui envoie sa demande
+    # d'enrôlement avec la preuve de ce code (docs/guides/guide-responsable.md).
+    enrollment-code: ${IMAGUNITY_DIRECTORY_ENROLLMENT_CODE:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
   # Configuration centralisée (docs/reference/configuration-centralisee.md) : règles de priorité et de routage signées par le
   # responsable, lues avec l'annuaire et appliquées sans redémarrage. false : configuration locale seulement.

@@ -22,6 +22,7 @@ public final class DirectoryClient {
     private final URI entries;
     private final URI configurations;
     private final URI reports;
+    private final URI enrollments;
     private final HttpClient http;
     private final Duration timeout;
 
@@ -30,6 +31,7 @@ public final class DirectoryClient {
         this.entries = URI.create(base + "/directory/v1/entries");
         this.configurations = URI.create(base + "/directory/v1/configurations");
         this.reports = URI.create(base + "/directory/v1/configurations/reports");
+        this.enrollments = URI.create(base + "/directory/v1/enrollment-requests");
         this.timeout = timeout;
         this.http = HttpClient.newBuilder().connectTimeout(timeout).build();
     }
@@ -79,6 +81,26 @@ public final class DirectoryClient {
             throw new DirectoryException("Compte rendu refusé par l'annuaire (HTTP " + response.statusCode() + ") : "
                     + response.body());
         }
+    }
+
+    /**
+     * Transmet la demande d'enrôlement de la box au service d'annuaire, où elle attend la signature du responsable.
+     *
+     * @return faux si l'annuaire répond que la box est déjà enrôlée
+     * @throws DirectoryException si l'annuaire est injoignable ou refuse la demande
+     */
+    public boolean submitEnrollment(EnrollmentSubmission submission) {
+        Reply response = send(HttpRequest.newBuilder(enrollments).timeout(timeout)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(submission.toJson())).build(), "Demande d'enrôlement");
+        if (response.statusCode() == 409) {
+            return false;
+        }
+        if (response.statusCode() != 202) {
+            throw new DirectoryException("Demande d'enrôlement refusée par l'annuaire (HTTP " + response.statusCode()
+                    + ") : " + response.body());
+        }
+        return true;
     }
 
     /** Cause lisible d'une erreur réseau : certaines (connexion refusée…) n'ont pas de message. */

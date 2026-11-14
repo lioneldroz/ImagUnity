@@ -129,11 +129,7 @@ public final class KeyFiles {
     public static void reprotect(Path file, char[] current, char[] next) throws IOException {
         String content = isEncryptionFile(file) ? encryptionContent(readEncryptionPrivate(file, current), next)
                 : content(readPrivate(file, current), next);
-        Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
-        Files.deleteIfExists(temporary);
-        createOwnerOnly(temporary);
-        Files.writeString(temporary, content, StandardCharsets.UTF_8);
-        Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        replace(file, content);
     }
 
     private static boolean isEncryptionFile(Path file) throws IOException {
@@ -243,6 +239,15 @@ public final class KeyFiles {
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    /** Remplace le contenu d'un fichier d'un coup (fichier temporaire lisible par son seul propriétaire, puis renommage). */
+    public static void replace(Path file, String content) throws IOException {
+        Path temporary = file.resolveSibling(file.getFileName() + ".nouveau");
+        Files.deleteIfExists(temporary);
+        createOwnerOnly(temporary);
+        Files.writeString(temporary, content, StandardCharsets.UTF_8);
+        Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static void createOwnerOnly(Path file) throws IOException {

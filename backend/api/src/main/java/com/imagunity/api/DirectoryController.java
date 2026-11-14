@@ -2,6 +2,7 @@ package com.imagunity.api;
 
 import com.imagunity.directory.BoxEntry;
 import com.imagunity.directory.EnrollmentRequest;
+import com.imagunity.directory.SignedDocument;
 import com.imagunity.directory.LocalDirectory;
 import com.imagunity.domain.peer.Peer;
 import com.imagunity.domain.peer.PeerRepository;
@@ -122,17 +123,26 @@ public class DirectoryController {
             throw new NoSuchElementException("Annuaire non activé sur cette box");
         }
         String displayName = name == null || name.isBlank() ? box.name() : name;
+        String request = enrollmentRequest(me, transport, displayName, clock).toJson();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"demande-" + me.boxId() + ".json\"")
+                .body(request);
+    }
+
+    /**
+     * Demande d'enrôlement de la box, signée par elle, avec ses adresses de contact (si le transport peut les donner).
+     * Sert au téléchargement depuis la console et à l'envoi automatique à l'annuaire.
+     */
+    public static SignedDocument enrollmentRequest(BoxIdentity me, TransportPort transport, String displayName,
+                                                   Clock clock) {
         Map<String, String> addresses = new HashMap<>();
         try {
             addresses.putAll(transport.contactAddresses());
         } catch (TransportException e) {
             LOG.log(System.Logger.Level.WARNING, "Demande d''enrôlement sans adresse de contact : {0}", e.getMessage());
         }
-        String request = EnrollmentRequest.create(me.keys(), me.encryption().publicKey(), me.boxId(), displayName,
-                addresses, clock.instant()).toJson();
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"demande-" + me.boxId() + ".json\"")
-                .body(request);
+        return EnrollmentRequest.create(me.keys(), me.encryption().publicKey(), me.boxId(), displayName, addresses,
+                clock.instant());
     }
 
     /** Se connecte à l'adresse publiée d'une box active de l'organisation, sous le nom choisi par l'opérateur. */
