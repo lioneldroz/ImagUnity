@@ -14,6 +14,39 @@ export interface DirectoryBox {
   pairedAs: string | null
   /** L’entrée publie les clés de chiffrement de la box (sinon : entrée à réémettre). */
   encrypted: boolean
+  /** Organisation partenaire de la box (null : box de l’organisation). */
+  organization: string | null
+  /** Motif pour lequel cette box ne peut pas échanger avec elle (accord, périmètre), ou null. */
+  refusal: string | null
+}
+
+export interface SyncState {
+  at: string | null
+  accepted: number
+  rejected: number
+  error: string | null
+}
+
+/** Organisation partenaire reconnue par le responsable (fédération). */
+export interface PartnerOrganization {
+  organization: string
+  shortCode: string
+  status: BoxStatus
+  validUntil: string
+  localGroups: string[]
+  partnerGroups: string[]
+  relays: string[]
+  lastSync: SyncState | null
+  /** Box utilisables de ce partenaire. */
+  boxes: number
+}
+
+/** Identifiant de box revendiqué par deux organisations. */
+export interface IdentifierCollision {
+  boxId: string
+  claimant: string
+  holder: string
+  at: string
 }
 
 /** GET /api/v1/directory. */
@@ -21,8 +54,10 @@ export interface DirectoryView {
   enabled: boolean
   boxId: string | null
   shortCode: string | null
-  lastSync: { at: string | null; accepted: number; rejected: number; error: string | null } | null
+  lastSync: SyncState | null
   boxes: DirectoryBox[]
+  partners: PartnerOrganization[]
+  collisions: IdentifierCollision[]
 }
 
 export const fetchDirectory = () => getJson<DirectoryView>('/api/v1/directory')

@@ -389,7 +389,10 @@ class FederationTest {
             assertThat(client.fetchPartnerEntries(fpB)).containsExactly(nord);
             assertThatThrownBy(() -> client.fetchPartnerEntries("../entries")).hasMessageContaining("mal formée");
             status[0] = 404;
-            assertThatThrownBy(client::fetchRecognitions).hasMessageContaining("404");
+            assertThat(client.fetchRecognitions()).as("annuaire antérieur à la fédération").isEmpty();
+            status[0] = 500;
+            assertThatThrownBy(client::fetchRecognitions).hasMessageContaining("500");
+            status[0] = 404;
             assertThatThrownBy(() -> client.fetchPartnerEntries(fpB)).hasMessageContaining("404");
         } finally {
             server.stop(0);

@@ -209,7 +209,7 @@ public final class IuTransport implements TransportPort {
         this.patientDownloader = new IuFileDownloader(http, clock,
                 new Retry(settings.ttl(), retry.maxDelay(), retry.sleeper()));
         this.outbox = new IuOutbox(store, messages, boxId, identity, this::addressesOf, clock,
-                settings.keepState());
+                settings.keepState(), id -> !directory.partnerRelays(id).isEmpty());
         // Équitable : les paquets partent dans l'ordre où ils sont confiés (les prioritaires d'abord).
         this.transfers = new Semaphore(settings.parallel(), true);
         this.receptions = new Semaphore(settings.parallel(), true);
@@ -438,10 +438,14 @@ public final class IuTransport implements TransportPort {
     }
 
     private IuDirectory.Partner sendable(UUID to) {
-        IuDirectory.Partner partner = directory.partner(to)
-                .orElseThrow(() -> new TransportException("Box " + to + " absente de l'annuaire"));
+        IuDirectory.Partner partner = directory.partner(to).orElseThrow(() -> new TransportException(
+                directory.refusal(boxId, to).orElse("Box " + to + " absente de l'annuaire")));
         if (!partner.active()) {
             throw new TransportException("Box « " + partner.displayName() + " » non active dans l'annuaire");
+        }
+        Optional<String> refusal = directory.refusal(boxId, to);
+        if (refusal.isPresent()) {
+            throw new TransportException(refusal.get());
         }
         if (partner.encryptionKey() == null || partner.address() == null) {
             throw new TransportException("Box « " + partner.displayName()
@@ -489,6 +493,12 @@ public final class IuTransport implements TransportPort {
         if (partner.isEmpty() || !partner.get().active()) {
             LOG.log(Level.WARNING, "Message {0} de la box {1}, non active dans l''annuaire : écarté", message.type(),
                     message.boxId());
+            return;
+        }
+        Optional<String> refusal = directory.refusal(boxId, message.boxId());
+        if (refusal.isPresent()) {
+            LOG.log(Level.WARNING, "Message {0} de la box {1} écarté : {2}", message.type(), message.boxId(),
+                    refusal.get());
             return;
         }
         boolean[] created = new boolean[1];
@@ -834,7 +844,7 @@ public final class IuTransport implements TransportPort {
         String json = String.join("", fragments);
         FileDescription description;
         try {
-            description = knownReplicas(FileDescription.fromJson(json));
+            description = knownReplicas(FileDescription.fromJson(json), incoming.boxId());
             if (!description.transferId().equals(incoming.transferId())) {
                 throw new ProtocolException("identifiant de transfert différent de celui des fragments");
             }
@@ -853,20 +863,23 @@ public final class IuTransport implements TransportPort {
     }
 
     /**
-     * Les morceaux ne sont téléchargés que depuis les relais de l'organisation, configurés dans cette box : les
-     * répliques sur un autre relais sont écartées (l'émetteur peut en utiliser que cette box ne connaît pas) ; un
-     * morceau sans réplique sur un relais connu rend la description inutilisable.
+     * Les morceaux ne sont téléchargés que depuis les relais de l'organisation, configurés dans cette box, ou, pour une
+     * box d'une organisation partenaire, depuis les relais que fixe sa reconnaissance : les répliques sur un autre
+     * relais sont écartées (l'émetteur peut en utiliser que cette box ne connaît pas) ; un morceau sans réplique sur un
+     * relais admis rend la description inutilisable.
      */
-    private FileDescription knownReplicas(FileDescription description) {
+    private FileDescription knownReplicas(FileDescription description, UUID sender) {
         Set<String> allowed = new java.util.HashSet<>();
-        settings.relays().forEach(r -> allowed.add(r.toString()));
+        settings.relays().forEach(r -> allowed.add(r.toString().replaceAll("/+$", "")));
+        directory.partnerRelays(sender).forEach(r -> allowed.add(r.replaceAll("/+$", "")));
         List<FileDescription.Chunk> chunks = new ArrayList<>();
         boolean filtered = false;
         for (FileDescription.Chunk chunk : description.chunks()) {
             List<FileDescription.Replica> replicas = chunk.replicas().stream()
                     .filter(r -> allowed.contains(r.relay().replaceAll("/+$", ""))).toList();
             if (replicas.isEmpty()) {
-                throw new TransportException("morceau sur un relais hors de l'organisation : "
+                throw new TransportException("morceau sur un relais non admis (ni de l'organisation, ni autorisé pour "
+                        + "l'organisation de l'émetteur) : "
                         + chunk.replicas().getFirst().relay());
             }
             filtered |= replicas.size() != chunk.replicas().size();

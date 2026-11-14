@@ -287,6 +287,61 @@ class DirectoryWiringTest {
         greeted.getFirst().run();
     }
 
+    @Test
+    void synchronizationAlsoReadsRecognitionsAndPartnerEntries() throws Exception {
+        com.imagunity.directory.Organization org = new com.imagunity.directory.Organization("chu-exemple", ORG_KEYS);
+        com.imagunity.directory.Organization partner = new com.imagunity.directory.Organization("bourgogne-fc",
+                HybridKeyPair.generate());
+        String relay = "https://relais.bourgogne-fc.example";
+        com.imagunity.directory.Recognition.Partner p = new com.imagunity.directory.Recognition.Partner(partner.id(),
+                partner.publicKey().encoded(), "https://annuaire.bourgogne-fc.example", List.of(relay));
+        Instant now = Instant.now();
+        SignedDocument recognition = org.recognize(p, new com.imagunity.directory.Recognition.Scope(List.of("*"),
+                List.of("*")), now, Duration.ofDays(90));
+        UUID foreign = UUID.randomUUID();
+        SignedDocument entry = partner.enroll(com.imagunity.directory.EnrollmentRequest.create(HybridKeyPair.generate(),
+                foreign, "Box de Bourgogne", java.util.Map.of("iu", relay + "/iu/v1/queues/q"), now), now,
+                Duration.ofDays(30), 1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/directory/v1/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            String body = path.endsWith("/recognitions") ? "{\"organization\":\"chu-exemple\",\"recognitions\":["
+                    + recognition.toJson() + "]}" : path.contains("/partners/")
+                    ? "{\"organization\":\"bourgogne-fc\",\"entries\":[" + entry.toJson() + "]}"
+                    : "{\"organization\":\"chu-exemple\",\"entries\":[]}";
+            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        EntryCache none = new EntryCache() {
+            @Override
+            public void save(UUID boxId, long serial, SignedDocument document, Instant fetchedAt) {
+            }
+
+            @Override
+            public List<SignedDocument> entries() {
+                return List.of();
+            }
+        };
+        try {
+            LocalDirectory local = new LocalDirectory(new EntryVerifier("chu-exemple", ORG_KEYS.publicKey(),
+                    SerialMemory.inMemory(), Clock.systemUTC()), none, Clock.systemUTC())
+                    .federate(new com.imagunity.directory.RecognitionVerifier("chu-exemple", ORG_KEYS.publicKey(),
+                            SerialMemory.inMemory()), SerialMemory.inMemory());
+            PeerHandshake handshake = new PeerHandshake(new InMemoryPeers(), new DisabledTransport(), identity, local,
+                    Runnable::run);
+            DirectoryConfiguration.synchronize(local, new DirectoryClient(URI.create("http://127.0.0.1:"
+                    + server.getAddress().getPort()), Duration.ofSeconds(5)), handshake, r -> { });
+            assertThat(local.recognitions()).hasSize(1);
+            assertThat(local.entry(foreign)).isPresent();
+            assertThat(local.partnerOf(foreign)).isPresent();
+        } finally {
+            server.stop(0);
+        }
+    }
+
     /** Dépôt de partenaires vide. */
     private static final class InMemoryPeers implements PeerRepository {
         @Override

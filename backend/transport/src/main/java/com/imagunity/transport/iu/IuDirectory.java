@@ -54,6 +54,22 @@ public interface IuDirectory {
     /** Box dont l'entrée publie cette adresse de file. */
     Optional<Partner> byAddress(String address);
 
+    /**
+     * Relais d'une organisation partenaire où cette box (si elle en est une) dépose ses morceaux : ceux que fixe la
+     * reconnaissance. Vide pour une box de l'organisation (ses relais sont ceux de la configuration).
+     */
+    default List<String> partnerRelays(UUID boxId) {
+        return List.of();
+    }
+
+    /**
+     * Motif pour lequel cette box ({@code self}) ne peut pas échanger avec l'autre (fédération : accord, périmètre,
+     * relais) ; vide si l'échange est permis par l'annuaire.
+     */
+    default Optional<String> refusal(UUID self, UUID other) {
+        return Optional.empty();
+    }
+
     /** Lecture de la vue locale de l'annuaire de la box (entrées vérifiées). */
     static IuDirectory of(LocalDirectory directory, Clock clock) {
         return new IuDirectory() {
@@ -67,6 +83,16 @@ public interface IuDirectory {
                 return directory.entries().stream()
                         .filter(e -> addresses(e).contains(address))
                         .findFirst().map(this::partner);
+            }
+
+            @Override
+            public List<String> partnerRelays(UUID boxId) {
+                return directory.partnerOf(boxId).map(r -> r.partner().relays()).orElse(List.of());
+            }
+
+            @Override
+            public Optional<String> refusal(UUID self, UUID other) {
+                return directory.exchangeRefusal(self, other);
             }
 
             private Partner partner(BoxEntry entry) {

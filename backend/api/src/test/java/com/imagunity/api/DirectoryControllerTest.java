@@ -210,4 +210,55 @@ class DirectoryControllerTest {
         assertThat(controller.transportUnavailable(new com.imagunity.transport.TransportException("x")).getStatus())
                 .isEqualTo(502);
     }
+
+    @Test
+    void partnerOrganizationsTheirBoxesAndCollisionsAreShown() {
+        LocalDirectory directory = directory();
+        directory.federate(new com.imagunity.directory.RecognitionVerifier("chu-exemple", organization.publicKey(),
+                SerialMemory.inMemory()), SerialMemory.inMemory());
+        com.imagunity.directory.Organization partnerOrg = new com.imagunity.directory.Organization("bourgogne-fc",
+                HybridKeyPair.generate());
+        String relay = "https://relais.bourgogne-fc.example";
+        com.imagunity.directory.Recognition.Partner p = new com.imagunity.directory.Recognition.Partner(
+                partnerOrg.id(), partnerOrg.publicKey().encoded(), "https://annuaire.bourgogne-fc.example",
+                List.of(relay));
+        directory.synchronizeRecognitions(() -> List.of(organization.recognize(p,
+                new com.imagunity.directory.Recognition.Scope(List.of("imagerie"), List.of("*")), NOW,
+                Duration.ofDays(90))));
+        UUID foreign = UUID.randomUUID();
+        directory.synchronizePartner(p.fingerprint(), () -> List.of(
+                partnerOrg.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), foreign, "Site E",
+                        Map.of("iu", relay + "/iu/v1/queues/e"), NOW), NOW, Duration.ofDays(30), 1),
+                partnerOrg.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), partner.boxId(), "Usurpatrice",
+                        Map.of("iu", relay + "/iu/v1/queues/u"), NOW), NOW, Duration.ofDays(30), 1)));
+        DirectoryController controller = new DirectoryController(Providers.of(BoxIdentity.class, me),
+                Providers.of(LocalDirectory.class, directory), new BoxProperties("box-a"), clock, transport,
+                new PairingService(peers, transport, clock, Duration.ofHours(1)), peers);
+
+        DirectoryController.DirectoryView view = controller.directory();
+        assertThat(view.boxes()).extracting(DirectoryController.BoxView::displayName).as("box locales d'abord")
+                .containsExactly("Site A", "Site B", "Site C", "Site D", "Site E");
+        DirectoryController.BoxView e = view.boxes().getLast();
+        assertThat(e.organization()).isEqualTo("bourgogne-fc");
+        assertThat(e.refusal()).contains("pas dans les groupes autorisés");
+        assertThat(view.boxes().getFirst().organization()).isNull();
+        assertThat(view.boxes().getFirst().refusal()).isNull();
+        assertThat(view.partners()).singleElement().satisfies(partnerView -> {
+            assertThat(partnerView.organization()).isEqualTo("bourgogne-fc");
+            assertThat(partnerView.shortCode()).isEqualTo(partnerOrg.publicKey().shortCode());
+            assertThat(partnerView.status()).isEqualTo(BoxEntry.Status.ACTIVE);
+            assertThat(partnerView.localGroups()).containsExactly("imagerie");
+            assertThat(partnerView.relays()).containsExactly(relay);
+            assertThat(partnerView.lastSync().accepted()).isEqualTo(1);
+            assertThat(partnerView.boxes()).isEqualTo(1);
+        });
+        assertThat(view.collisions()).singleElement().satisfies(c -> {
+            assertThat(c.boxId()).isEqualTo(partner.boxId());
+            assertThat(c.claimant()).startsWith("bourgogne-fc (");
+            assertThat(c.holder()).isEqualTo("cette organisation");
+        });
+        assertThatThrownBy(() -> controller.pair(foreign, new DirectoryController.PairRequest("site-e")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("pas dans les groupes autorisés");
+        assertThat(controller(false).directory().partners()).isEmpty();
+    }
 }

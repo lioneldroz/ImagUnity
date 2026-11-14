@@ -38,6 +38,9 @@ final class IuOutbox implements AutoCloseable {
     private final HybridKeyPair identity;
     private final Function<UUID, List<QueueAddress>> addressesOf;
     private final Clock clock;
+    private final java.util.function.Predicate<UUID> partnerBox;
+    /** Dernier avertissement « accord à sens unique » par box : au plus un par heure. */
+    private final java.util.Map<UUID, java.time.Instant> oneWayWarned = new java.util.concurrent.ConcurrentHashMap<>();
     private final Duration maxAge;
     private final Semaphore signal = new Semaphore(0);
     private volatile Thread sender;
@@ -45,6 +48,14 @@ final class IuOutbox implements AutoCloseable {
 
     IuOutbox(IuStore store, IuMsgClient client, UUID boxId, HybridKeyPair identity,
              Function<UUID, List<QueueAddress>> addressesOf, Clock clock, Duration maxAge) {
+        this(store, client, boxId, identity, addressesOf, clock, maxAge, id -> false);
+    }
+
+    /** @param partnerBox vrai pour une box d'une organisation partenaire (fédération) */
+    IuOutbox(IuStore store, IuMsgClient client, UUID boxId, HybridKeyPair identity,
+             Function<UUID, List<QueueAddress>> addressesOf, Clock clock, Duration maxAge,
+             java.util.function.Predicate<UUID> partnerBox) {
+        this.partnerBox = partnerBox;
         this.store = store;
         this.client = client;
         this.boxId = boxId;
@@ -129,6 +140,7 @@ final class IuOutbox implements AutoCloseable {
                             pending.to(), e.getMessage());
                     store.removePending(pending.seq());
                 } else {
+                    warnOneWay(pending.to(), e);
                     LOG.log(Level.INFO, "Dépôt pour la box {0} à réessayer : {1}", pending.to(), e.getMessage());
                     return false;
                 }
@@ -138,6 +150,25 @@ final class IuOutbox implements AutoCloseable {
             }
         }
         return true;
+    }
+
+    /**
+     * Relais d'une organisation partenaire qui ne connaît pas cette box : le plus souvent, le partenaire n'a pas (ou
+     * plus) reconnu cette organisation. Signalé clairement, une fois par heure et par box ; le message reste en attente.
+     */
+    private void warnOneWay(UUID to, RelayRefusedException e) {
+        if ((e.status() != 401 && e.status() != 403) || !partnerBox.test(to)) {
+            return;
+        }
+        java.time.Instant now = clock.instant();
+        java.time.Instant last = oneWayWarned.get(to);
+        if (last != null && last.plus(Duration.ofHours(1)).isAfter(now)) {
+            return;
+        }
+        oneWayWarned.put(to, now);
+        LOG.log(Level.WARNING, "Dépôt refusé par le relais de l''organisation partenaire de la box {0} (HTTP {1}) : "
+                + "elle n''a sans doute pas encore reconnu la vôtre (accord à sens unique) ; message gardé", to,
+                e.status());
     }
 
     /** Dépose en continu sur un fil virtuel, jusqu'à {@link #close()}. */

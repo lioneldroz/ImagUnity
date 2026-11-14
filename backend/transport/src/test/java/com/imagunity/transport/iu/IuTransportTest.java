@@ -44,7 +44,20 @@ class IuTransportTest {
     private final Retry quick = new Retry(Duration.ofSeconds(2), Duration.ofMillis(200), d -> Thread.sleep(20));
     /** Annuaire des essais : entrées modifiables (adresse, statut). */
     private final Map<UUID, IuDirectory.Partner> entries = new ConcurrentHashMap<>();
+    /** Fédération : relais admis pour les box d'un partenaire, refus d'échange (« soi→autre »). */
+    private final Map<UUID, List<String>> partnerRelays = new ConcurrentHashMap<>();
+    private final Map<String, String> refusals = new ConcurrentHashMap<>();
     private final IuDirectory directory = new IuDirectory() {
+        @Override
+        public List<String> partnerRelays(UUID boxId) {
+            return partnerRelays.getOrDefault(boxId, List.of());
+        }
+
+        @Override
+        public Optional<String> refusal(UUID self, UUID other) {
+            return Optional.ofNullable(refusals.get(self + "→" + other));
+        }
+
         @Override
         public Optional<IuDirectory.Partner> partner(UUID boxId) {
             return Optional.ofNullable(entries.get(boxId));
@@ -278,6 +291,21 @@ class IuTransportTest {
         assertThat(refused.flush()).isTrue();
         assertThat(store.pending()).isEmpty();
         refused.close();
+
+        // Box inconnue du relais du destinataire (organisation partenaire qui ne l'a pas reconnue) : gardé, signalé.
+        store.addPending(RelayHarness.B, new byte[] {1}, now);
+        UUID stranger = UUID.randomUUID();
+        IuOutbox oneWay = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), stranger,
+                HybridKeyPair.generate(), id -> List.of(QueueAddress.parse(real.address())),
+                Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1), id -> true);
+        assertThat(oneWay.flush()).isFalse();
+        assertThat(oneWay.flush()).as("signalé une fois par heure").isFalse();
+        IuOutbox local = new IuOutbox(store, new IuMsgClient(http, Clock.systemUTC()), stranger,
+                HybridKeyPair.generate(), id -> List.of(QueueAddress.parse(real.address())),
+                Clock.fixed(now, ZoneOffset.UTC), Duration.ofDays(1), id -> false);
+        assertThat(local.flush()).isFalse();
+        assertThat(store.pending()).hasSize(1);
+        store.removePending(store.pending().getFirst().seq());
     }
 
     @Test
@@ -345,6 +373,44 @@ class IuTransportTest {
         assertThat(b.all(TransportEvent.FileOffered.class)).isEmpty();
         assertThat(b.transport().store().incoming()).as("seule t3 attend sa suite")
                 .extracting(IuStore.Incoming::transferId).containsExactly("TTTTTTTTTTTTTTTTTTTTt3");
+    }
+
+    @Test
+    void partnerOrganizationsFollowTheFederationRules() throws Exception {
+        Box a = a(true);
+        Box b = b(true);
+        PeerId[] peers = pair(a, b);
+        IuMsgClient client = new IuMsgClient(http, Clock.systemUTC());
+        QueueAddress toB = QueueAddress.parse(entries.get(RelayHarness.B).address());
+
+        // Hors du périmètre de l'accord : rien ne part, et ce qui arrive est écarté.
+        refusals.put(RelayHarness.A + "→" + RelayHarness.B, "Accord avec « bourgogne-fc » révoqué");
+        assertThatThrownBy(() -> a.transport().sendMessage(peers[0], "x")).hasMessageContaining("révoqué");
+        IuDirectory.Partner bEntry = entries.remove(RelayHarness.B);
+        assertThatThrownBy(() -> a.transport().sendMessage(peers[0], "x")).as("hors périmètre : motif de l'accord")
+                .hasMessageContaining("révoqué");
+        entries.put(RelayHarness.B, bEntry);
+        refusals.clear();
+        refusals.put(RelayHarness.B + "→" + RelayHarness.A, "hors du périmètre");
+        b.transport().onMessage(SignedMessage.of(IuTransport.TEXT, RelayHarness.A, RelayHarness.B, "hors périmètre",
+                Instant.now()));
+        refusals.clear();
+
+        // Morceaux sur le relais d'une organisation partenaire : admis seulement s'il figure dans l'accord.
+        String partnerRelay = "https://relais.partenaire.example";
+        FileDescription onPartnerRelay = new FileDescription("IU1", "PPPPPPPPPPPPPPPPPPPPPP", FileDescription.COMPLETE,
+                "paquet.tar.zst.iu1", 256 * 1024, 1, 10, "0".repeat(64), List.of(new FileDescription.Chunk(0,
+                "0".repeat(64), List.of(new FileDescription.Replica(partnerRelay + "/", "r".repeat(43),
+                Codec.base64Url(java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+                        .getPrivate().getEncoded()))))), Instant.now().plus(Duration.ofHours(1)));
+        partnerRelays.put(RelayHarness.A, List.of(partnerRelay));
+        deposit(client, toB, IuTransport.FILE, Codec.json().writeValueAsString(
+                new IuTransport.Fragment("PPPPPPPPPPPPPPPPPPPPPP", 0, 1, onPartnerRelay.toJson())));
+        deposit(client, toB, IuTransport.TEXT, "fin");
+        assertThat(b.await(TransportEvent.MessageReceived.class, m -> m.text().equals("fin"))).isNotNull();
+        assertThat(b.all(TransportEvent.MessageReceived.class)).extracting(TransportEvent.MessageReceived::text)
+                .doesNotContain("hors périmètre");
+        assertThat(b.await(TransportEvent.FileOffered.class)).isNotNull();
     }
 
     private static void deposit(IuMsgClient client, QueueAddress to, String type, String body) throws Exception {
