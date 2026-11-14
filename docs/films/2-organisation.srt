@@ -1,0 +1,64 @@
+1
+00:00:02,000 --> 00:00:08,000
+Le rôle du responsable de l'organisation : décider quelles box en font partie,
+et quelles règles communes elles appliquent.
+
+2
+00:00:10,000 --> 00:00:18,000
+Tout part d'une clé, créée une seule fois sur le poste du responsable,
+protégée par une phrase de passe, et gardée hors ligne.
+
+3
+00:00:18,000 --> 00:00:25,000
+Son empreinte courte est communiquée de vive voix à l'exploitant du site central
+et aux installateurs : chaque box l'épingle.
+
+4
+00:00:27,000 --> 00:00:34,000
+L'annuaire publie les entrées des box : clés, adresses, groupes, validité.
+Toutes sont signées par la clé du responsable.
+
+5
+00:00:34,000 --> 00:00:42,000
+L'annuaire n'est pas de confiance : une entrée modifiée ou inventée
+est rejetée par chaque box, qui vérifie la signature.
+
+6
+00:00:44,000 --> 00:00:52,000
+L'interface locale du responsable, servie par son outil sur son poste,
+rassemble les tâches courantes. Ici : tirer un code d'enrôlement.
+
+7
+00:00:52,000 --> 00:01:00,000
+Valider les demandes d'enrôlement en attente :
+la clé est déverrouillée sur le poste, l'entrée signée puis publiée.
+
+8
+00:01:00,000 --> 00:01:08,000
+Renouveler les entrées avant leur expiration :
+une entrée expirée rend la box injoignable.
+
+9
+00:01:08,000 --> 00:01:16,000
+Révoquer une box perdue ou compromise :
+les autres box cessent aussitôt d'échanger avec elle.
+
+10
+00:01:18,000 --> 00:01:26,000
+Les règles communes (routage, priorité) se préparent comme brouillon
+sur l'interface de l'annuaire.
+
+11
+00:01:26,000 --> 00:01:34,000
+Le responsable relit le brouillon, le signe sur son poste,
+puis le publie.
+
+12
+00:01:34,000 --> 00:01:44,000
+Chaque box applique la nouvelle version sans redémarrer, et rend compte.
+Une box qui ne peut pas l'appliquer garde ses règles et dit pourquoi.
+
+13
+00:01:46,000 --> 00:01:56,000
+La clé de l'organisation ne quitte jamais le poste du responsable :
+tout ce que publie l'annuaire est signé, et vérifié par chaque box.

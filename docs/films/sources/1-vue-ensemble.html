@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>ImagUnity en deux minutes</title>
+<style>html,body{margin:0;background:#F6F7F4;overflow:hidden}</style></head>
+<body><script src="moteur.js"></script><script>
+"use strict";
+// Film 1 : ImagUnity en deux minutes. Positions : établissement A à gauche, B à droite, site central au milieu.
+const A = { pacs: [260, 330], box: [260, 720] };
+const B = { pacs: [1660, 330], box: [1660, 720] };
+const R = [960, 520];
+const ANN = [960, 200];
+
+function etablissements(t, o = 1) {
+  return [
+    site(90, 120, 340, 780, "Hôpital A", { opacity: o }),
+    site(1490, 120, 340, 780, "Hôpital B", { opacity: o }),
+    pacs(A.pacs[0], A.pacs[1], "PACS A", { opacity: o }),
+    pacs(B.pacs[0], B.pacs[1], "PACS B", { opacity: o }),
+  ];
+}
+
+film({
+  titre: "ImagUnity en deux minutes",
+  duree: 116,
+  couverture: 70,
+  sousTitres: [
+    [3, 12, "ImagUnity : transmettre des examens d'imagerie entre établissements,\nsimplement et en toute sécurité."],
+    [14, 21, "L'hôpital A doit envoyer un scanner à l'hôpital B,\npar exemple pour un avis spécialisé."],
+    [21, 30, "Aujourd'hui : CD gravé, VPN à négocier entre services informatiques,\nou messagerie inadaptée aux images."],
+    [31, 40, "ImagUnity place une box dans chaque établissement,\nbranchée sur son PACS, comme un appareil d'imagerie."],
+    [40, 48, "Au centre, un relais : une poste restante qui garde des colis\nqu'elle ne peut pas ouvrir."],
+    [48, 56, "Et un annuaire : la liste signée des box de confiance,\nsignée par le responsable de l'organisation."],
+    [57, 64, "Le PACS de A envoie l'examen à sa box, en DICOM."],
+    [64, 72, "La box le met en paquet, le chiffre pour la seule box B,\net le dépose en morceaux sur le relais."],
+    [72, 79, "Elle dépose aussi une annonce signée dans la boîte aux lettres de B."],
+    [79, 88, "La box B relève sa boîte, retire les morceaux, vérifie tout,\npuis remet l'examen à son PACS."],
+    [88, 95, "B renvoie un accusé signé : A sait que l'examen est arrivé intact.\nLe relais efface les morceaux."],
+    [96, 104, "Chiffré de bout en bout : le relais ne voit jamais les images.\nAucun port ouvert dans les hôpitaux : tout part de l'intérieur."],
+    [104, 111, "Chaque box est enrôlée par le responsable de l'organisation :\nseules les box de l'annuaire signé peuvent échanger."],
+  ],
+  plans: [
+    // Titre.
+    { de: 0, a: 13.5, dessin: (t) => [
+      text(960, 470, "ImagUnity", { size: 120, weight: 800, fill: C.box, opacity: vis(t, 0, 13) }),
+      text(960, 560, "en deux minutes", { size: 52, weight: 500, fill: C.discret, opacity: vis(t, 0.8, 13) }),
+      g({ opacity: vis(t, 1.5, 13) }, [box(700, 760, "Box"), relais(960, 760, ""), annuaire(1220, 760, "")]),
+    ] },
+    // Le problème.
+    { de: 13.5, a: 30.5, dessin: (t) => {
+      const o = vis(t, 13.5, 30.5);
+      const p = prog(t, 15, 19);
+      const [x, y] = along([[A.pacs[0], A.pacs[1] + 140], [960, 540], [B.pacs[0], B.pacs[1] + 140]], p);
+      return [
+        ...etablissements(t, vis(t, 13.5, Infinity)),
+        document_(x, y, "examen", { opacity: o * vis(t, 14.5, 20.5), label: "scanner" }),
+        g({ opacity: vis(t, 21, 30.5) }, [
+          bulle(960, 360, "CD gravé, envoyé par coursier", { size: 30 }), croix(1230, 360, { opacity: vis(t, 23, 30.5) }),
+          bulle(960, 520, "VPN entre deux services informatiques", { size: 30 }), croix(1290, 520, { opacity: vis(t, 24.5, 30.5) }),
+          bulle(960, 680, "Messagerie non prévue pour les images", { size: 30 }), croix(1290, 680, { opacity: vis(t, 26, 30.5) }),
+        ]),
+      ];
+    } },
+    // Les trois composants.
+    { de: 30.5, a: 56.5, dessin: (t) => [
+      ...etablissements(t, 1),
+      box(A.box[0], A.box[1], "Box A", { opacity: vis(t, 32, Infinity) }),
+      box(B.box[0], B.box[1], "Box B", { opacity: vis(t, 32.5, Infinity) }),
+      fleche([[A.pacs[0], A.pacs[1] + 110], [A.box[0], A.box[1] - 70]], { opacity: vis(t, 34, 56.5) }),
+      fleche([[B.box[0], B.box[1] - 70], [B.pacs[0], B.pacs[1] + 110]], { opacity: vis(t, 34, 56.5) }),
+      site(700, 330, 520, 420, "Site central", { opacity: vis(t, 40, 56.5) }),
+      relais(R[0], R[1] + 40, "Relais", { opacity: vis(t, 40.5, Infinity) }),
+      annuaire(ANN[0], ANN[1] - 20, "Annuaire", { opacity: vis(t, 48, Infinity) }),
+      sceau(ANN[0] + 70, ANN[1] - 70, { opacity: vis(t, 50, 56.5) }),
+      personne(1250, 150, "Responsable", { opacity: vis(t, 51, 56.5), couleur: C.signe }),
+      fleche([[1200, 150], [1060, 170]], { opacity: vis(t, 52, 56.5), couleur: C.signe, pointille: true }),
+    ] },
+    // Le trajet.
+    { de: 56.5, a: 95.5, dessin: (t) => {
+      const base = [
+        ...etablissements(t, vis(t, -1, 95.5)),
+        g({ opacity: vis(t, -1, 95.5) }, [box(A.box[0], A.box[1], "Box A"), box(B.box[0], B.box[1], "Box B"),
+          relais(R[0], R[1] + 40, "Relais"), annuaire(ANN[0], ANN[1] - 20, "Annuaire")]),
+      ];
+      const items = [];
+      // 1. PACS A → box A (DICOM).
+      const p1 = prog(t, 57.5, 61);
+      if (t < 62.5) items.push(document_(...along([[A.pacs[0], A.pacs[1] + 130], [A.box[0], A.box[1] - 90]], p1), "examen", { label: "DICOM" }));
+      // 2. Paquet chiffré, puis morceaux vers le relais.
+      if (t >= 62.5 && t < 66) items.push(document_(A.box[0] + 160, A.box[1], "paquet", { opacity: vis(t, 62.5, 66), label: "chiffré pour B" }));
+      for (let i = 0; i < 6; i++) {
+        const p = prog(t, 65 + i * 0.6, 68.5 + i * 0.6);
+        if (t >= 65 && t < 88) {
+          const dest = [R[0] - 75 + (i % 3) * 75, R[1] + 10 + Math.floor(i / 3) * 40];
+          const pos = p < 1 ? along([[A.box[0] + 120, A.box[1]], [700, A.box[1]], dest], p) : null;
+          // Retrait par B à partir de 81 s.
+          const q = prog(t, 81 + i * 0.4, 84.5 + i * 0.4);
+          const end = q > 0 ? along([dest, [1220, B.box[1]], [B.box[0] - 120, B.box[1]]], q) : pos || dest;
+          if (q < 1) items.push(morceau(end[0], end[1]));
+        }
+      }
+      // 3. Annonce signée dans la boîte de B, sur le relais.
+      const p3 = prog(t, 72.5, 76);
+      if (t >= 72.5 && t < 80) items.push(document_(...along([[A.box[0] + 100, A.box[1] - 40], [960, 640], [1060, 640]], p3), "message", { echelle: 0.7 }));
+      if (t >= 76 && t < 80.5) items.push(text(1080, 700, "boîte de B", { size: 20, fill: C.relais, opacity: vis(t, 76, 80.5) }));
+      // 4. B relève, puis restitue au PACS B.
+      const p4 = prog(t, 79.5, 81.5);
+      if (t >= 79.5 && t < 82) items.push(document_(...along([[1060, 640], [B.box[0] - 120, B.box[1] - 30]], p4), "message", { echelle: 0.7 }));
+      if (t >= 85.5 && t < 88.5) items.push(sceau(B.box[0] + 100, B.box[1] - 50, { opacity: vis(t, 85.5, 88.5) }));
+      const p5 = prog(t, 86, 88.5);
+      if (t >= 86) items.push(document_(...along([[B.box[0], B.box[1] - 90], [B.pacs[0], B.pacs[1] + 130]], p5), "examen", { label: "DICOM" }));
+      // 5. Accusé signé de B vers A ; morceaux effacés.
+      const p6 = prog(t, 89, 93);
+      if (t >= 89) items.push(document_(...along([[B.box[0] - 120, B.box[1] + 40], [960, 900], [A.box[0] + 120, A.box[1] + 40]], p6), "message", { echelle: 0.7, label: p6 > 0.98 ? "accusé" : "" }));
+      if (t >= 93) items.push(bulle(A.box[0], A.box[1] + 130, "livré ✓", { size: 26, couleur: C.chiffre, texte: C.chiffre, opacity: vis(t, 93, 95.5) }));
+      return base.concat(items);
+    } },
+    // Les garanties.
+    { de: 95.5, a: 111.5, dessin: (t) => {
+      const lignes = [
+        [cadenas, C.chiffre, "Chiffré de bout en bout : seule la box destinataire peut ouvrir le paquet"],
+        [relais, C.relais, "Le relais garde des colis scellés, et les efface dès leur retrait"],
+        [croix, C.refus, "Aucun port ouvert dans les hôpitaux : la box ne fait que des connexions sortantes"],
+        [sceau, C.signe, "Seules les box enrôlées par le responsable, dans l'annuaire signé, échangent"],
+      ];
+      return lignes.map(([f, couleur, s], i) => g({ opacity: vis(t, 96 + i * 2, 111.5) }, [
+        f === relais ? el("rect", { x: 245, y: 230 + i * 150 - 25, width: 50, height: 50, rx: 8, fill: C.relaisFond, stroke: C.relais, "stroke-width": 4 })
+          : f(270, 230 + i * 150, { echelle: 1.3 }),
+        text(340, 240 + i * 150, s, { size: 36, anchor: "start", fill: C.texte, weight: 500 }),
+      ]));
+    } },
+    // Fin.
+    { de: 111.5, a: 116, dessin: (t) => [
+      text(960, 500, "ImagUnity", { size: 100, weight: 800, fill: C.box, opacity: vis(t, 111.5, 116) }),
+      text(960, 580, "Guides et spécification : dossier docs/ du dépôt", { size: 34, fill: C.discret, opacity: vis(t, 112, 116) }),
+    ] },
+  ],
+});
+</script></body></html>

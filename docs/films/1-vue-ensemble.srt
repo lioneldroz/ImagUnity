@@ -1,0 +1,62 @@
+1
+00:00:03,000 --> 00:00:12,000
+ImagUnity : transmettre des examens d'imagerie entre établissements,
+simplement et en toute sécurité.
+
+2
+00:00:14,000 --> 00:00:21,000
+L'hôpital A doit envoyer un scanner à l'hôpital B,
+par exemple pour un avis spécialisé.
+
+3
+00:00:21,000 --> 00:00:30,000
+Aujourd'hui : CD gravé, VPN à négocier entre services informatiques,
+ou messagerie inadaptée aux images.
+
+4
+00:00:31,000 --> 00:00:40,000
+ImagUnity place une box dans chaque établissement,
+branchée sur son PACS, comme un appareil d'imagerie.
+
+5
+00:00:40,000 --> 00:00:48,000
+Au centre, un relais : une poste restante qui garde des colis
+qu'elle ne peut pas ouvrir.
+
+6
+00:00:48,000 --> 00:00:56,000
+Et un annuaire : la liste signée des box de confiance,
+signée par le responsable de l'organisation.
+
+7
+00:00:57,000 --> 00:01:04,000
+Le PACS de A envoie l'examen à sa box, en DICOM.
+
+8
+00:01:04,000 --> 00:01:12,000
+La box le met en paquet, le chiffre pour la seule box B,
+et le dépose en morceaux sur le relais.
+
+9
+00:01:12,000 --> 00:01:19,000
+Elle dépose aussi une annonce signée dans la boîte aux lettres de B.
+
+10
+00:01:19,000 --> 00:01:28,000
+La box B relève sa boîte, retire les morceaux, vérifie tout,
+puis remet l'examen à son PACS.
+
+11
+00:01:28,000 --> 00:01:35,000
+B renvoie un accusé signé : A sait que l'examen est arrivé intact.
+Le relais efface les morceaux.
+
+12
+00:01:36,000 --> 00:01:44,000
+Chiffré de bout en bout : le relais ne voit jamais les images.
+Aucun port ouvert dans les hôpitaux : tout part de l'intérieur.
+
+13
+00:01:44,000 --> 00:01:51,000
+Chaque box est enrôlée par le responsable de l'organisation :
+seules les box de l'annuaire signé peuvent échanger.

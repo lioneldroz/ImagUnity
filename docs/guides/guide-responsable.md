@@ -3,6 +3,8 @@
 > Pour la personne qui gère le réseau ImagUnity d'une organisation : elle décide quelles box en font partie, et quelles règles communes elles appliquent. Ce guide présente d'abord ImagUnity et ses composants, puis l'annuaire : à quoi il sert, les tâches courantes, et son interface d'administration, partie par partie.
 >
 > Les exemples et les captures d'écran utilisent une organisation fictive, « chu-exemple », et uniquement des données synthétiques.
+>
+> En complément, des [films courts](../films/README.md) montrent en animation la vie d'une organisation, l'enrôlement d'une box et le voyage d'un examen.
 
 **Sommaire**
 

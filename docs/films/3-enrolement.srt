@@ -1,0 +1,57 @@
+1
+00:00:02,000 --> 00:00:08,000
+Comment une nouvelle box rejoint l'organisation :
+le code d'enrôlement, la demande signée, la signature du responsable.
+
+2
+00:00:10,000 --> 00:00:17,000
+Le responsable tire un code d'enrôlement pour la box à venir,
+en fixant son nom et ses groupes.
+
+3
+00:00:17,000 --> 00:00:24,000
+Il le transmet hors bande à l'installateur : par téléphone, par courrier, en personne.
+Usage unique, valable 30 jours.
+
+4
+00:00:26,000 --> 00:00:32,000
+L'installateur recopie le code dans la configuration de la box, et la démarre.
+
+5
+00:00:32,000 --> 00:00:39,000
+Au premier démarrage, la box crée son identité : une clé de signature et une clé de chiffrement,
+protégées par le TPM de la machine.
+
+6
+00:00:41,000 --> 00:00:48,000
+La box envoie sa demande d'enrôlement à l'annuaire : signée par elle,
+avec la preuve qu'elle connaît le code.
+
+7
+00:00:48,000 --> 00:00:56,000
+L'annuaire garde la demande, mais ne connaît pas les codes :
+il ne peut ni les lire, ni fabriquer une preuve.
+
+8
+00:00:58,000 --> 00:01:06,000
+Sur son poste, hors ligne, le responsable retrouve la demande et vérifie la preuve du code.
+Sans code : il compare l'empreinte de la box au téléphone avec l'installateur.
+
+9
+00:01:06,000 --> 00:01:14,000
+Il signe l'entrée de la box avec la clé de l'organisation, avec le nom et les groupes du code,
+puis la publie dans l'annuaire.
+
+10
+00:01:16,000 --> 00:01:23,000
+À sa lecture suivante de l'annuaire, la box se voit active.
+
+11
+00:01:23,000 --> 00:01:31,000
+Elle crée sa boîte aux lettres sur le relais. Les autres box la voient à leur tour,
+et leurs exploitants peuvent l'appairer.
+
+12
+00:01:33,000 --> 00:01:43,000
+La clé de l'organisation n'a jamais quitté le poste du responsable :
+l'annuaire ne fait que conserver et servir des documents signés.

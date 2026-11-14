@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Quand quelque chose ne va pas</title>
+<style>html,body{margin:0;background:#F6F7F4;overflow:hidden}</style></head>
+<body><script src="moteur.js"></script><script>
+"use strict";
+// Film 5 : incidents et reprise (relais injoignable, box éteinte, PACS figé, box révoquée, données altérées).
+const BA = [260, 560], BB = [1660, 560], R1 = [960, 420], R2 = [960, 760], PB = [1660, 260];
+const titre = (s, t, de, a) => text(960, 80, s, { size: 40, weight: 700, opacity: vis(t, de, a) });
+const SLOTS = [-1, 0, 1].map((i) => [R1[0] + i * 80, R1[1] - 30]);
+const SLOTS2 = [-1, 0, 1].map((i) => [R2[0] + i * 80, R2[1] - 30]);
+function base(o, extras = {}) {
+  return [box(BA[0], BA[1], "Box A", { opacity: o }), box(BB[0], BB[1], "Box B", { opacity: o, voyant: extras.eteinte ? C.gris : extras.revoquee ? C.refus : C.chiffre, fond: extras.eteinte ? C.gris : undefined }),
+    relais(R1[0], R1[1], "Relais", { opacity: o }), extras.relais2 ? relais(R2[0], R2[1], "Relais 2", { opacity: extras.relais2 }) : null];
+}
+
+film({
+  titre: "Quand quelque chose ne va pas",
+  duree: 112,
+  couverture: 20,
+  sousTitres: [
+    [2, 8, "Pannes, coupures, erreurs : ce que fait ImagUnity, et ce qu'il ne fait jamais."],
+    [10, 18, "Un relais ne répond plus ? Les box réessaient, avec des délais croissants."],
+    [18, 27, "Si l'organisation a plusieurs relais, chaque morceau est sur chacun :\nla box destinataire prend simplement la copie sur l'autre."],
+    [29, 37, "La box destinataire est éteinte ? Les morceaux l'attendent sur le relais,\ndans la limite de leur bail (72 heures par défaut)."],
+    [37, 45, "Dès qu'elle redémarre, elle relève sa boîte et reprend le transfert."],
+    [47, 55, "Le PACS ne répond plus ? Chaque étape a un délai d'attente :\nla box ne reste pas bloquée."],
+    [55, 63, "La restitution reprend plus tard, et l'exploitant peut relancer\nun transfert depuis la console."],
+    [65, 73, "Une box est révoquée par le responsable ?"],
+    [73, 81, "Les autres box le voient à leur lecture de l'annuaire et refusent d'échanger avec elle,\navec le motif dans la console."],
+    [83, 91, "Un morceau altéré, un message mal signé ? Chaque empreinte et chaque signature\nsont vérifiées."],
+    [91, 99, "Ce qui ne se vérifie pas est écarté : rien d'altéré n'est jamais remis au PACS."],
+    [101, 109, "Pas de perte silencieuse : chaque transfert finit « livré » avec accusé signé,\nou en échec avec son motif, visible dans la console."],
+  ],
+  plans: [
+    { de: 0, a: 9, dessin: (t) => [
+      text(960, 470, "Quand quelque chose ne va pas", { size: 80, weight: 800, fill: C.box, opacity: vis(t, 0, 8.6) }),
+      text(960, 550, "incidents et reprise", { size: 40, fill: C.discret, opacity: vis(t, 0.6, 8.6) }),
+    ] },
+    { de: 9, a: 28, dessin: (t) => {
+      const items = [titre("1. Un relais injoignable", t, 9, 28), ...base(vis(t, 9, Infinity), { relais2: vis(t, 9, 28) })];
+      SLOTS.forEach((s) => items.push(morceau(s[0], s[1])));
+      SLOTS2.forEach((s, i) => {
+        const q = prog(t, 20 + i * 1.2, 23 + i * 1.2);
+        if (q < 1) items.push(morceau(...along([s, [1300, 760], [BB[0] - 130, BB[1] + 20]], q)));
+        else items.push(text(BB[0] - 40 + i * 30, BB[1] + 100, "✓", { size: 28, fill: C.chiffre, weight: 800 }));
+      });
+      items.push(croix(R1[0] + 170, R1[1] - 70, { opacity: vis(t, 10.5, 28) }));
+      items.push(bulle(BB[0], BB[1] - 160, "nouvel essai dans 2 s, 4 s, 8 s…", { size: 22, opacity: vis(t, 12, 19), couleur: C.trait }));
+      return items;
+    } },
+    { de: 28, a: 46, dessin: (t) => {
+      const allumee = t > 38;
+      const items = [titre("2. La box destinataire est éteinte", t, 28, 46), ...base(1, { eteinte: !allumee })];
+      SLOTS.forEach((s, i) => {
+        const q = prog(t, 39.5 + i * 1, 42 + i * 1);
+        if (q < 1) items.push(morceau(...along([s, [1300, 420], [BB[0] - 130, BB[1] - 10]], q)));
+      });
+      items.push(bulle(R1[0], R1[1] + 160, "bail : 72 h", { size: 26, opacity: vis(t, 30, 46), couleur: C.relais, texte: C.relais }));
+      items.push(text(BB[0], BB[1] + 110, allumee ? "redémarrée" : "éteinte", { size: 24, fill: allumee ? C.chiffre : C.discret, opacity: vis(t, 29, 46) }));
+      return items;
+    } },
+    { de: 46, a: 64, dessin: (t) => {
+      const items = [titre("3. Le PACS ne répond plus", t, 46, 64), ...base(1), pacs(PB[0], PB[1] - 60, "PACS B", { opacity: vis(t, 46, 64) })];
+      const p = prog(t, 48, 50);
+      items.push(document_(...along([[BB[0], BB[1] - 70], [PB[0], PB[1] + 50]], Math.min(p, 0.55)), "examen", { echelle: 0.6, opacity: vis(t, 48, 55) }));
+      items.push(croix(PB[0] + 120, PB[1] - 60, { opacity: vis(t, 50, 56), echelle: 0.8 }));
+      items.push(bulle(1180, 260, "délai dépassé (C-STORE : 5 min)\n→ nouvel essai plus tard", { size: 22, mono: true, opacity: vis(t, 51, 64), couleur: C.trait }));
+      const q = prog(t, 57, 59.5);
+      if (t > 57) items.push(document_(...along([[BB[0], BB[1] - 70], [PB[0], PB[1] + 50]], q), "examen", { echelle: 0.6 }));
+      items.push(sceau(PB[0] + 120, PB[1] - 60, { couleur: C.chiffre, opacity: vis(t, 59.5, 64) }));
+      return items;
+    } },
+    { de: 64, a: 82, dessin: (t) => {
+      const items = [titre("4. Une box révoquée", t, 64, 82), ...base(1, { revoquee: t > 68 }), annuaire(1320, 230, "Annuaire", { opacity: vis(t, 64, 82) })];
+      items.push(personne(760, 220, "Responsable", { couleur: C.signe, opacity: vis(t, 65, 82) }));
+      items.push(fleche([[820, 220], [1220, 230]], { couleur: C.signe, pointille: true, opacity: vis(t, 66, 82) }));
+      items.push(text(1320, 370, "Box B : révoquée", { size: 26, fill: C.refus, weight: 700, opacity: vis(t, 67.5, 82) }));
+      const p = prog(t, 74, 77);
+      items.push(document_(...along([[BA[0] + 120, BA[1]], [960, 600]], p), "message", { echelle: 0.6, opacity: vis(t, 74, 82) }));
+      items.push(croix(960, 600, { opacity: vis(t, 77, 82) }));
+      items.push(bulle(960, 760, "« Box du partenaire « box-b » révoquée dans l'annuaire »", { size: 24, opacity: vis(t, 77.5, 82), couleur: C.refus, texte: C.refus }));
+      return items;
+    } },
+    { de: 82, a: 100, dessin: (t) => {
+      const items = [titre("5. Une donnée altérée", t, 82, 100), ...base(vis(t, -1, 100))];
+      const p = prog(t, 84, 88);
+      items.push(morceau(...along([[R1[0], R1[1] - 30], [BB[0] - 130, BB[1]]], p)));
+      items.push(el("rect", { x: R1[0] - 6, y: R1[1] - 36, width: 12, height: 12, fill: C.refus, opacity: vis(t, 83, 88) }));
+      items.push(bulle(1240, 300, "empreinte attendue ≠ empreinte reçue", { size: 24, mono: true, opacity: vis(t, 88.5, 100), couleur: C.refus, texte: C.refus }));
+      items.push(croix(BB[0] + 140, BB[1] - 60, { opacity: vis(t, 89, 100) }));
+      items.push(text(BB[0], BB[1] + 110, "écarté : rien n'est remis au PACS", { size: 24, fill: C.refus, opacity: vis(t, 92, 100) }));
+      return items;
+    } },
+    { de: 100, a: 112, dessin: (t) => [
+      text(960, 380, "Livré avec accusé signé,", { size: 52, weight: 700, fill: C.chiffre, opacity: vis(t, 100, 112) }),
+      text(960, 460, "ou en échec avec son motif.", { size: 52, weight: 700, fill: C.refus, opacity: vis(t, 101, 112) }),
+      text(960, 560, "Jamais de perte silencieuse.", { size: 40, fill: C.discret, opacity: vis(t, 102, 112) }),
+    ] },
+  ],
+});
+</script></body></html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Créer et gérer une organisation</title>
+<style>html,body{margin:0;background:#F6F7F4;overflow:hidden}</style></head>
+<body><script src="moteur.js"></script><script>
+"use strict";
+// Film 2 : créer et gérer une organisation (clé du responsable, annuaire signé, interface locale, règles communes).
+const IMG = "../../images/guide-responsable/";
+const titre = (s, t, de, a) => text(960, 80, s, { size: 40, weight: 700, opacity: vis(t, de, a) });
+function capture(nom, t, de, a, legende) {
+  const o = vis(t, de, a, 0.5);
+  return g({ opacity: o }, [
+    el("rect", { x: 330, y: 110, width: 1260, height: 720, rx: 16, fill: "#fff", stroke: C.bord, "stroke-width": 3 }),
+    el("image", { href: IMG + nom, x: 345, y: 125, width: 1230, height: 690, preserveAspectRatio: "xMidYMin meet" }),
+    legende ? bulle(960, 868, legende, { size: 28, couleur: C.signe }) : null,
+  ]);
+}
+const BOXES = [[1500, 300], [1500, 540], [1500, 780]];
+
+film({
+  titre: "Créer et gérer une organisation",
+  duree: 128,
+  couverture: 50,
+  sousTitres: [
+    [2, 8, "Le rôle du responsable de l'organisation : décider quelles box en font partie,\net quelles règles communes elles appliquent."],
+    [10, 18, "Tout part d'une clé, créée une seule fois sur le poste du responsable,\nprotégée par une phrase de passe, et gardée hors ligne."],
+    [18, 25, "Son empreinte courte est communiquée de vive voix à l'exploitant du site central\net aux installateurs : chaque box l'épingle."],
+    [27, 34, "L'annuaire publie les entrées des box : clés, adresses, groupes, validité.\nToutes sont signées par la clé du responsable."],
+    [34, 42, "L'annuaire n'est pas de confiance : une entrée modifiée ou inventée\nest rejetée par chaque box, qui vérifie la signature."],
+    [44, 52, "L'interface locale du responsable, servie par son outil sur son poste,\nrassemble les tâches courantes. Ici : tirer un code d'enrôlement."],
+    [52, 60, "Valider les demandes d'enrôlement en attente :\nla clé est déverrouillée sur le poste, l'entrée signée puis publiée."],
+    [60, 68, "Renouveler les entrées avant leur expiration :\nune entrée expirée rend la box injoignable."],
+    [68, 76, "Révoquer une box perdue ou compromise :\nles autres box cessent aussitôt d'échanger avec elle."],
+    [78, 86, "Les règles communes (routage, priorité) se préparent comme brouillon\nsur l'interface de l'annuaire."],
+    [86, 94, "Le responsable relit le brouillon, le signe sur son poste,\npuis le publie."],
+    [94, 104, "Chaque box applique la nouvelle version sans redémarrer, et rend compte.\nUne box qui ne peut pas l'appliquer garde ses règles et dit pourquoi."],
+    [106, 116, "La clé de l'organisation ne quitte jamais le poste du responsable :\ntout ce que publie l'annuaire est signé, et vérifié par chaque box."],
+  ],
+  plans: [
+    { de: 0, a: 9, dessin: (t) => [
+      text(960, 470, "Créer et gérer une organisation", { size: 80, weight: 800, fill: C.box, opacity: vis(t, 0, 8.6) }),
+      text(960, 550, "le rôle du responsable", { size: 40, fill: C.discret, opacity: vis(t, 0.6, 8.6) }),
+    ] },
+    { de: 9, a: 26, dessin: (t) => [titre("1. La clé de l'organisation", t, 9, 26),
+      site(160, 170, 520, 720, "Poste du responsable", { opacity: vis(t, 9, 26), stroke: C.signe }),
+      personne(420, 400, "Responsable", { couleur: C.signe, opacity: vis(t, 9, 26) }),
+      cle(420, 600, { echelle: 2, opacity: vis(t, 11, 26) }),
+      bulle(420, 730, "hors ligne\nphrase de passe", { size: 26, opacity: vis(t, 12.5, 26), couleur: C.signe }),
+      bulle(1150, 330, "empreinte :\nQZYY-WDJT-LDE4-GY7V-5GPV-5RQW", { size: 30, mono: true, weight: 700, opacity: vis(t, 18, 26), couleur: C.signe }),
+      fleche([[690, 420], [870, 350]], { pointille: true, couleur: C.signe, opacity: vis(t, 18.5, 26) }),
+      personne(1000, 640, "Site central", { opacity: vis(t, 20, 26) }),
+      personne(1320, 640, "Installateurs", { opacity: vis(t, 20.5, 26) }),
+    ] },
+    { de: 26, a: 43, dessin: (t) => {
+      const forge = prog(t, 35, 38.5);
+      return [titre("2. L'annuaire : des entrées signées, vérifiées par chaque box", t, 26, 43),
+        annuaire(560, 500, "Annuaire", { opacity: vis(t, 26, 43) }),
+        bulle(560, 260, "entrée de la box B : clés, adresses,\ngroupes, validité, n° — signée ✓", { size: 24, opacity: vis(t, 27, 43), couleur: C.annuaire }),
+        ...BOXES.map(([x, y], i) => box(x, y, "Box " + "ABC"[i], { opacity: vis(t, 28 + i * 0.4, 43) })),
+        ...BOXES.map(([x, y]) => fleche([[680, 500], [x - 130, y]], { couleur: C.annuaire, opacity: vis(t, 29, 43) * 0.6 })),
+        document_(...along([[300, 780], [560, 640]], forge), "entree", { opacity: vis(t, 35, 43), label: forge > 0.9 ? "falsifiée" : "" }),
+        personne(250, 830, "Intrus", { couleur: C.refus, opacity: vis(t, 34.5, 43) }),
+        ...BOXES.map(([x, y]) => croix(x + 140, y - 50, { echelle: 0.7, opacity: vis(t, 39, 43) })),
+      ];
+    } },
+    { de: 43, a: 77, dessin: (t) => [titre("3. Les tâches courantes, dans l'interface locale", t, 43, 77),
+      capture("18-interface-codes.png", t, 43.5, 52.5, "Codes d'enrôlement"),
+      capture("11-interface-demandes.png", t, 52, 60.5, "Demandes en attente : valider ou refuser"),
+      capture("15-interface-box.png", t, 60, 68.5, "Box de l'organisation : renouveler"),
+      capture("16-interface-revoquer.png", t, 68, 77, "Révoquer : motif et nom de la box recopié"),
+    ] },
+    { de: 77, a: 105, dessin: (t) => {
+      const p = prog(t, 86.5, 89.5);
+      const q = prog(t, 90, 93);
+      const items = [titre("4. Les règles communes", t, 77, 105),
+        document_(320, 500, t < 89 ? "examen" : "message", { echelle: 1.6, opacity: vis(t, 78, 105), label: t < 89 ? "brouillon" : "version 4 signée" }),
+        personne(320, 220, "Responsable", { couleur: C.signe, opacity: vis(t, 86, 105) }),
+        sceau(320, 500, { echelle: 1.4, opacity: p }),
+        annuaire(860, 500, "Annuaire", { opacity: vis(t, 78, 105) }),
+        document_(...along([[420, 500], [760, 500]], q), "message", { opacity: vis(t, 90, 94.5) }),
+        bulle(860, 760, "routage : modalité = CT → box-b\npriorité : séries « urgent » d'abord", { size: 22, mono: true, opacity: vis(t, 79, 105), couleur: C.box }),
+      ];
+      BOXES.forEach(([x, y], i) => {
+        items.push(box(x, y, "Box " + "ABC"[i], { opacity: vis(t, 78, 105) }));
+        items.push(fleche([[960, 500], [x - 130, y]], { couleur: C.annuaire, opacity: vis(t, 95, 105) * 0.6 }));
+        items.push(i === 2 ? croix(x + 140, y - 50, { echelle: 0.6, opacity: vis(t, 98, 105) })
+          : sceau(x + 140, y - 50, { couleur: C.chiffre, opacity: vis(t, 97, 105) }));
+      });
+      items.push(bulle(1500, 950, "Box C : « version non prise en charge » — garde ses règles", { size: 22, opacity: vis(t, 99, 105), couleur: C.refus, texte: C.refus }));
+      return items;
+    } },
+    { de: 105, a: 128, dessin: (t) => {
+      const etapes = [["clé créée une fois, hors ligne", C.signe], ["empreinte vérifiée de vive voix", C.trait],
+        ["annuaire : tout est signé", C.annuaire], ["codes, validations, renouvellements, révocations", C.box], ["règles signées, appliquées sans redémarrer", C.chiffre]];
+      return [text(960, 300, "En résumé", { size: 56, weight: 800, fill: C.box, opacity: vis(t, 105, 128) }),
+        ...etapes.map(([s, c], i) => bulle(960, 410 + i * 80, s, { size: 30, largeur: 820, couleur: c, opacity: vis(t, 106 + i * 0.7, 128) }))];
+    } },
+  ],
+});
+</script></body></html>

@@ -1,7 +1,7 @@
 # Films explicatifs : plan
 
 > Objectif : de courtes vidéos (1 à 3 minutes) qui montrent comment ImagUnity fonctionne, de bout en bout, pour un public non spécialiste : directions d'établissement, DPO, équipes d'imagerie, responsables d'organisation, auditeurs.
-> Statut : **plan arrêté** (novembre 2026), réalisation après l'étape 1 de la [fédération](../reference/federation-organisations.md).
+> Statut : **réalisé** (novembre 2026) : les six films sont présentés dans [README.md](README.md).
 
 ## 1. Principes
 
