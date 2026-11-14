@@ -3,6 +3,7 @@ rem Outil du responsable (cle de l'organisation, enrolement, publication) : meme
 rem   admin.bat organisation-creer --organisation essai --cles donnees\organisation.json
 rem   admin.bat enroler --cles donnees\organisation.json --demande demande-a.json --sortie entree-a.json
 rem   admin.bat publier --annuaire http://localhost:8090 --entree entree-a.json
+rem   admin.bat interface --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090 --ouvrir
 rem La phrase de passe de la cle se saisit au clavier (ou IMAGUNITY_PHRASE_ORGANISATION).
 setlocal
 chcp 65001 >nul

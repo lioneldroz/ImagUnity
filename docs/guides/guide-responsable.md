@@ -112,6 +112,8 @@ L'enrôlement est **automatique** dès que la box a reçu un **code d'enrôlemen
 
 Plus de fichier à faire circuler ni d'empreinte à comparer au téléphone : le code, connu seulement du responsable et de l'installateur, prouve que la demande vient bien de la box prévue.
 
+Les demandes en attente se traitent au choix en ligne de commande (`enroler-attente`, § 2.3) ou depuis l'**interface locale du responsable**, une page servie par l'outil sur son poste, avec un bouton « Valider » par demande (§ 2.4).
+
 ### 2.1 Créer la clé de l'organisation (une seule fois)
 
 ```bash
@@ -182,11 +184,62 @@ La box se voit enrôlée à sa lecture suivante de l'annuaire (toutes les 5 minu
 
 La durée de validité des entrées se règle avec `--validite-jours` (90 jours par défaut).
 
-### 2.4 Enrôler une box sans code
+### 2.4 Valider les demandes depuis l'interface locale
 
-Pour une box installée sans code, ou dont le code a expiré, deux possibilités :
+Plutôt qu'en ligne de commande, les demandes peuvent se traiter une à une depuis une page web servie par l'outil du responsable, **sur son poste** :
+
+```bash
+admin interface --cles organisation.json --codes codes.json --annuaire https://annuaire.exemple.org
+```
+
+```text
+Interface du responsable : http://127.0.0.1:52817/#jeton=TV1vrcQWjDYVb15-c7tFmhx-giLkf4x3wDy1a-7MNdI
+À ouvrir dans le navigateur de ce poste (adresse personnelle, ne pas la partager) ; arrêt par le bouton « Quitter » ou Ctrl+C.
+```
+
+Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement). La page liste les demandes en attente dans l'annuaire, revérifiées par l'outil :
+
+![Interface locale du responsable : une carte par demande, avec son empreinte, l'état de son code et les boutons Valider et Refuser](../images/guide-responsable/11-interface-demandes.png)
+
+| Étiquette | Signification | Action possible |
+|---|---|---|
+| **Code d'enrôlement vérifié** | La demande porte la preuve d'un de vos codes, encore valable. Nom et groupes viennent du code. | Valider, Refuser |
+| **Sans code : empreinte à vérifier** | La box n'a pas de code de ce responsable | Valider après comparaison de l'empreinte, Refuser |
+| **Preuve du code invalide**, **Code déjà utilisé**, **Code expiré** | Comme pour `enroler-attente` (§ 4.2) | Refuser, ou tirer un nouveau code |
+| **Demande illisible ou mal signée** | La demande ne prouve pas la possession des clés qu'elle présente | Refuser |
+
+**Valider** demande la phrase de passe de la clé de l'organisation, signe l'entrée sur ce poste, la publie, et marque le code comme utilisé :
+
+![Fenêtre de validation : résumé de l'entrée à signer, phrase de passe, option pour garder la clé déverrouillée](../images/guide-responsable/12-interface-phrase.png)
+
+- Une phrase de passe erronée est signalée sans fermer la fenêtre ; rien n'est signé ni publié.
+- « Garder la clé déverrouillée pendant cette session » évite de la ressaisir pour chaque box. La clé est oubliée au bout de 15 minutes sans usage, par le bouton « Oublier la phrase », ou à l'arrêt de l'interface.
+
+Pour une **demande sans code**, le bouton « Valider » ne s'active qu'une fois cochée la case « J'ai comparé cette empreinte avec l'installateur de la box : elle est identique ». Appelez l'installateur et faites-lui lire l'empreinte affichée dans la console de sa box : si elle diffère, la demande ne vient pas de sa box, refusez-la. Le nom (celui proposé par la box par défaut) et les groupes se choisissent sur la carte :
+
+![Demande sans code : case de vérification de l'empreinte, nom et groupes à choisir](../images/guide-responsable/13-interface-sans-code.png)
+
+**Refuser** retire la demande de la liste ; les nouveaux envois de cette box sont ignorés pendant 30 jours. À utiliser pour une box inconnue, ou une demande douteuse :
+
+![Confirmation du refus d'une demande](../images/guide-responsable/14-interface-refus.png)
+
+**Ce qui reste sur votre poste.** La clé de l'organisation et sa phrase de passe ne quittent jamais le poste : la page ne parle qu'à l'outil qui l'a servie, qui signe lui-même. Seuls l'entrée signée et le refus partent vers l'annuaire. L'interface n'écoute que sur `127.0.0.1` ; son adresse contient un jeton tiré au démarrage, exigé à chaque appel, si bien qu'aucun autre site ouvert dans le navigateur ni aucun autre utilisateur du poste ne peut s'en servir. Ne partagez pas cette adresse.
+
+| Option de `interface` | Rôle | Par défaut |
+|---|---|---|
+| `--cles`, `--codes`, `--annuaire` | Comme pour `enroler-attente` | obligatoires |
+| `--validite-jours` | Durée de validité des entrées signées | 90 |
+| `--port` | Port local de la page ; 0 en tire un libre | 0 |
+| `--ouvrir` | Ouvre la page dans le navigateur par défaut | non |
+
+Le compte de l'annuaire vient de `IMAGUNITY_ANNUAIRE_COMPTE`, comme pour les autres commandes. La phrase de passe peut venir de `IMAGUNITY_PHRASE_ORGANISATION` : elle n'est alors plus demandée, ce qui est déconseillé sur un poste partagé.
+
+### 2.5 Enrôler une box sans code
+
+Pour une box installée sans code, ou dont le code a expiré, trois possibilités :
 
 - **tirer un nouveau code** (§ 2.2) et le faire recopier dans sa configuration : la box renvoie alors sa demande avec la preuve, au redémarrage ou à la lecture suivante ;
+- **la valider dans l'interface locale** (§ 2.4), après avoir comparé son empreinte avec l'installateur : sa demande est déjà dans l'annuaire, rien à faire circuler ;
 - **l'enrôler à la main**, comme avant l'enrôlement automatique.
 
 À la main, l'exploitant télécharge la **demande d'enrôlement** depuis la console de sa box (onglet Annuaire) et vous la transmet. Il vous donne aussi, **hors bande**, l'**empreinte de la box** affichée dans sa console. Vous signez puis publiez :
@@ -205,7 +258,7 @@ admin publier --annuaire https://annuaire.exemple.org --entree entree-nord.json
 | `--validite-jours` | Durée de validité de l'entrée | 90 |
 | `--serie` | Numéro de l'entrée : 1 à l'enrôlement, puis le numéro suivant à chaque nouvelle émission | 1 |
 
-### 2.5 Renouveler les entrées avant leur expiration
+### 2.6 Renouveler les entrées avant leur expiration
 
 Une entrée expirée rend la box injoignable : les autres box refusent de lui envoyer. Une commande renouvelle d'un coup toutes les entrées actives qui expirent bientôt, avec les mêmes clés, adresses et groupes :
 
@@ -223,7 +276,7 @@ Renouveler ces 1 entrée(s) pour 90 jours ? Tapez « oui » : oui
 - Une box révoquée n'est jamais renouvelée.
 - Lancez-la régulièrement, par exemple chaque semaine : la colonne « Statut » de l'interface montre les box expirées (§ 3.4).
 
-### 2.6 Changer les groupes d'une box
+### 2.7 Changer les groupes d'une box
 
 Signez une nouvelle entrée de la box avec le **numéro suivant** et les nouveaux groupes, puis publiez-la :
 
@@ -235,7 +288,7 @@ admin publier --annuaire https://annuaire.exemple.org --entree entree-nord-2.jso
 
 Il faut pour cela la demande d'enrôlement de la box : téléchargez-la depuis sa console. Les règles communes qui visent ces groupes s'appliquent alors à la box, ou cessent de s'appliquer, à sa lecture suivante de l'annuaire.
 
-### 2.7 Révoquer une box
+### 2.8 Révoquer une box
 
 À faire sans attendre si une box est perdue, volée, compromise, ou si un établissement quitte l'organisation :
 
@@ -277,18 +330,18 @@ L'interface montre les **demandes d'enrôlement en attente** et les **box** de l
 
 ![Demandes d'enrôlement en attente : nom proposé, empreinte, code d'enrôlement joint, date de réception](../images/guide-responsable/10-demandes.png)
 
-Les box pas encore enrôlées qui ont envoyé leur demande. Elles se traitent avec `enroler-attente` (§ 2.3).
+Les box pas encore enrôlées qui ont envoyé leur demande. Elles se traitent avec `enroler-attente` (§ 2.3) ou depuis l'interface locale du responsable (§ 2.4) ; cette page de l'annuaire ne fait que les montrer, car la clé de l'organisation n'est jamais confiée à l'annuaire.
 
 | Colonne | Signification |
 |---|---|
 | **Box** | Le nom proposé par la box (son nom local), et son identifiant. Le nom publié sera celui du code d'enrôlement. |
 | **Empreinte** | L'empreinte de la box, la même que dans sa console |
-| **Code d'enrôlement** | « joint » : la box a envoyé la preuve d'un code, que l'outil du responsable vérifiera. « aucun » : la box n'a pas de code ; à enrôler à la main après comparaison de l'empreinte, ou en lui donnant un code (§ 2.4). |
+| **Code d'enrôlement** | « joint » : la box a envoyé la preuve d'un code, que l'outil du responsable vérifiera. « aucun » : la box n'a pas de code ; à valider dans l'interface locale ou à enrôler à la main, après comparaison de l'empreinte, ou en lui donnant un code (§ 2.4, § 2.5). |
 | **Reçue le** | La date de la dernière demande ; une box la renvoie tant qu'elle n'est pas enrôlée |
 
-Une demande disparaît dès que l'entrée de la box est publiée. Une demande sans suite est effacée au bout de 14 jours ; la box la renvoie si elle tourne toujours.
+Une demande disparaît dès que l'entrée de la box est publiée, ou qu'elle est refusée depuis l'interface locale (les envois de la box sont alors ignorés 30 jours). Une demande sans suite est effacée au bout de 14 jours ; la box la renvoie si elle tourne toujours.
 
-L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe qui pouvant joindre l'annuaire peut donc déposer une demande, mais seule une demande portant la preuve d'un de vos codes est enrôlée par `enroler-attente`.
+L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe qui pouvant joindre l'annuaire peut donc déposer une demande, mais seule une demande portant la preuve d'un de vos codes est enrôlée par `enroler-attente`, et une demande sans code ne se valide dans l'interface locale qu'après comparaison de l'empreinte.
 
 ### 3.4 La liste des box
 
@@ -297,7 +350,7 @@ L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe q
 | Colonne | Signification |
 |---|---|
 | **Box** | Le nom de la box, et son identifiant en dessous |
-| **Groupes** | Les groupes fixés dans son entrée (§ 2.2, § 2.6) ; « — » si elle n'en a pas |
+| **Groupes** | Les groupes fixés dans son entrée (§ 2.2, § 2.7) ; « — » si elle n'en a pas |
 | **Statut** | L'état de son entrée, ci-dessous |
 | **Version appliquée** | Ce que la box applique, d'après son dernier compte rendu, ci-dessous |
 | **Dernier refus** | La dernière version que la box a refusée, et pourquoi ; « — » s'il n'y en a pas |
@@ -309,8 +362,8 @@ L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe q
 |---|---|---|
 | **active** | Entrée valide : la box échange normalement | — |
 | **pas encore valide** | La date de début de l'entrée n'est pas atteinte | Attendre, ou vérifier l'heure du poste qui a signé |
-| **expirée** | La date de fin est passée : les autres box refusent de lui envoyer | Renouveler l'entrée (§ 2.5) |
-| **révoquée** | L'entrée a été révoquée (§ 2.7) | — |
+| **expirée** | La date de fin est passée : les autres box refusent de lui envoyer | Renouveler l'entrée (§ 2.6) |
+| **révoquée** | L'entrée a été révoquée (§ 2.8) | — |
 
 **Version appliquée**
 
@@ -457,16 +510,21 @@ Les erreurs s'affichent dans un bandeau en haut de la page :
 
 ### 4.2 Une demande d'enrôlement est laissée de côté
 
-Messages de `enroler-attente` :
+Messages de `enroler-attente` (les mêmes cas apparaissent en étiquette dans l'interface locale, § 2.4) :
 
 | Message | Cause | Solution |
 |---|---|---|
-| « sans code d'enrôlement de ce responsable » | La box n'a pas de code, ou un code tiré par quelqu'un d'autre, ou `--codes` ne désigne pas le bon fichier | Lui donner un code (§ 2.2), ou l'enrôler à la main après comparaison de l'empreinte (§ 2.4) |
+| « sans code d'enrôlement de ce responsable » | La box n'a pas de code, ou un code tiré par quelqu'un d'autre, ou `--codes` ne désigne pas le bon fichier | Lui donner un code (§ 2.2), ou la valider dans l'interface locale ou à la main, après comparaison de l'empreinte (§ 2.4, § 2.5) |
 | « preuve du code invalide : demande refusée » | La demande ne correspond pas au code : demande fabriquée par un tiers, ou code mal recopié | Vérifier avec l'installateur le code recopié dans `box.env` ; en cas de doute, ne pas enrôler cette box |
 | « code déjà utilisé par la box … » | Le code a déjà servi à enrôler une autre box | Tirer un nouveau code pour cette box |
 | « code expiré le … » | Le code a dépassé sa durée de validité | Tirer un nouveau code et le faire recopier |
 | « Demande illisible ou mal signée » | La demande ne prouve pas la possession des clés qu'elle présente | Aucune : elle ne peut pas être enrôlée |
 | « Lecture des demandes refusée (HTTP 401) » | Mauvais compte de l'annuaire | Vérifier `IMAGUNITY_ANNUAIRE_COMPTE` |
+| « Phrase de passe incorrecte, ou fichier de clé altéré » (interface) | Phrase mal saisie | La ressaisir ; rien n'a été signé |
+| « La demande de cette box a changé depuis l'affichage » (interface) | La box a renvoyé une demande avec d'autres clés entre l'affichage et la validation | Actualiser et comparer de nouveau l'empreinte |
+| « Jeton absent ou incorrect » (interface) | Page ouverte sans l'adresse complète, ou interface relancée depuis | Rouvrir l'adresse affichée par la dernière commande `interface` |
+
+Côté box, une demande refusée depuis l'interface fait écrire au journal « Demande d'enrôlement écartée par l'annuaire : box déjà enrôlée, ou demande refusée par le responsable ».
 
 Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'elle joint l'annuaire (sa console indique la dernière lecture réussie) et que son journal contient « Demande d'enrôlement transmise à l'annuaire ». Un code mal formé dans `box.env` l'empêche de démarrer, avec un message qui le dit.
 
@@ -490,7 +548,7 @@ Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'
 | « Compte rendu » ancien de plusieurs heures | Box arrêtée, ou qui ne joint plus l'annuaire | Prévenir l'exploitant de la box : sa console indique la date de sa dernière lecture réussie de l'annuaire |
 | « pas de compte rendu » longtemps après l'enrôlement | Box pas encore démarrée, ou mauvaise empreinte du responsable dans sa configuration (elle refuse alors de démarrer) | Vérifier avec l'exploitant que la box tourne et que l'empreinte recopiée est la bonne |
 | « configuration locale » alors qu'une version la vise | Box verrouillée sur sa configuration locale par son exploitant, ou groupes de son entrée différents de ceux visés | Vérifier les groupes dans la liste ; demander à l'exploitant si la box est verrouillée |
-| Statut « expirée » | Entrée non renouvelée à temps | Renouveler (§ 2.5) |
+| Statut « expirée » | Entrée non renouvelée à temps | Renouveler (§ 2.6) |
 
 ---
 
@@ -501,10 +559,11 @@ Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'
 | `organisation-creer --organisation <id> --cles <fichier>` | Crée la clé de l'organisation et affiche son empreinte (§ 2.1) |
 | `code-creer --codes <fichier> --nom <nom> [--groupes …] [--validite-jours 30]` | Tire un code d'enrôlement pour une box à venir (§ 2.2) |
 | `enroler-attente --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--confirmer]` | Enrôle les box en attente qui ont prouvé leur code (§ 2.3) |
-| `renouveler --cles <clé> --annuaire <url> [--avant-jours 15] [--validite-jours 90] [--confirmer]` | Renouvelle les entrées qui expirent bientôt (§ 2.5) |
+| `interface --cles <clé> --codes <fichier> --annuaire <url> [--validite-jours 90] [--port 0] [--ouvrir]` | Interface locale : valider ou refuser les demandes en attente, une à une (§ 2.4) |
+| `renouveler --cles <clé> --annuaire <url> [--avant-jours 15] [--validite-jours 90] [--confirmer]` | Renouvelle les entrées qui expirent bientôt (§ 2.6) |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte d'une clé publique d'organisation |
-| `enroler --cles <clé> --demande <fichier> [--groupes …] [--validite-jours 90] [--serie 1] --sortie <fichier>` | Signe l'entrée d'une box, à la main (§ 2.4, § 2.6) |
-| `revoquer --cles <clé> --entree <fichier> --motif <texte> --sortie <fichier>` | Signe la révocation d'une box (§ 2.7) |
+| `enroler --cles <clé> --demande <fichier> [--groupes …] [--validite-jours 90] [--serie 1] --sortie <fichier>` | Signe l'entrée d'une box, à la main (§ 2.5, § 2.7) |
+| `revoquer --cles <clé> --entree <fichier> --motif <texte> --sortie <fichier>` | Signe la révocation d'une box (§ 2.8) |
 | `verifier --cle-publique <fichier> --entree <fichier>` | Vérifie une entrée signée et affiche son état |
 | `publier --annuaire <url> --entree <fichier>` | Publie une entrée ou une révocation dans l'annuaire |
 | `configuration-signer --cles <clé> --brouillon <fichier> --sortie <fichier>` | Signe un brouillon de règles, après relecture (§ 3.6) |

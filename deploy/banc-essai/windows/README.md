@@ -62,6 +62,12 @@ La box envoie seule sa demande à l'annuaire. Puis, dans une autre fenêtre :
 admin.bat enroler-attente --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090
 ```
 
+Ou, pour valider les demandes une à une depuis le navigateur (bouton « Valider » ; une demande sans code se valide après comparaison de l'empreinte) :
+
+```bat
+admin.bat interface --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090 --ouvrir
+```
+
 Même chose pour la box B (`set CODE_ENROLEMENT=…` avec un autre code, puis `dev-box.bat b`). Détails : [guide du responsable, § 2](../../../docs/guides/guide-responsable.md).
 
 ## Enrôler et appairer les box (à la main)
