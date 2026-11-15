@@ -4,6 +4,7 @@ import com.imagunity.domain.exam.DicomUids;
 import com.imagunity.domain.exam.StudyRestorer;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.security.GeneralSecurityException;
@@ -142,6 +143,7 @@ public final class DicomRestorer implements StudyRestorer {
         if (contexts.size() > MAX_PRESENTATION_CONTEXTS) {
             throw new IOException("Trop de combinaisons classe SOP / syntaxe de transfert pour une association");
         }
+        checkNotInterrupted();
         AAssociateRQ rq = new AAssociateRQ();
         rq.setCalledAET(config.calledAet());
         contexts.forEach((pc, id) -> rq.addPresentationContext(
@@ -181,6 +183,7 @@ public final class DicomRestorer implements StudyRestorer {
         List<String> failures = new ArrayList<>();
         try {
             for (Validated v : instances) {
+                checkNotInterrupted();
                 int status = store(as, v);
                 if (status != Status.Success && (status & 0xF000) != 0xB000) {
                     failures.add(String.format("statut %04X", status));
@@ -216,6 +219,17 @@ public final class DicomRestorer implements StudyRestorer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Envoi au PACS interrompu", e);
+        }
+    }
+
+    /**
+     * Arrête la restitution si le fil a été interrompu. dcm4che ne le remarque que s'il doit attendre : une réponse
+     * du PACS déjà arrivée (acceptation de l'association, réponse au C-STORE) passe outre l'interruption, et les
+     * instances suivantes partiraient quand même. Le statut d'interruption est conservé pour l'appelant.
+     */
+    private static void checkNotInterrupted() throws InterruptedIOException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedIOException("Restitution interrompue");
         }
     }
 
