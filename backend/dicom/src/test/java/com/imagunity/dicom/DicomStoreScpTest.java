@@ -14,8 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.dcm4che3.data.Attributes;
 import org.dcm4che3.data.Tag;
 import org.dcm4che3.io.DicomInputStream;
@@ -289,6 +291,98 @@ class DicomStoreScpTest {
 
         assertThat(studies.poll(1, TimeUnit.SECONDS)).isNull();
         assertThat(storage.resolve("IU_TO_B").resolve("box-b").resolve(STUDY)).as("fichiers conservés").exists();
+    }
+
+    /**
+     * SCP dont le signalement d'étude reste bloqué (sans réagir à l'interruption) jusqu'à {@code release} : il
+     * simule un traitement en cours au moment de l'arrêt.
+     */
+    private DicomStoreScp scpWithBlockedListener(CountDownLatch entered, CountDownLatch release, AtomicBoolean done)
+            throws IOException {
+        scp.stop();
+        scp = new DicomStoreScp(config, study -> {
+            entered.countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    if (release.await(10, TimeUnit.SECONDS)) {
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    interrupted = true; // ignorée : traitement qui ne s'interrompt pas
+                }
+            }
+            done.set(true);
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        TestPorts.start(scp);
+        return scp;
+    }
+
+    @Test
+    void stopWaitsForWorkInProgress() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean done = new AtomicBoolean();
+        DicomStoreScp blocked = scpWithBlockedListener(entered, release, done);
+        assertThat(pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1"))))
+                .containsOnly(Status.Success);
+        assertThat(entered.await(5, TimeUnit.SECONDS)).as("signalement en cours").isTrue();
+
+        Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException ignored) {
+                // fin du test
+            }
+            release.countDown();
+        });
+        blocked.stop();
+
+        assertThat(done).as("stop() rend la main une fois le traitement terminé").isTrue();
+    }
+
+    @Test
+    void stopGivesUpAfterTheTimeout() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean done = new AtomicBoolean();
+        DicomStoreScp blocked = scpWithBlockedListener(entered, release, done);
+        blocked.stopTimeout(Duration.ofMillis(100));
+        pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        try {
+            long start = System.nanoTime();
+            blocked.stop();
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
+            assertThat(done).as("traitement toujours en cours").isFalse();
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void interruptedStopDoesNotWait() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean done = new AtomicBoolean();
+        DicomStoreScp blocked = scpWithBlockedListener(entered, release, done);
+        pacs.store("IU_TO_B", List.of(TestDatasets.ct(STUDY, SERIES_1, "2.25.1001.1.1")));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        boolean stillInterrupted;
+        boolean finished;
+        try {
+            Thread.currentThread().interrupt();
+            blocked.stop();
+        } finally {
+            stillInterrupted = Thread.interrupted();
+            finished = done.get();
+            release.countDown();
+        }
+        assertThat(stillInterrupted).as("statut d'interruption conservé").isTrue();
+        assertThat(finished).as("stop() n'a pas attendu le traitement").isFalse();
     }
 
     private static int freePort() throws IOException {
