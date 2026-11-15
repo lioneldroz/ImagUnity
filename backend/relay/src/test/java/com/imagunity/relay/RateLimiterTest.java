@@ -65,4 +65,18 @@ class RateLimiterTest {
         limiter.acquire("box:nouvelle", 10);
         assertThat(limiter.size()).isEqualTo(1);
     }
+
+    @Test
+    void eachBucketIsJudgedFullAgainstItsOwnLimit() {
+        for (int i = 0; i < 100; i++) {
+            limiter.acquire("box:active", 600); // seau à 500 jetons sur 600 : pas plein
+        }
+        for (int i = 0; i <= RateLimiter.MAX_BUCKETS; i++) {
+            limiter.acquire("echecs:" + i, 30);
+        }
+        clock.now = clock.now.plusSeconds(3); // les seaux d'échecs se remplissent ; box:active gagne 30 jetons
+        limiter.peek("echecs:nouveau", 30); // oubli jugé avec une limite de 30
+
+        assertThat(limiter.size()).as("box:active, à moitié vide, gardé ; échecs pleins oubliés").isEqualTo(2);
+    }
 }

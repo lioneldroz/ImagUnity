@@ -13,7 +13,15 @@ case "$RESULTAT" in
         NUMERO=$(printf '%s\n' "$RESULTAT" | cut -f2)
         echo "Version n° $NUMERO prête : redémarrage de la box"
         systemctl --no-ask-password restart imagunity-box.service
-        SANTE="http://${SERVER_ADDRESS:-127.0.0.1}:${IMAGUNITY_HTTP_PORT:-8080}/actuator/health"
+        # Adresse d'écoute de la box : une adresse IPv6 s'écrit entre crochets dans l'URL, et une écoute sur toutes
+        # les adresses (0.0.0.0, ::) se joint par la boucle locale.
+        HOTE=${SERVER_ADDRESS:-127.0.0.1}
+        case "$HOTE" in
+            0.0.0.0) HOTE=127.0.0.1 ;;
+            ::) HOTE='[::1]' ;;
+            *:*) HOTE="[$HOTE]" ;;
+        esac
+        SANTE="http://${HOTE}:${IMAGUNITY_HTTP_PORT:-8080}/actuator/health"
         ATTENTE=${IMAGUNITY_MAJ_ATTENTE:-300}
         CHOIX=${IMAGUNITY_CHOIX:-/run/imagunity-choix/choix}
         while [ "$ATTENTE" -gt 0 ]; do

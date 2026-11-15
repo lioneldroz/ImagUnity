@@ -118,11 +118,19 @@ public final class ReleaseStore {
             } catch (ReleaseException | DirectoryException | IOException | IllegalArgumentException e) {
                 log.accept("Version déposée refusée (" + name + ") : " + e.getMessage());
                 Path refused = Files.createDirectories(depot.resolve("refusees"));
-                Files.move(manifestFile, refused.resolve(name), StandardCopyOption.REPLACE_EXISTING);
-                if (Files.exists(artifact)) {
-                    Files.move(artifact, refused.resolve(artifact.getFileName()), StandardCopyOption.REPLACE_EXISTING);
-                }
+                // Le manifeste a pu disparaître entre-temps : le choix au démarrage et la mise à jour de la nuit
+                // peuvent lire le dépôt ensemble, et l'autre a pu installer puis supprimer la version.
+                moveIfPresent(manifestFile, refused.resolve(name));
+                moveIfPresent(artifact, refused.resolve(artifact.getFileName()));
             }
+        }
+    }
+
+    private static void moveIfPresent(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.nio.file.NoSuchFileException e) {
+            // déjà pris en charge par l'autre lecture du dépôt
         }
     }
 

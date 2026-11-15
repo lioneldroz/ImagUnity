@@ -66,6 +66,9 @@ public final class IuFileDownloader {
             Fetched fetched = fetch(description, layout, chunk, target);
             IuFileClient client = fetched.client();
             FileDescription.Replica replica = fetched.replica();
+            // Le morceau est noté reçu avant d'être acquitté : un acquittement ne se reprend pas (le relais oublie le
+            // morceau), et un arrêt brutal entre les deux ferait sinon redemander au relais un morceau qu'il n'a plus.
+            onChunk.accept(chunk.index());
             // Au mieux, un seul essai : l'acquittement ne fait que libérer le relais plus tôt (l'émetteur retire ses
             // copies à la fin du transfert, et elles expirent). Un relais tombé juste après avoir servi le morceau ne
             // doit pas bloquer la réception.
@@ -75,7 +78,6 @@ public final class IuFileDownloader {
                 LOG.log(System.Logger.Level.INFO, "Acquittement du morceau {0} sur {1} impossible : {2}",
                         chunk.index(), replica.relay(), Retry.reason(e));
             }
-            onChunk.accept(chunk.index());
             received += layout.payload(chunk.index());
             progress.accept(received);
         }

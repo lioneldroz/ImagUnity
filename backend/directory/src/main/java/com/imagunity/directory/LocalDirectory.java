@@ -455,8 +455,13 @@ public final class LocalDirectory {
             }
             boolean missing = p.getValue().entries().entrySet().stream().anyMatch(e -> {
                 Foreign f = foreign.get(e.getKey());
-                if (f == null || !f.partner().equals(p.getKey())) {
-                    return !entries.containsKey(e.getKey()); // collision écartée : pas un manque
+                if (f == null) {
+                    // Absente de la vue : un manque, sauf si l'identifiant est celui d'une box locale (collision
+                    // écartée).
+                    return !entries.containsKey(e.getKey());
+                }
+                if (!f.partner().equals(p.getKey())) {
+                    return false; // identifiant déjà tenu par un autre partenaire : collision écartée, pas un manque
                 }
                 return f.entry().serial() < e.getValue();
             });
