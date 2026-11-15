@@ -126,7 +126,9 @@ public class ChunkController {
     @ExceptionHandler(RelayException.class)
     ResponseEntity<ProblemDetail> refused(RelayException e) {
         ResponseEntity.BodyBuilder response = ResponseEntity.status(e.status());
-        if (e.status() == HttpStatus.TOO_EARLY) {
+        if (e.retryAfter() > 0) {
+            response.header(HttpHeaders.RETRY_AFTER, Long.toString(e.retryAfter()));
+        } else if (e.status() == HttpStatus.TOO_EARLY) {
             response.header(HttpHeaders.RETRY_AFTER, "2");
         }
         return response.body(ProblemDetail.forStatusAndDetail(e.status(), e.getMessage()));

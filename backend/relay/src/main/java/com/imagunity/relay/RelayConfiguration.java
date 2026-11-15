@@ -135,8 +135,12 @@ class RelayConfiguration {
     }
 
     @Bean
-    RequestAuthenticator requestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock) {
-        return new RequestAuthenticator(directory, replay, clock);
+    RequestAuthenticator requestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock,
+                                              RateLimitProperties limits) {
+        LOG.log(Level.INFO, "Limites de débit : {0} dépôts par minute et par box, {1} pour une box d''une organisation "
+                + "partenaire, {2} requêtes mal signées par minute et par adresse", limits.depositsPerMinute(),
+                limits.partnerDepositsPerMinute(), limits.failedPerMinute());
+        return new RequestAuthenticator(directory, replay, clock, new RateLimiter(clock), limits);
     }
 
     @Bean

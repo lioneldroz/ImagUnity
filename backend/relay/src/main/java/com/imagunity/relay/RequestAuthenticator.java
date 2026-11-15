@@ -23,17 +23,42 @@ import org.springframework.http.HttpStatus;
  *       couvre l'accord ;</li>
  *   <li>capacité : signature Ed25519 de la clé du morceau ou de la file, sans identité.</li>
  * </ul>
+ * Limites de débit ({@link RateLimitProperties}) : requêtes de dépôt par box, plus basses pour les box des partenaires ;
+ * une adresse qui envoie trop de requêtes mal signées est refusée avant toute vérification de signature.
  */
 public final class RequestAuthenticator {
 
     private final LocalDirectory directory;
     private final ReplayStore replay;
     private final Clock clock;
+    private final RateLimiter limiter;
+    private final RateLimitProperties limits;
 
     public RequestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock) {
+        this(directory, replay, clock, new RateLimiter(clock), RateLimitProperties.defaults());
+    }
+
+    public RequestAuthenticator(LocalDirectory directory, ReplayStore replay, Clock clock, RateLimiter limiter,
+                                RateLimitProperties limits) {
         this.directory = directory;
         this.replay = replay;
         this.clock = clock;
+        this.limiter = limiter;
+        this.limits = limits;
+    }
+
+    /** Adresse ayant envoyé trop de requêtes mal signées : refusée avant toute vérification (coûteuse). */
+    private void checkFailures(HttpServletRequest request) {
+        long wait = limiter.peek("echecs:" + request.getRemoteAddr(), limits.failedPerMinute());
+        if (wait > 0) {
+            throw new RelayException(HttpStatus.TOO_MANY_REQUESTS, "Trop de requêtes mal signées depuis cette adresse",
+                    wait);
+        }
+    }
+
+    private RelayException failed(HttpServletRequest request, RelayException e) {
+        limiter.acquire("echecs:" + request.getRemoteAddr(), limits.failedPerMinute());
+        return e;
     }
 
     /**
@@ -43,19 +68,27 @@ public final class RequestAuthenticator {
      * @throws RelayException 401 si la requête est mal signée ou rejouée, 403 si la box n'est pas active
      */
     public UUID depositor(HttpServletRequest request, String bodySha256) {
+        checkFailures(request);
         String keyId = request.getHeader(SignedRequest.KEY_ID);
         UUID boxId;
         try {
             boxId = UUID.fromString(keyId == null ? "" : keyId);
         } catch (IllegalArgumentException e) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Identifiant de box absent ou invalide");
+            throw failed(request, new RelayException(HttpStatus.UNAUTHORIZED, "Identifiant de box absent ou invalide"));
         }
         SignedRequest signed = parsed(request, bodySha256);
         // Box inconnue ou signature invalide : même réponse, sans détail (pas d'indication sur l'annuaire à un tiers).
         Optional<BoxEntry> entry = directory.entry(boxId);
         if (entry.isEmpty() || !signed.verifyDeposit(entry.get().signingKey(),
                 request.getHeader(SignedRequest.SIGNATURE))) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête de dépôt refusée");
+            throw failed(request, new RelayException(HttpStatus.UNAUTHORIZED, "Requête de dépôt refusée"));
+        }
+        boolean local = directory.isLocal(boxId);
+        long wait = limiter.acquire("box:" + boxId, local ? limits.depositsPerMinute()
+                : limits.partnerDepositsPerMinute());
+        if (wait > 0) {
+            throw new RelayException(HttpStatus.TOO_MANY_REQUESTS, "Trop de requêtes de cette box : nouvel essai dans "
+                    + wait + " s", wait);
         }
         BoxEntry.Status status = entry.get().statusAt(clock.instant());
         if (status != BoxEntry.Status.ACTIVE) {
@@ -100,12 +133,14 @@ public final class RequestAuthenticator {
      * @throws RelayException 401 si la requête est mal signée ou rejouée
      */
     public void capability(HttpServletRequest request, String bodySha256, String id, String publicKey) {
+        checkFailures(request);
         if (!id.equals(request.getHeader(SignedRequest.KEY_ID))) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Identifiant de clé absent ou différent du chemin");
+            throw failed(request, new RelayException(HttpStatus.UNAUTHORIZED,
+                    "Identifiant de clé absent ou différent du chemin"));
         }
         SignedRequest signed = parsed(request, bodySha256);
         if (!signed.verifyCapability(publicKey(publicKey), request.getHeader(SignedRequest.SIGNATURE))) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Signature invalide");
+            throw failed(request, new RelayException(HttpStatus.UNAUTHORIZED, "Signature invalide"));
         }
         admit(signed);
     }
@@ -124,7 +159,8 @@ public final class RequestAuthenticator {
             signed = new SignedRequest(request.getMethod(), request.getRequestURI(), Long.parseLong(timestamp),
                     request.getHeader(SignedRequest.REQUEST_ID), bodySha256);
         } catch (ProtocolException | NumberFormatException e) {
-            throw new RelayException(HttpStatus.UNAUTHORIZED, "Requête signée mal formée : " + e.getMessage());
+            throw failed(request, new RelayException(HttpStatus.UNAUTHORIZED, "Requête signée mal formée : "
+                    + e.getMessage()));
         }
         Optional<String> outside = replay.outsideWindow(signed);
         if (outside.isPresent()) {

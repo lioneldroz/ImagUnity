@@ -102,6 +102,10 @@ public class QueueController {
 
     @ExceptionHandler(RelayException.class)
     ResponseEntity<ProblemDetail> refused(RelayException e) {
-        return ResponseEntity.status(e.status()).body(ProblemDetail.forStatusAndDetail(e.status(), e.getMessage()));
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(e.status());
+        if (e.retryAfter() > 0) {
+            response.header(org.springframework.http.HttpHeaders.RETRY_AFTER, Long.toString(e.retryAfter()));
+        }
+        return response.body(ProblemDetail.forStatusAndDetail(e.status(), e.getMessage()));
     }
 }

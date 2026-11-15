@@ -220,7 +220,7 @@ Le relais refuse une requête dont l'horodatage s'écarte de plus de 5 minutes, 
 - **Dépôt** (création de morceau, création de file, dépôt de message) : réservé aux **box enrôlées et actives**. La requête est signée par l'identité de la box (§ 6.3) ; le relais vérifie la signature d'après l'**entrée d'annuaire** de la box. Il épingle la clé du responsable de chaque organisation qu'il sert et lit l'annuaire comme une box (même bibliothèque, mêmes règles : signature du responsable, validité, révocation, pas de retour en arrière). Une box révoquée ne peut plus rien déposer. **Décision v0.3** : pas de certificats clients TLS, donc pas d'infrastructure de certificats à construire.
 - **Retrait** : **aucun contrôle d'identité**, uniquement la capacité (identifiant + signature). Un contrôle d'identité au retrait obligerait le relais à savoir qui récupère quoi, ce que la note proscrit.
 
-Le relais applique des limites de volume par box déposante (protection contre la saturation par une box malveillante) : quota d'octets de morceaux par box, et au plus 2 000 messages en attente d'une même box dans une file (sur 10 000 : `429` au-delà), pour qu'une box ne remplisse pas la file d'une autre. Corps de création de morceau limité à 16 Kio, lu avant toute vérification. Des limites de **débit** (requêtes par minute) restent à ajouter (pré-audit, constat R4).
+Le relais applique des limites de volume par box déposante (protection contre la saturation par une box malveillante) : quota d'octets de morceaux par box, et au plus 2 000 messages en attente d'une même box dans une file (sur 10 000 : `429` au-delà), pour qu'une box ne remplisse pas la file d'une autre. Corps de création de morceau limité à 16 Kio, lu avant toute vérification. Limites de **débit**, par seau de jetons (une minute de rafale au plus) : 600 requêtes de dépôt par minute et par box de l'organisation, 120 pour une box d'une organisation partenaire (fédération) ; une adresse IP qui envoie plus de 30 requêtes mal signées par minute est refusée avant toute vérification de signature, ce qui protège le processeur du relais (ML-DSA). Réponse `429` avec `Retry-After` ; la box réessaie. Derrière un proxy de confiance (adresse privée), l'adresse du client est prise dans `X-Forwarded-For`. Réglages : `IMAGUNITY_RELAY_DEPOSITS_PER_MINUTE`, `IMAGUNITY_RELAY_PARTNER_DEPOSITS_PER_MINUTE`, `IMAGUNITY_RELAY_FAILED_PER_MINUTE` (0 désactive). Les limites sont tenues par chaque instance du relais.
 
 ### 6.5 Reprise
 
@@ -505,7 +505,7 @@ Précisions apportées par l'implémentation : la chaîne canonique sépare ses 
 - après les acquittements, le relais est **vide** (0 fichier, 0 ligne) ;
 - **box révoquée** dans l'annuaire : son dépôt est refusé, « HTTP 403 — Box non active dans l'annuaire (REVOKED) ».
 
-À ce stade, le relais parle HTTP : en production, il est placé derrière un proxy TLS. Il sert une seule organisation (une clé de responsable) ; la limite de débit par box (§ 6.4) reste à ajouter, seul le volume l'est.
+À ce stade, le relais parle HTTP : en production, il est placé derrière un proxy TLS. Il sert une organisation (une clé de responsable) et, par la fédération, les box des organisations qu'elle reconnaît ; volume et débit sont limités par box (§ 6.4).
 
 **Étape 3 — files de messages IU-MSG (fait).**
 
