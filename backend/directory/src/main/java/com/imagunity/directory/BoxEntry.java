@@ -136,7 +136,6 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
         return now.isBefore(validUntil) ? Status.ACTIVE : Status.EXPIRED;
     }
 
-    /** Même box, révoquée : numéro suivant. */
     /** Entrée renouvelée : numéro suivant, valide à partir de {@code from} pour {@code validity}. */
     BoxEntry renew(Instant from, java.time.Duration validity) {
         return renew(from, validity, protocols);
@@ -148,6 +147,7 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
                 from, from.plus(validity), false, null, null, groups, versions);
     }
 
+    /** Même box, révoquée : numéro suivant. */
     BoxEntry revoke(Instant at, String reason) {
         return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
                 validFrom,

@@ -37,11 +37,17 @@ import java.util.stream.Stream;
  * Orchestrateur côté émetteur : fait avancer chaque transfert dans sa machine à états.
  *
  * <pre>
- * RECEIVED ──empaquetage──► PACKAGED ──dépôt de tous les paquets──► UPLOADED ──annonce──► ANNOUNCED
- *     │                                                                                   │
- *     │                                              accusé « restitué » du destinataire ─┴─► ACKNOWLEDGED
- *     └───────────────────────── échec, ou accusé « en échec » ──────────────────────────────► FAILED
+ * RECEIVED ──empaquetage──► PACKAGED ──paquets confiés au transport, annonce──────────────► ANNOUNCED
+ *     │                         │                                                           │
+ *     │                         └──dépôt fini avant l'annonce──► UPLOADED ──annonce─────────┤
+ *     │                                                                                     │
+ *     │                                accusé « restitué » du destinataire ─────────────────┴──► ACKNOWLEDGED
+ *     └───────────────────── échec, ou accusé « en échec » ──────────────────────────────────────► FAILED
  * </pre>
+ *
+ * <p>L'annonce part dès que tous les paquets sont confiés au transport, sans attendre la fin de leur dépôt : le
+ * destinataire restitue chaque paquet dès son arrivée. {@code UPLOADED} ne sert que si le dépôt se termine alors que
+ * l'annonce n'est pas encore partie (reprise après un redémarrage, par exemple).
  *
  * <p>L'accusé n'est retenu que s'il vient du partenaire destinataire du transfert, pour un transfert annoncé, et
  * si l'empreinte des paquets qu'il porte est celle des paquets déposés. Un accusé « restitué » vide le dossier
