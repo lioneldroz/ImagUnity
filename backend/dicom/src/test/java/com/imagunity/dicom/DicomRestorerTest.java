@@ -247,12 +247,49 @@ class DicomRestorerTest {
     @Test
     void interruptionStopsTheRestore() throws Exception {
         StudyRestorer.Instance instance = instance(STUDY + ".1", STUDY + ".1.1");
+        // Interruption avant l'envoi : aucune association n'est ouverte, donc rien n'est transmis au PACS
+        // (auparavant, une acceptation d'association arrivée assez vite laissait partir l'instance malgré tout,
+        // et le PACS l'écrivait pendant la suppression du dossier temporaire).
         Thread.currentThread().interrupt();
+        boolean stillInterrupted;
         try {
             assertThatThrownBy(() -> restorer.restore(STUDY, List.of(instance)))
-                    .isInstanceOf(IOException.class);
+                    .isInstanceOf(java.io.InterruptedIOException.class)
+                    .hasMessageContaining("interrompue");
         } finally {
-            Thread.interrupted();
+            stillInterrupted = Thread.interrupted();
+        }
+        assertThat(stillInterrupted).as("statut d'interruption conservé pour l'appelant").isTrue();
+        try (var files = Files.walk(dir.resolve("pacs"))) {
+            assertThat(files.filter(Files::isRegularFile)).as("rien n'est parvenu au PACS").isEmpty();
+        }
+    }
+
+    @Test
+    void interruptionWhileWaitingForThePacsStopsTheRestore() throws Exception {
+        StudyRestorer.Instance instance = instance(STUDY + ".1", STUDY + ".1.1");
+        // PACS qui accepte la connexion TCP mais ne répond pas : la restitution attend l'acceptation de l'association.
+        try (ServerSocket silent = new ServerSocket(0)) {
+            DicomRestorer waiting = new DicomRestorer(new RestoreConfig("127.0.0.1", silent.getLocalPort(),
+                    "ORTHANC_B", "IMAGUNITY_B"));
+            java.util.concurrent.atomic.AtomicReference<Throwable> outcome = new java.util.concurrent.atomic.AtomicReference<>();
+            Thread restore = Thread.ofPlatform().start(() -> {
+                try {
+                    waiting.restore(STUDY, List.of(instance));
+                } catch (Throwable e) {
+                    outcome.set(e);
+                }
+            });
+            try (java.net.Socket accepted = silent.accept()) {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (restore.getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+                    Thread.onSpinWait();
+                }
+                assertThat(restore.getState()).as("en attente de l'acceptation").isEqualTo(Thread.State.WAITING);
+                restore.interrupt();
+                assertThat(restore.join(Duration.ofSeconds(10))).as("restitution terminée").isTrue();
+            }
+            assertThat(outcome.get()).isInstanceOf(IOException.class).hasMessageContaining("interrompue");
         }
     }
 

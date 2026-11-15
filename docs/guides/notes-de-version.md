@@ -18,6 +18,7 @@ Corrections issues de la revue de novembre 2026 :
 - **Lecture de l'annuaire** : une réponse mal formée ou une erreur imprévue n'arrête plus la lecture périodique jusqu'au redémarrage de la box.
 - **Création de la file de réception** : une demande répétée par la même box pour son adresse réservée (réponse du relais perdue) rend la file existante et ses messages, au lieu d'en créer une autre que personne n'utilise. Correction côté relais : sans effet tant que le relais n'est pas mis à jour.
 - **Restitution au PACS** : délais d'attente (connexion et association 30 s, chaque C-STORE 5 min, fin d'association 30 s). Un PACS figé ne bloque plus les envois et réceptions de la box.
+- **Restitution interrompue** (arrêt de la box pendant une restitution au PACS) : elle s'arrête désormais avant d'envoyer la moindre instance. Auparavant, une réponse rapide du PACS laissait partir l'envoi malgré l'interruption. À l'arrêt, l'entrée DICOM attend aussi la fin des réceptions en cours (10 s au plus) avant de rendre la main.
 - **Réception interrompue** : un arrêt de la box pendant le dépaquetage d'un paquet ne fait plus échouer le transfert au redémarrage.
 - **Clés protégées par le TPM** : les deux fichiers du secret scellé sont remplacés sans risque de mélange en cas de coupure de courant.
 - **Sauvegarde du site central** : `sauvegarder.sh` sauvegarde aussi les données de Caddy, dont l'autorité de certification interne, et accepte un dossier de destination relatif.

@@ -190,7 +190,21 @@ public final class DicomStoreScp implements AutoCloseable {
         }
     }
 
-    /** Ferme le port DICOM. Les études en cours restent sur le disque et seront reprises au démarrage. */
+    /** Attente au plus, à l'arrêt, de la fin des réceptions et des signalements d'études en cours. */
+    private volatile Duration stopTimeout = Duration.ofSeconds(10);
+
+    /** Fixe l'attente maximale de {@link #stop()} (tests). */
+    void stopTimeout(Duration timeout) {
+        this.stopTimeout = java.util.Objects.requireNonNull(timeout);
+    }
+
+    /**
+     * Ferme le port DICOM. Les études en cours restent sur le disque et seront reprises au démarrage.
+     *
+     * <p>Les réceptions en cours sont interrompues, puis attendues au plus {@link #stopTimeout(Duration) le délai
+     * d'arrêt} : au retour, plus aucun fil de l'entrée n'écrit dans le dossier de réception (sauf dépassement du
+     * délai, signalé dans le journal).
+     */
     public synchronized void stop() {
         if (executor == null) {
             return;
@@ -198,9 +212,26 @@ public final class DicomStoreScp implements AutoCloseable {
         device.unbindConnections();
         scheduler.shutdownNow();
         executor.shutdownNow();
+        awaitTermination(executor, scheduler);
         executor = null;
         scheduler = null;
         LOG.log(Level.INFO, "Entrée DICOM fermée");
+    }
+
+    private void awaitTermination(ExecutorService... services) {
+        long deadline = System.nanoTime() + stopTimeout.toNanos();
+        try {
+            for (ExecutorService service : services) {
+                if (!service.awaitTermination(deadline - System.nanoTime(), TimeUnit.NANOSECONDS)) {
+                    LOG.log(Level.WARNING, "Entrée DICOM : des traitements en cours ne sont pas terminés après {0} ms",
+                            stopTimeout.toMillis());
+                    return;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // l'appelant veut s'arrêter : on n'attend pas davantage
+            LOG.log(Level.WARNING, "Entrée DICOM : attente de l'arrêt interrompue");
+        }
     }
 
     @Override
