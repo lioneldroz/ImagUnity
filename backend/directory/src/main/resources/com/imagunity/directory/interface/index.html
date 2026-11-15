@@ -84,7 +84,7 @@
             <tbody>
               <tr><td>Clé publique</td>
                 <td>copier le fichier téléchargé à l'étape 1 sous le nom <code>deploy/site-central/config/organisation.pub.json</code></td>
-                <td>rien à faire : déjà dans <code>donnees\organisation.json.pub.json</code></td></tr>
+                <td>lancer <code>deposer.bat</code> : il la copie dans <code>machines\annuaire</code>, <code>relais</code>, <code>box-a</code> et <code>box-b</code></td></tr>
               <tr><td>Empreinte</td>
                 <td>dans <code>deploy/site-central/.env</code> : <span class="copiable" id="ligne-env-empreinte"></span></td>
                 <td>dans <code>config.bat</code> : <span class="copiable" id="ligne-bat-empreinte"></span></td></tr>
@@ -118,7 +118,7 @@
         <ul>
           <li>site central : les copier dans <code>deploy/site-central/config/fraicheur/</code>, puis
             <code>docker compose up -d directory</code> ;</li>
-          <li>station d'essai Windows : rien à copier, <code>dev-annuaire.bat</code> les prend dans <code>donnees\</code> ; le relancer.</li>
+          <li>station d'essai Windows : <code>deposer.bat annuaire</code> les copie dans <code>machines\annuaire\config\fraicheur\</code> ; relancer <code>dev-annuaire.bat</code>.</li>
         </ul>
       </li>
 

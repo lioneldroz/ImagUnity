@@ -2,7 +2,8 @@
 rem Box ImagUnity (logiciel lance directement, sans le lanceur des mises a jour signees).
 rem   dev-box.bat        box « a » : console http://localhost:8081, entree DICOM 11112
 rem   dev-box.bat b      box « b » : console http://localhost:8082, entree DICOM 11113
-rem Chaque box a son dossier de donnees (identite, base, transferts) : donnees\box-a, donnees\box-b.
+rem Chaque box est une machine simulee : machines\box-a, machines\box-b, avec sa configuration (config\ : cle
+rem publique de l'organisation deposee par deposer.bat) et ses donnees (donnees\ : identite, base, transferts).
 rem Destination DICOM : IU_TO_B (box a) ou IU_TO_A (box b), vers le partenaire box-b ou box-a ; PACS de restitution : voir PACS_* ci-dessous.
 setlocal
 chcp 65001 >nul
@@ -31,7 +32,9 @@ set "BOX_AET=IMAGUNITY_B"
 :suite
 title ImagUnity - box %BOX%
 if not exist "%JAR_BOX%" goto :absent
-if not exist "%CLE_ORGANISATION%" goto :cle
+set "MACHINE=%MACHINE_BOX%-%BOX%"
+set "CONFIG=%MACHINE%\config"
+if not exist "%CONFIG%\organisation.pub.json" goto :cle
 if not defined ORGANISATION_CODE goto :code
 
 rem --- PACS local de la box (a adapter : Orthanc d'essai, par exemple) : emetteurs admis et PACS de restitution.
@@ -45,7 +48,7 @@ set "SERVER_ADDRESS=127.0.0.1"
 set "IMAGUNITY_DICOM_BIND_ADDRESS=127.0.0.1"
 set "IMAGUNITY_HTTP_PORT=%HTTP_PORT%"
 set "IMAGUNITY_DICOM_PORT=%DICOM_PORT%"
-set "IMAGUNITY_DATA_DIR=%DONNEES%\box-%BOX%"
+set "IMAGUNITY_DATA_DIR=%MACHINE%\donnees"
 set "IMAGUNITY_CONSOLE_USER=%CONSOLE_UTILISATEUR%"
 set "IMAGUNITY_CONSOLE_PASSWORD=%CONSOLE_MOT_DE_PASSE%"
 set "IMAGUNITY_DICOM_ALLOWED_CALLING_AETS=%PACS_AET_EMETTEUR%"
@@ -57,12 +60,12 @@ set "IMAGUNITY_PACS_AET=%PACS_AET%"
 set "IMAGUNITY_BOX_AET=%BOX_AET%"
 set "IMAGUNITY_DIRECTORY_ENABLED=true"
 set "IMAGUNITY_DIRECTORY_URL=http://localhost:%ANNUAIRE_PORT%"
-set "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY=%CLE_ORGANISATION%"
+set "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY=%CONFIG%\organisation.pub.json"
 set "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=%ORGANISATION_CODE%"
 rem Essai : l'annuaire relu toutes les 30 s (5 min par defaut).
 set "IMAGUNITY_DIRECTORY_SYNC_INTERVAL=30s"
 set "IMAGUNITY_IU_RELAY=http://localhost:%RELAIS_PORT%"
-rem Code d'enrolement donne par « admin.bat code-creer » : la box envoie seule sa demande a l'annuaire.
+rem Code d'enrolement tire par le responsable (interface, onglet Codes) : la box envoie seule sa demande.
 rem   set CODE_ENROLEMENT=XXXX-XXXX-XXXX-XXXX-XXXX   puis   dev-box.bat
 if defined CODE_ENROLEMENT set "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=%CODE_ENROLEMENT%"
 if not exist "%IMAGUNITY_DATA_DIR%" mkdir "%IMAGUNITY_DATA_DIR%"
@@ -74,8 +77,8 @@ exit /b %errorlevel%
 echo Box pas encore construite : lancer construire.bat
 exit /b 1
 :cle
-echo Cle du responsable absente (%CLE_ORGANISATION%) : voir README.md
+echo Cle publique de l'organisation absente de la machine box-%BOX% (%CONFIG%\organisation.pub.json) : deposer.bat
 exit /b 1
 :code
-echo ORGANISATION_CODE vide dans config.bat : y recopier l'empreinte affichee par « admin.bat organisation-creer »
+echo ORGANISATION_CODE vide dans config.bat : y recopier l'empreinte affichee par l'interface du responsable
 exit /b 1

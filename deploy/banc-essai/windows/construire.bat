@@ -7,9 +7,9 @@ cd /d "%RACINE%\backend"
 where node >nul 2>nul
 if errorlevel 1 (
     echo Node.js absent : la box est construite sans sa console web.
-    call mvnw.cmd -B -DskipTests -Djacoco.skip=true -Dconsole.skip=true -pl app,relay,directory-server -am package
+    call mvnw.cmd -B -DskipTests -Djacoco.skip=true -Dconsole.skip=true -pl app,relay,directory-server -am clean package
 ) else (
-    call mvnw.cmd -B -DskipTests -Djacoco.skip=true -pl app,relay,directory-server -am package
+    call mvnw.cmd -B -DskipTests -Djacoco.skip=true -pl app,relay,directory-server -am clean package
 )
 if errorlevel 1 goto :echec
 echo.
