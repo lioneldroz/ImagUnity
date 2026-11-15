@@ -59,12 +59,14 @@ public class DirectoryController {
      * @param pairedAs     nom local du partenaire lié à cette box ({@code null} : pas appairée)
      * @param encrypted    vrai si l'entrée publie les clés de chiffrement de la box (sinon, entrée à réémettre)
      * @param organization organisation partenaire de la box ({@code null} : box de l'organisation)
-     * @param refusal      motif pour lequel cette box ne peut pas échanger avec elle (accord, périmètre), ou
-     *                     {@code null}
+     * @param refusal      motif pour lequel cette box ne peut pas échanger avec elle (accord, périmètre, versions du
+     *                     protocole), ou {@code null}
+     * @param protocols    versions du protocole annoncées par la box ({@code iu1.0} si son entrée n'en annonce pas)
+     * @param protocol     plus haute version commune avec cette box, ou {@code null}
      */
     public record BoxView(UUID boxId, String displayName, long serial, BoxEntry.Status status, Instant validUntil,
                           boolean reachable, String pairedAs, boolean encrypted, String organization,
-                          String refusal) {
+                          String refusal, List<String> protocols, String protocol) {
     }
 
     /**
@@ -153,7 +155,8 @@ public class DirectoryController {
                         e.transport().containsKey(transport.addressKind()), paired.get(e.boxId()),
                         e.encryptionKeys() != null,
                         local.partnerOf(e.boxId()).map(r -> r.partner().organization()).orElse(null),
-                        local.exchangeRefusal(me.boxId(), e.boxId()).orElse(null)))
+                        local.boxRefusal(me.boxId(), e.boxId()).orElse(null), e.announcedProtocols(),
+                        local.protocol(e.boxId()).orElse(null)))
                 .toList();
         Map<String, String> names = new HashMap<>();
         List<PartnerView> partners = local.recognitions().stream()
@@ -229,7 +232,7 @@ public class DirectoryController {
         if (entry.statusAt(clock.instant()) != BoxEntry.Status.ACTIVE) {
             throw new IllegalStateException("Box « " + entry.displayName() + " » non active dans l'annuaire");
         }
-        local.exchangeRefusal(me.boxId(), boxId).ifPresent(refusal -> {
+        local.boxRefusal(me.boxId(), boxId).ifPresent(refusal -> {
             throw new IllegalStateException(refusal);
         });
         String address = entry.transport().get(transport.addressKind());

@@ -112,11 +112,16 @@ public class ConfigurationService {
         if (report.reportedAt().isAfter(clock.instant().plus(java.time.Duration.ofMinutes(10)))) {
             throw new PublicationService.InvalidEntryException("Compte rendu daté du futur");
         }
-        boolean saved = store.saveReport(report, clock.instant());
+        boolean saved = store.saveReport(report, document, clock.instant());
         if (saved && report.refusal() != null) {
             LOG.warn("Box {} : configuration n° {} refusée : {}", report.boxId(), report.refused(), report.refusal());
         }
         return saved;
+    }
+
+    /** Dernier compte rendu signé d'une box (lu par l'outil du responsable au renouvellement). */
+    public Optional<SignedDocument> reportDocument(UUID boxId) {
+        return store.reportDocument(boxId);
     }
 
     private Optional<HybridPublicKey> signingKey(UUID boxId) {

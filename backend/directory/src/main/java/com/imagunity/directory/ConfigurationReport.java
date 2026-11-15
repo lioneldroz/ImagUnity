@@ -17,10 +17,14 @@ import java.util.UUID;
  * @param refused     dernière version refusée, ou 0
  * @param refusal     raison du refus, ou {@code null}
  * @param reportedAt  date du compte rendu (les comptes rendus plus anciens que le dernier reçu sont ignorés)
+ * @param protocols   versions du protocole que parle la box : le responsable les reporte dans son entrée au
+ *                    renouvellement
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record ConfigurationReport(String type, UUID boxId, long applied,
                                   @JsonInclude(JsonInclude.Include.NON_NULL) Instant appliedAt, long refused,
-                                  @JsonInclude(JsonInclude.Include.NON_NULL) String refusal, Instant reportedAt) {
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) String refusal, Instant reportedAt,
+                                  @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> protocols) {
 
     public static final String TYPE = "imagunity.configuration.report";
 
@@ -30,11 +34,19 @@ public record ConfigurationReport(String type, UUID boxId, long applied,
         if (refusal != null && refusal.length() > 500) {
             refusal = refusal.substring(0, 500);
         }
+        protocols = Protocols.of(protocols);
+    }
+
+    /** Compte rendu sans version de protocole annoncée (box antérieure). */
+    public ConfigurationReport(String type, UUID boxId, long applied, Instant appliedAt, long refused, String refusal,
+                               Instant reportedAt) {
+        this(type, boxId, applied, appliedAt, refused, refusal, reportedAt, java.util.List.of());
     }
 
     public static ConfigurationReport of(UUID boxId, long applied, Instant appliedAt, long refused, String refusal,
                                          Instant reportedAt) {
-        return new ConfigurationReport(TYPE, boxId, applied, appliedAt, refused, refusal, reportedAt);
+        return new ConfigurationReport(TYPE, boxId, applied, appliedAt, refused, refusal, reportedAt,
+                Protocols.SUPPORTED);
     }
 
     /** Signé par la box. */

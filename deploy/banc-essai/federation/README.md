@@ -22,6 +22,7 @@ Le script efface puis remplit `travail/` : clés des responsables, bases H2, jou
 ## Ce qu'il vérifie
 
 1. **Enrôlement** : chaque responsable tire un code par box, la box envoie sa demande avec la preuve du code, `enroler-attente` la signe.
+   L'entrée signée de chaque box annonce les versions du protocole de sa demande (`"protocols": ["iu1.0"]`).
 2. **Reconnaissance mutuelle** : chaque responsable reconnaît l'autre (`reconnaitre`). Le périmètre couvre les groupes des deux box, et les relais autorisés sont ceux de chaque organisation. Chaque box voit alors l'autre comme box partenaire utilisable.
 3. **Appairage entre organisations**, par l'annuaire, depuis la console de la box A.
 4. **Examens** de A vers B, puis de B vers A : C-STORE du PACS émetteur vers sa box, puis réception au PACS destinataire, instances comparées une à une (pixels) et accusé de réception.

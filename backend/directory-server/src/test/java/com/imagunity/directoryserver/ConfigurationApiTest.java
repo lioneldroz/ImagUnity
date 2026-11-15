@@ -139,6 +139,13 @@ class ConfigurationApiTest {
         assertThat(send("POST", reports, future.toJson(), null, false).statusCode()).isEqualTo(422);
         assertThat(send("POST", reports, "x".repeat(70_000), null, false).statusCode()).isEqualTo(422);
 
+        // Dernier compte rendu signé, gardé tel quel : lu par l'outil du responsable (versions du protocole).
+        HttpResponse<String> kept = send("GET", reports + "/" + box, null, ACCOUNT, false);
+        assertThat(kept.statusCode()).isEqualTo(200);
+        assertThat(SignedDocument.fromJson(kept.body())).isEqualTo(report);
+        assertThat(send("GET", reports + "/" + box, null, null, false).statusCode()).as("sans compte").isEqualTo(401);
+        assertThat(send("GET", reports + "/" + UUID.randomUUID(), null, ACCOUNT, false).statusCode()).isEqualTo(404);
+
         // Box dont l'entrée a expiré : plus de compte rendu.
         HybridKeyPair expiredKeys = HybridKeyPair.generate();
         UUID expired = UUID.randomUUID();

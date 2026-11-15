@@ -315,6 +315,7 @@ Renouveler ces 1 entrée(s) pour 90 jours ? Tapez « oui » : oui
 
 - Par défaut, elle retient les entrées qui expirent dans les **15 jours** (`--avant-jours`), et les renouvelle pour **90 jours** (`--validite-jours`).
 - Une box révoquée n'est jamais renouvelée.
+- Le renouvellement reporte dans l'entrée les **versions du protocole** que la box annonce dans son dernier compte rendu. Après la mise à jour d'une box vers une nouvelle version du protocole, renouvelez son entrée pour que les autres box le sachent.
 - Lancez-la régulièrement, par exemple chaque semaine : la colonne « Statut » de l'interface montre les box expirées (§ 3.4).
 - Depuis l'interface locale, onglet « Box de l'organisation » (§ 2.4), les entrées qui expirent bientôt sont cochées d'office : un bouton les renouvelle.
 

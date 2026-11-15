@@ -667,8 +667,11 @@ public final class DirectoryAdmin {
         }
         int failures = 0;
         for (SignedDocument document : due) {
+            // Versions du protocole : celles du dernier compte rendu de la box (une box mise à jour les annonce ainsi).
+            java.util.List<String> protocols = calls(o).reportedProtocols(Json.read(document.payload(), BoxEntry.class,
+                    "Entrée de box"));
             HttpResponse<String> published = post(o, "/directory/v1/entries",
-                    organization.renew(document, clock.instant(), Duration.ofDays(days)));
+                    organization.renew(document, clock.instant(), Duration.ofDays(days), protocols));
             if (published.statusCode() != 201 && published.statusCode() != 200) {
                 err.println("Publication refusée (HTTP " + published.statusCode() + ") : " + published.body());
                 failures++;

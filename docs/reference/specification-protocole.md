@@ -144,6 +144,15 @@ La v0.2 retenait ChaCha20-Poly1305 ; la v0.3 retient AES-256-GCM, déjà employ�
 
 Chaque structure porte un identifiant de suite (`IU1`). Une nouvelle suite (`IU2`) peut être introduite sans casser les box existantes ; une suite compromise peut être refusée par configuration.
 
+### 4.4 Versions du protocole
+
+La suite dit quelle cryptographie est employée ; la **version du protocole** dit quel format d'échange est employé entre box (description de fichier, enveloppe et types de messages, découpage). Chaque entrée d'annuaire annonce les versions que parle la box : `"protocols": ["iu1.0", "iu1.1"]` (`iu<majeure>.<mineure>`, 8 au plus). Une entrée sans ce champ parle `iu1.0`.
+
+- Deux box échangent dans la **plus haute version commune**. Sans version commune, l'appairage, l'envoi et la réception sont refusés avec le motif (« Aucune version du protocole en commun avec « Box B » : cette box parle iu1.0, l'autre iu2.0 »). Le relais, qui ne lit ni les descriptions ni les messages, n'en tient pas compte.
+- **Règle : aucun changement du format des échanges sans nouvelle version annoncée.** Une mineure (`iu1.1`) ajoute sans rien retirer : une box `iu1.0` doit pouvoir lire ce qu'on lui envoie en `iu1.0`. Une majeure (`iu2.0`) peut tout changer : une box la parle en plus de l'ancienne tant que des box anciennes restent dans le réseau.
+- Les versions annoncées viennent de la box : sa demande d'enrôlement et ses comptes rendus de configuration (signés par elle) portent les versions de son logiciel. Le responsable les reporte dans l'entrée à l'enrôlement, puis à chaque renouvellement d'après le dernier compte rendu ([annuaire signé, § 5 quinquies](annuaire-signe.md#5-quinquies-versions-du-protocole)).
+- Version actuelle : `iu1.0`, seule. C'est le format décrit par ce document.
+
 ---
 
 ## 5. Découpage d'un paquet
@@ -646,4 +655,5 @@ Toutes les instances identiques (100/100, 600/600). Le stockage d'essai (Seaweed
 | 0.5 | 2026-11-12 | Étape 6 (première partie) : **annonce anticipée** par défaut (§ 6.6 : attente jusqu'à l'expiration, abandon par retrait des morceaux, sans message `file.cancel`), **remplissage pseudo-aléatoire** du dernier morceau (§ 5.2), mode de la description (§ 7) ; mesures (§ 13.4). |
 | 0.8 | 2026-11-13 | Étape 6 : **relais réparti sans état** (§ 6.8) : plusieurs instances derrière Traefik, anti-rejeu et bail de purge en base, annuaire en mise à jour conditionnelle, contenu des morceaux sur un stockage compatible S3, sondes et arrêt propre ; déploiement Compose et K3s. |
 | 0.7 | 2026-11-13 | Étape 6 : annonce du transfert dès les paquets confiés et restitution au fil de l'eau ([priorité des séries](priorite-dicom.md)) ; **plusieurs relais indépendants** (§ 6.7) : une file et une adresse d'annuaire par relais (`iu`, `iu-2`…, § 9), messages déposés sur tous et traités une fois, morceaux copiés sur `IMAGUNITY_IU_REPLICAS` relais, bascule par morceau au téléchargement. |
+| 0.9 | 2026-11-15 | **Versions du protocole** annoncées dans les entrées d'annuaire, plus haute version commune, refus propre sinon (§ 4.4). Version actuelle `iu1.0`. |
 | 0.6 | 2026-11-12 | Étape 6 : **taille de morceau adaptée à la liaison** (§ 5.2 : 3 s par morceau au débit mesuré, 512 morceaux au plus par paquet) ; mesures sur liaison à 2 Mbit/s (§ 13.4). |

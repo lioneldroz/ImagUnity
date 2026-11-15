@@ -47,6 +47,11 @@ public class ConfigurationStore {
 
     /** Enregistre un compte rendu s'il est plus récent que le dernier reçu de cette box. */
     boolean saveReport(ConfigurationReport report, Instant receivedAt) {
+        return saveReport(report, null, receivedAt);
+    }
+
+    /** Enregistre un compte rendu et son document signé, s'il est plus récent que le dernier reçu de cette box. */
+    boolean saveReport(ConfigurationReport report, SignedDocument document, Instant receivedAt) {
         Optional<OffsetDateTime> last = jdbc.sql("SELECT reported_at FROM configuration_report WHERE box_id = ?")
                 .param(report.boxId()).query(OffsetDateTime.class).optional();
         if (last.isPresent() && !report.reportedAt().isAfter(last.get().toInstant())) {
@@ -54,10 +59,17 @@ public class ConfigurationStore {
         }
         jdbc.sql("DELETE FROM configuration_report WHERE box_id = ?").param(report.boxId()).update();
         jdbc.sql("INSERT INTO configuration_report (box_id, applied, applied_at, refused, refusal, reported_at, "
-                        + "received_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                        + "received_at, document) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
                 .params(report.boxId(), report.applied(), report.appliedAt() == null ? null : utc(report.appliedAt()),
-                        report.refused(), report.refusal(), utc(report.reportedAt()), utc(receivedAt)).update();
+                        report.refused(), report.refusal(), utc(report.reportedAt()), utc(receivedAt),
+                        document == null ? null : document.toJson()).update();
         return true;
+    }
+
+    /** Dernier compte rendu signé de cette box, s'il a été gardé. */
+    Optional<SignedDocument> reportDocument(UUID boxId) {
+        return jdbc.sql("SELECT document FROM configuration_report WHERE box_id = ? AND document IS NOT NULL")
+                .param(boxId).query(String.class).optional().map(SignedDocument::fromJson);
     }
 
     /** Dernier compte rendu de chaque box. */

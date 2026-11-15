@@ -26,6 +26,8 @@ import java.util.UUID;
  * @param revocationReason motif de la révocation
  * @param groups           groupes de la box (configuration centralisée), fixés par le responsable ; absents de
  *                         l'entrée signée quand il n'y en a pas, ce qui laisse identiques les entrées antérieures
+ * @param protocols        versions du protocole que parle la box ({@link Protocols}) ; absentes de l'entrée signée
+ *                         quand elle n'en annonce pas, ce qui vaut {@code iu1.0}
  */
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record BoxEntry(String suite, String organization, UUID boxId, String displayName,
@@ -34,7 +36,8 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
                        Map<String, String> transport, long serial,
                        Instant validFrom, Instant validUntil, boolean revoked, Instant revokedAt,
                        String revocationReason,
-                       @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> groups) {
+                       @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> groups,
+                       @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> protocols) {
 
     /** Nom de groupe : minuscules, chiffres et tirets. */
     private static final java.util.regex.Pattern GROUP = java.util.regex.Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
@@ -71,12 +74,27 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
         Objects.requireNonNull(validUntil, "validUntil");
         transport = transport == null ? Map.of() : Map.copyOf(transport);
         groups = groups(groups);
+        protocols = Protocols.of(protocols);
         if (serial < 1) {
             throw new IllegalArgumentException("Le numéro d'émission commence à 1");
         }
         if (!validUntil.isAfter(validFrom)) {
             throw new IllegalArgumentException("Fin de validité antérieure au début");
         }
+    }
+
+    /** Entrée sans version de protocole annoncée ({@code iu1.0}). */
+    public BoxEntry(String suite, String organization, UUID boxId, String displayName,
+                    HybridPublicKey.Encoded signingKeys, HybridKemPublicKey.Encoded encryptionKeys,
+                    Map<String, String> transport, long serial, Instant validFrom, Instant validUntil,
+                    boolean revoked, Instant revokedAt, String revocationReason, java.util.List<String> groups) {
+        this(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial, validFrom,
+                validUntil, revoked, revokedAt, revocationReason, groups, java.util.List.of());
+    }
+
+    /** Versions du protocole parlées par la box : celles annoncées, ou {@code iu1.0}. */
+    public java.util.List<String> announcedProtocols() {
+        return Protocols.announced(protocols);
     }
 
     /** Entrée sans groupe. */
@@ -121,14 +139,19 @@ public record BoxEntry(String suite, String organization, UUID boxId, String dis
     /** Même box, révoquée : numéro suivant. */
     /** Entrée renouvelée : numéro suivant, valide à partir de {@code from} pour {@code validity}. */
     BoxEntry renew(Instant from, java.time.Duration validity) {
+        return renew(from, validity, protocols);
+    }
+
+    /** Entrée renouvelée avec ces versions du protocole (celles du dernier compte rendu de la box). */
+    BoxEntry renew(Instant from, java.time.Duration validity, java.util.List<String> versions) {
         return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
-                from, from.plus(validity), false, null, null, groups);
+                from, from.plus(validity), false, null, null, groups, versions);
     }
 
     BoxEntry revoke(Instant at, String reason) {
         return new BoxEntry(suite, organization, boxId, displayName, signingKeys, encryptionKeys, transport, serial + 1,
                 validFrom,
-                validUntil, true, at, reason, groups);
+                validUntil, true, at, reason, groups, protocols);
     }
 
     /** État d'une entrée pour les échanges. */

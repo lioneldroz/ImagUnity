@@ -50,13 +50,15 @@ La signature porte sur les **octets UTF-8 exacts** du texte `payload`. Celui-ci 
   "validFrom": "2026-11-12T00:00:00Z",
   "validUntil": "2027-11-12T00:00:00Z",
   "revoked": false, "revokedAt": null, "revocationReason": null,
-  "groups": ["imagerie-nord", "urgences"]
+  "groups": ["imagerie-nord", "urgences"],
+  "protocols": ["iu1.0"]
 }
 ```
 
 - `serial` augmente à chaque nouvelle émission pour la même box (renouvellement, changement d'adresse, révocation) : seule l'entrée de numéro le plus haut compte.
 - La **révocation** est une entrée signée de numéro supérieur, avec `revoked: true`.
 - `groups` : groupes de la box pour la [configuration centralisée](configuration-centralisee.md), fixés par le responsable (`enroler --groupes imagerie-nord,urgences`) ; minuscules, chiffres et tirets, 16 au plus. Absent quand la box n'a pas de groupe : les entrées sans groupe restent identiques. Pour changer les groupes d'une box, réémettre son entrée avec un numéro supérieur.
+- `protocols` : versions du protocole que parle la box ([spécification, § 4.4](specification-protocole.md)). Absent des entrées antérieures, qui parlent `iu1.0` : elles restent identiques.
 - `encryptionKeys` porte les clés de chiffrement de la box (X25519 et ML-KEM-768). Les paquets qui lui sont destinés sont chiffrés pour elles ([chiffrement applicatif](chiffrement-applicatif.md)). Le champ est absent des entrées antérieures, qui sont à réémettre.
 
 ### 2.3 Demande d'enrôlement
@@ -180,6 +182,15 @@ Le client (`DirectoryClient`, box, relais, service d'annuaire pour ses partenair
 - **Box pas encore enrôlée** : refusée sur la liste (401), elle lit sa propre entrée (`GET /entries/{boxId}`) et voit ainsi son enrôlement.
 - **Mise en service** : mettre à jour toutes les box et tous les relais (et leur donner le compte de lecture), et les annuaires des partenaires (clé de fraîcheur installée), puis activer l'option. Une ancienne box, qui ne signe pas ses lectures, cesse de voir l'annuaire.
 - **Refus** : 401, avec `WWW-Authenticate: Basic`. Un compte au mauvais mot de passe est refusé même sur une lecture publique, comme avant.
+
+## 5 quinquies. Versions du protocole
+
+Étape 5 de la [note sur la fédération](federation-organisations.md#7-étapes-suivantes) ; règles d'échange au [§ 4.4 de la spécification](specification-protocole.md).
+
+- **Annonce par la box** : sa demande d'enrôlement porte `"protocols"`, les versions de son logiciel (`Protocols.SUPPORTED`, aujourd'hui `["iu1.0"]`). Ses comptes rendus de configuration aussi, signés par elle.
+- **Entrée** : à l'enrôlement, le responsable recopie les versions de la demande. Au renouvellement (`renouveler`, ou le bouton de l'interface locale), l'outil lit le **dernier compte rendu signé** de la box (`GET /directory/v1/configurations/reports/{boxId}`, compte du responsable ; migration V8), le vérifie avec la clé de l'entrée, et reporte ses versions. Sans compte rendu, l'entrée garde les siennes. Une box mise à jour annonce donc ses nouvelles versions au renouvellement suivant de son entrée ; pour aller plus vite, renouveler son entrée à la main.
+- **Box** : avant l'appairage, l'envoi et à la réception, elle cherche la plus haute version commune entre son logiciel et l'entrée de l'autre box (de l'organisation ou d'un partenaire) et refuse s'il n'y en a pas. La console affiche la version retenue quand une box en annonce plusieurs.
+- **Compatibilité** : les entrées, demandes et comptes rendus se lisent en ignorant les champs inconnus (§ 6.7 de la note sur la fédération). Mettre à jour l'annuaire et l'outil du responsable avant les box : un ancien annuaire refuserait les comptes rendus d'une box qui annonce ses versions.
 
 ## 6. Intégration dans la box (étape C1)
 

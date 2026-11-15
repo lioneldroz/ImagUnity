@@ -17,11 +17,14 @@ import java.util.UUID;
  * @param encryptionKeys clés de chiffrement de la box ({@code null} : demande antérieure au chiffrement applicatif)
  * @param transport   adresses de transport
  * @param requestedAt date de la demande
+ * @param protocols   versions du protocole que parle la box (absentes : {@code iu1.0}), recopiées dans son entrée
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record EnrollmentRequest(String suite, UUID boxId, String displayName, HybridPublicKey.Encoded signingKeys,
                                 @JsonInclude(JsonInclude.Include.NON_NULL)
                                 HybridKemPublicKey.Encoded encryptionKeys,
-                                Map<String, String> transport, Instant requestedAt) {
+                                Map<String, String> transport, Instant requestedAt,
+                                @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> protocols) {
 
     public EnrollmentRequest {
         Objects.requireNonNull(boxId, "boxId");
@@ -29,6 +32,14 @@ public record EnrollmentRequest(String suite, UUID boxId, String displayName, Hy
         Objects.requireNonNull(signingKeys, "signingKeys");
         Objects.requireNonNull(requestedAt, "requestedAt");
         transport = transport == null ? Map.of() : Map.copyOf(transport);
+        protocols = Protocols.of(protocols);
+    }
+
+    /** Demande sans version de protocole annoncée. */
+    public EnrollmentRequest(String suite, UUID boxId, String displayName, HybridPublicKey.Encoded signingKeys,
+                             HybridKemPublicKey.Encoded encryptionKeys, Map<String, String> transport,
+                             Instant requestedAt) {
+        this(suite, boxId, displayName, signingKeys, encryptionKeys, transport, requestedAt, java.util.List.of());
     }
 
     /** Demande sans clés de chiffrement. */
@@ -50,8 +61,16 @@ public record EnrollmentRequest(String suite, UUID boxId, String displayName, Hy
      */
     public static SignedDocument create(HybridKeyPair boxKeys, HybridKemPublicKey encryption, UUID boxId,
                                         String displayName, Map<String, String> transport, Instant now) {
+        return create(boxKeys, encryption, boxId, displayName, transport, now, Protocols.SUPPORTED);
+    }
+
+    /** Demande signée par la box, qui annonce ces versions du protocole (celles de son logiciel par défaut). */
+    public static SignedDocument create(HybridKeyPair boxKeys, HybridKemPublicKey encryption, UUID boxId,
+                                        String displayName, Map<String, String> transport, Instant now,
+                                        java.util.List<String> protocols) {
         EnrollmentRequest request = new EnrollmentRequest(Suite.ID, boxId, displayName,
-                boxKeys.publicKey().encoded(), encryption == null ? null : encryption.encoded(), transport, now);
+                boxKeys.publicKey().encoded(), encryption == null ? null : encryption.encoded(), transport, now,
+                protocols);
         return SignedDocument.sign(Json.write(request), boxKeys);
     }
 

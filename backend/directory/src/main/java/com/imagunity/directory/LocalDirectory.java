@@ -562,6 +562,34 @@ public final class LocalDirectory {
     }
 
     /**
+     * Motif pour lequel une box de ce logiciel ne peut pas échanger avec cette box : aucune version du protocole en
+     * commun ({@link Protocols}) ; vide sinon, ou si la box est inconnue (son absence est signalée à part).
+     */
+    public Optional<String> protocolRefusal(UUID other) {
+        return knownEntry(other).flatMap(e -> Protocols.refusal(Protocols.SUPPORTED, e.protocols(), e.displayName()));
+    }
+
+    /** Version du protocole commune avec cette box (la plus haute), si elle est connue et qu'il y en a une. */
+    public Optional<String> protocol(UUID other) {
+        return knownEntry(other).flatMap(e -> Protocols.negotiate(Protocols.SUPPORTED, e.protocols()));
+    }
+
+    /** Refus d'échange vu d'une box : celui de {@link #exchangeRefusal}, puis celui des versions du protocole. */
+    public Optional<String> boxRefusal(UUID localBox, UUID other) {
+        Optional<String> refusal = exchangeRefusal(localBox, other);
+        return refusal.isPresent() ? refusal : protocolRefusal(other);
+    }
+
+    private Optional<BoxEntry> knownEntry(UUID boxId) {
+        BoxEntry local = entries.get(boxId);
+        if (local != null) {
+            return Optional.of(local);
+        }
+        Foreign f = foreign.get(boxId);
+        return f == null ? Optional.empty() : Optional.of(f.entry());
+    }
+
+    /**
      * Motif pour lequel l'échange avec cette box est impossible ; vide s'il est possible. Entre box de l'organisation
      * (leur état est contrôlé à part) : seulement une entrée en retard sur la preuve de fraîcheur, ou un annuaire figé.
      * Avec une box de partenaire : en plus, accord actif, périmètre des deux côtés, relais autorisés.
