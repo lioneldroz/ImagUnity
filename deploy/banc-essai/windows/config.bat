@@ -19,7 +19,7 @@ set "RELAIS_PORT=8443"
 
 rem --- Cle du responsable de l'organisation (admin.bat organisation-creer, voir README.md)
 rem Empreinte courte affichee a la creation de la cle, verifiee puis recopiee ici : sans elle, l'annuaire, le relais
-rem et les box refusent de demarrer.
+rem et les box refusent de demarrer. (Sur de vraies machines, chacune a sa copie, recopiee de vive voix.)
 set "ORGANISATION_CODE="
 
 rem --- Compte de depot du responsable sur l'annuaire (essai)
@@ -33,8 +33,13 @@ set "CONSOLE_MOT_DE_PASSE=essai-synthetique"
 rem --- Chemins (ne pas modifier)
 set "ICI=%~dp0"
 for %%I in ("%~dp0..\..\..") do set "RACINE=%%~fI"
-set "DONNEES=%ICI%donnees"
-set "CLE_ORGANISATION=%DONNEES%\organisation.json.pub.json"
+rem Une machine simulee par dossier : chacune ne lit que ses propres fichiers, comme sur des machines distinctes.
+rem Les fichiers passent de l'une a l'autre par deposer.bat (ou a la main), jamais par un dossier partage.
+set "MACHINES=%ICI%machines"
+set "RESPONSABLE=%MACHINES%\poste-responsable"
+set "MACHINE_ANNUAIRE=%MACHINES%\annuaire"
+set "MACHINE_RELAIS=%MACHINES%\relais"
+set "MACHINE_BOX=%MACHINES%\box"
 set "JAR_ANNUAIRE=%RACINE%\backend\directory-server\target\imagunity-directory.jar"
 set "JAR_RELAIS=%RACINE%\backend\relay\target\imagunity-relay-exec.jar"
 set "JAR_BOX=%RACINE%\backend\app\target\imagunity-box.jar"
