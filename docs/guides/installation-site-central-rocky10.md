@@ -317,4 +317,4 @@ Quand une version change le protocole, l'ordre est imposé : **l'annuaire, puis 
 | Caddy n'obtient pas de certificat | DNS qui ne pointe pas sur la machine, ou ports 80 et 443 fermés depuis Internet : voir `docker compose logs caddy` |
 | `403` sur `/admin/` depuis le poste d'administration | Son adresse n'est pas dans `RESEAU_ADMIN`. Après correction : `docker compose up -d caddy` |
 | Le relais refuse une box (`401`) longtemps après sa publication | Plus de 5 minutes : vérifier l'empreinte du responsable dans `.env` et dans la box, et `docker compose logs relay` |
-| Le relais refuse de démarrer | `EMPREINTE_RESPONSABLE` ne correspond pas à `config/organisation.pub.json` |
+| Le relais ou l'annuaire refuse de démarrer (« Empreinte du responsable non confirmée ») | `EMPREINTE_RESPONSABLE` ne correspond pas à `config/organisation.pub.json` : le message donne l'empreinte de la clé installée, à comparer de vive voix avec le responsable |

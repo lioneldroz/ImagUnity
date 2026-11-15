@@ -37,7 +37,8 @@
       fait. Vous pouvez revenir ici à tout moment. Les explications détaillées sont dans l'onglet « Aide ».</p>
     <ol class="etapes">
       <li class="etape" id="etape-organisation">
-        <div class="entete"><h3>1. Créer l'organisation et sa clé</h3><span class="badge" id="statut-organisation"></span></div>
+        <div class="entete"><h3>1. Créer l'organisation et sa clé
+          <span class="info"><button type="button" class="info-bouton" aria-label="Pourquoi une empreinte ?" aria-describedby="bulle-empreinte">?</button><span class="bulle" role="tooltip" id="bulle-empreinte">Le relais, l'annuaire et la box ne font pas confiance au fichier de clé publique qu'on leur installe. Ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après vérification de vive voix. Une clé remplacée en chemin, ou celle d'une autre organisation, est refusée dès le démarrage.</span></span></h3><span class="badge" id="statut-organisation"></span></div>
         <div id="organisation-a-creer" hidden>
           <p>La clé du responsable signe tout ce que publie l'organisation : l'entrée de chaque box, les accords avec
             les partenaires, les règles communes. Elle se crée <strong>une seule fois</strong>, ici, sur ce poste, et
@@ -62,7 +63,7 @@
         <div id="organisation-creee" hidden>
           <dl>
             <dt>Organisation</dt><dd id="org-nom"></dd>
-            <dt>Empreinte</dt><dd><span class="empreinte" id="org-empreinte"></span>
+            <dt>Empreinte <span class="info"><button type="button" class="info-bouton" aria-label="À quoi sert l'empreinte ?" aria-describedby="bulle-empreinte-2">?</button><span class="bulle" role="tooltip" id="bulle-empreinte-2">Le relais, l'annuaire et la box ne font pas confiance au fichier de clé publique qu'on leur installe. Ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après vérification de vive voix. Une clé remplacée en chemin, ou celle d'une autre organisation, est refusée dès le démarrage. À communiquer par téléphone ou sur papier, jamais avec le fichier.</span></span></dt><dd><span class="empreinte" id="org-empreinte"></span>
               <button type="button" class="secondaire petit" data-copier="org-empreinte">Copier</button></dd>
             <dt>Clé privée</dt><dd><code id="org-cle-privee"></code> <span class="discret">secrète, protégée par la phrase de passe, ne quitte pas ce poste</span></dd>
             <dt>Clé publique</dt><dd><code id="org-cle-publique"></code> <span class="discret">à distribuer</span></dd>
@@ -203,8 +204,10 @@
     <p>L'empreinte (24 caractères, par exemple <code>QZYY-WDJT-LDE4-GY7V-5GPV-5RQW</code>) est un résumé de la clé
       publique. Un fichier peut être remplacé en chemin ; l'empreinte, lue de vive voix, ne peut pas l'être. Chaque
       installateur la recopie dans la configuration de sa box (<code>IMAGUNITY_DIRECTORY_ORGANIZATION_CODE</code>),
-      l'exploitant dans celle du site central (<code>EMPREINTE_RESPONSABLE</code>) : sans la bonne empreinte, la box et
-      le relais refusent de démarrer. Communiquez-la par un autre canal que le fichier (téléphone, papier).</p>
+      l'exploitant dans celle du site central (<code>EMPREINTE_RESPONSABLE</code>) : sans la bonne empreinte, la box,
+      le relais et l'annuaire refusent de démarrer : ils ne font pas confiance au fichier de clé publique qu'on leur
+      installe, ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après
+      vérification de vive voix. Communiquez-la par un autre canal que le fichier (téléphone, papier).</p>
 
     <h3 id="aide-phrase">La phrase de passe</h3>
     <p>Elle chiffre la clé privée sur le disque. Un voleur du fichier sans la phrase ne peut rien en faire. Choisissez

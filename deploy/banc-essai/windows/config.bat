@@ -18,8 +18,8 @@ set "ANNUAIRE_PORT=8090"
 set "RELAIS_PORT=8443"
 
 rem --- Cle du responsable de l'organisation (admin.bat organisation-creer, voir README.md)
-rem Empreinte courte affichee a la creation de la cle, verifiee puis recopiee ici : sans elle, le relais et les box
-rem refusent de demarrer.
+rem Empreinte courte affichee a la creation de la cle, verifiee puis recopiee ici : sans elle, l'annuaire, le relais
+rem et les box refusent de demarrer.
 set "ORGANISATION_CODE="
 
 rem --- Compte de depot du responsable sur l'annuaire (essai)

@@ -16,13 +16,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *                          et comptes (à activer une fois toutes les box à jour)
  * @param readerUser        compte de lecture (relais)
  * @param readerPassword    son mot de passe (en clair ou haché) ; vide : pas de compte de lecture
+ * @param organizationCode  empreinte courte de la clé de l'organisation, vérifiée hors bande : le service refuse de
+ *                          démarrer si la clé installée en a une autre
  */
 @ConfigurationProperties("imagunity.directory")
 public record DirectoryServerProperties(Path organizationKey, @DefaultValue("responsable") String publisherUser,
                                         String publisherPassword,
                                         @DefaultValue("./mot-de-passe-depot.txt") Path generatedPasswordFile,
                                         @DefaultValue("false") boolean restrictedRead,
-                                        @DefaultValue("lecteur") String readerUser, String readerPassword) {
+                                        @DefaultValue("lecteur") String readerUser, String readerPassword,
+                                        String organizationCode) {
 
     @org.springframework.boot.context.properties.bind.ConstructorBinding
     public DirectoryServerProperties {
@@ -34,6 +37,6 @@ public record DirectoryServerProperties(Path organizationKey, @DefaultValue("res
 
     public DirectoryServerProperties(Path organizationKey, String publisherUser, String publisherPassword,
                                      Path generatedPasswordFile) {
-        this(organizationKey, publisherUser, publisherPassword, generatedPasswordFile, false, "lecteur", null);
+        this(organizationKey, publisherUser, publisherPassword, generatedPasswordFile, false, "lecteur", null, null);
     }
 }

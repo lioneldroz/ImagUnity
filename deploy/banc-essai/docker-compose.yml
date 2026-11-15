@@ -90,6 +90,7 @@ services:
       IMAGUNITY_DIRECTORY_DB_URL: jdbc:postgresql://directory-db:5432/annuaire
       IMAGUNITY_DIRECTORY_DB_PASSWORD: essai-synthetique
       IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_DIRECTORY_ORGANIZATION_CODE: ${IMAGUNITY_DIRECTORY_ORGANIZATION_CODE:?empreinte du responsable, vérifiée hors bande}
       # Compte de dépôt du responsable : environnement de test uniquement.
       IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD: essai-synthetique
     volumes:

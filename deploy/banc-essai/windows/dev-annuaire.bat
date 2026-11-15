@@ -6,7 +6,9 @@ title ImagUnity - annuaire
 call "%~dp0config.bat"
 if not exist "%JAR_ANNUAIRE%" goto :absent
 if not exist "%CLE_ORGANISATION%" goto :cle
+if not defined ORGANISATION_CODE goto :code
 set "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY=%CLE_ORGANISATION%"
+set "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=%ORGANISATION_CODE%"
 set "IMAGUNITY_DIRECTORY_PORT=%ANNUAIRE_PORT%"
 set "IMAGUNITY_DIRECTORY_DB_URL=jdbc:postgresql://%PG_HOTE%:%PG_PORT%/annuaire"
 set "IMAGUNITY_DIRECTORY_DB_USER=annuaire"
@@ -30,4 +32,8 @@ exit /b 1
 echo Cle du responsable absente (%CLE_ORGANISATION%) : la creer depuis l'interface (interface.bat,
 echo onglet Demarrage), ou avec
 echo   admin.bat organisation-creer --organisation essai --cles donnees\organisation.json
+exit /b 1
+:code
+echo ORGANISATION_CODE vide dans config.bat : y recopier l'empreinte affichee par l'interface (interface.bat,
+echo onglet Demarrage, etape 2) ou par admin.bat organisation-creer, apres l'avoir verifiee.
 exit /b 1

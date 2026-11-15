@@ -59,9 +59,22 @@ class DirectoryConfiguration {
                     + "(IMAGUNITY_DIRECTORY_ORGANIZATION_KEY)");
         }
         KeyFiles.OrganizationPublicKey key = KeyFiles.readOrganizationPublic(properties.organizationKey());
-        LOG.info("Annuaire de l'organisation « {} », empreinte du responsable : {}", key.organization(),
-                key.key().shortCode());
+        // Clé épinglée, comme au relais et dans les box : un fichier remplacé en chemin, ou celui d'une autre
+        // organisation, se voit dès le démarrage au lieu de faire refuser chaque dépôt.
+        String actual = key.key().shortCode();
+        if (!normalize(actual).equals(normalize(properties.organizationCode()))) {
+            throw new IllegalStateException("Empreinte du responsable non confirmée : la clé installée ("
+                    + properties.organizationKey() + ", organisation « " + key.organization() + " ») a l'empreinte "
+                    + actual + " ; après l'avoir vérifiée hors bande avec le responsable, la recopier dans "
+                    + "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE (site central : EMPREINTE_RESPONSABLE)");
+        }
+        LOG.info("Annuaire de l'organisation « {} » : clé du responsable épinglée ({})", key.organization(), actual);
         return key;
+    }
+
+    /** Empreinte sans tirets ni espaces, en majuscules : la casse et la mise en forme ne comptent pas. */
+    static String normalize(String code) {
+        return code == null ? "" : code.replaceAll("[\\s-]", "").toUpperCase(java.util.Locale.ROOT);
     }
 
     @Bean
