@@ -85,6 +85,7 @@ public record DicomCondition(Map<String, String> and, Map<String, String> or) {
     }
 
     private static boolean holds(Attributes dataset, String keyword, String rawPattern) {
+        rawPattern = rawPattern.strip(); // « !SR|KO » (variable d'environnement, YAML) : inversion, pas « !SR »
         boolean negated = rawPattern.startsWith("!");
         List<Pattern> alternatives = new ArrayList<>();
         for (String alternative : (negated ? rawPattern.substring(1) : rawPattern).split("\\|", -1)) {

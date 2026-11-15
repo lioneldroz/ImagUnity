@@ -15,7 +15,8 @@ public final class RateLimiter {
     /** Seaux gardés au plus ; au-delà, les seaux pleins (inactifs) sont oubliés. */
     static final int MAX_BUCKETS = 100_000;
 
-    private record Bucket(double tokens, Instant at) {
+    /** Jetons restants à l'instant {@code at}, pour un seau limité à {@code perMinute} jetons par minute. */
+    private record Bucket(double tokens, Instant at, int perMinute) {
     }
 
     private final Clock clock;
@@ -44,7 +45,7 @@ public final class RateLimiter {
             return 0; // limite désactivée
         }
         if (buckets.size() > MAX_BUCKETS) {
-            forgetFull(perMinute);
+            forgetFull();
         }
         Instant now = clock.instant();
         long[] wait = {0};
@@ -52,18 +53,26 @@ public final class RateLimiter {
             double tokens = b == null ? perMinute
                     : Math.min(perMinute, b.tokens() + (now.toEpochMilli() - b.at().toEpochMilli()) * perMinute / 60_000.0);
             if (tokens >= 1) {
-                return new Bucket(consume ? tokens - 1 : tokens, now);
+                return new Bucket(consume ? tokens - 1 : tokens, now, perMinute);
             }
             wait[0] = Math.max(1, (long) Math.ceil((1 - tokens) * 60.0 / perMinute));
-            return new Bucket(tokens, now);
+            return new Bucket(tokens, now, perMinute);
         });
         return wait[0];
     }
 
-    private void forgetFull(int perMinute) {
+    /**
+     * Oublie les seaux pleins. Des seaux de limites différentes partagent la table (échecs, box locales, box des
+     * partenaires) : chacun est jugé plein d'après sa propre limite, pas d'après celle de la requête en cours, sans
+     * quoi un seau de box à moitié vide serait oublié, donc rempli d'un coup.
+     */
+    private void forgetFull() {
         Instant now = clock.instant();
-        buckets.entrySet().removeIf(e -> e.getValue().tokens()
-                + (now.toEpochMilli() - e.getValue().at().toEpochMilli()) * perMinute / 60_000.0 >= perMinute);
+        buckets.entrySet().removeIf(e -> {
+            Bucket b = e.getValue();
+            return b.tokens() + (now.toEpochMilli() - b.at().toEpochMilli()) * b.perMinute() / 60_000.0
+                    >= b.perMinute();
+        });
     }
 
     int size() {

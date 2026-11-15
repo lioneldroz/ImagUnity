@@ -250,6 +250,16 @@ public final class TpmSeal {
         }
     }
 
+    private static java.util.concurrent.CompletableFuture<byte[]> readAsync(InputStream stream) {
+        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return stream.readAllBytes();
+            } catch (IOException e) {
+                return new byte[0];
+            }
+        });
+    }
+
     /** Lance une commande tpm2-tools (60 s au plus). */
     public static byte[] exec(List<String> command, byte[] input) throws IOException {
         Process process;
@@ -266,26 +276,22 @@ public final class TpmSeal {
         byte[] output;
         byte[] errors;
         try (InputStream out = process.getInputStream(); InputStream err = process.getErrorStream()) {
-            // Lues en parallèle : un flux plein bloquerait l'autre.
-            java.util.concurrent.CompletableFuture<byte[]> stderr = java.util.concurrent.CompletableFuture.supplyAsync(
-                    () -> {
-                        try {
-                            return err.readAllBytes();
-                        } catch (IOException e) {
-                            return new byte[0];
-                        }
-                    });
-            output = out.readAllBytes();
-            errors = stderr.join();
-        }
-        try {
-            if (!process.waitFor(60, TimeUnit.SECONDS)) {
+            // Les deux flux sont lus en parallèle (un flux plein bloquerait l'autre) et en tâche de fond : l'attente
+            // bornée ci-dessous s'applique ainsi même si la commande ne rend jamais la main (TPM bloqué).
+            java.util.concurrent.CompletableFuture<byte[]> stdout = readAsync(out);
+            java.util.concurrent.CompletableFuture<byte[]> stderr = readAsync(err);
+            try {
+                if (!process.waitFor(60, TimeUnit.SECONDS)) {
+                    process.destroyForcibly(); // ferme ses flux : les lectures en cours se terminent
+                    throw new IOException(command.getFirst() + " : pas de réponse du TPM");
+                }
+            } catch (InterruptedException e) {
                 process.destroyForcibly();
-                throw new IOException(command.getFirst() + " : pas de réponse du TPM");
+                Thread.currentThread().interrupt();
+                throw new IOException(command.getFirst() + " interrompu", e);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException(command.getFirst() + " interrompu", e);
+            output = stdout.join();
+            errors = stderr.join();
         }
         if (process.exitValue() != 0) {
             String message = new String(errors, java.nio.charset.StandardCharsets.UTF_8).strip();
