@@ -55,6 +55,14 @@ jobs:
           cp backend/app/target/imagunity-box.jar backend/release/target/imagunity-release.jar "$D/box/"
           unzip -p "$D/box/imagunity-box.jar" META-INF/MANIFEST.MF | grep -q "Implementation-Version: $VERSION"
 
+      - name: Poste du responsable
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          D="imagunity-$VERSION/poste-responsable"
+          mkdir -p "$D"
+          cp backend/directory-server/target/imagunity-directory.jar deploy/poste-responsable/* "$D/"
+
       - name: Images du site central
         env:
           VERSION: ${{ steps.version.outputs.version }}

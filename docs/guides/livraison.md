@@ -47,6 +47,7 @@ L'étiquette déclenche le workflow **Livraison** (`.github/workflows/livraison.
 | `box/imagunity-box.jar` | La box, console comprise, **non signée** |
 | `box/imagunity-release.jar` | Le lanceur, et l'outil de l'éditeur |
 | `site-central/images.tar.gz` | Images `imagunity/relay:0.15.0` et `imagunity/directory:0.15.0` |
+| `poste-responsable/` | Kit du responsable : `imagunity-directory.jar` (outil du responsable), `interface-responsable.bat` (double-clic sous Windows), `interface-responsable.sh`, `reglages.bat`, `LISEZMOI.md` |
 | `SHA256SUMS` | Empreintes de tous les fichiers |
 
 Lancé à la main (onglet Actions, « Run workflow »), le même workflow fait un **essai à blanc** sur la version en cours, `-SNAPSHOT` compris.

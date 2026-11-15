@@ -650,7 +650,31 @@ class LocalInterfaceTest {
 
         assertThat(admin.run(new String[] {"interface", "--cles", p("org.json"), "--codes", p("codes.json"),
                 "--annuaire", directoryUrl, "--port", "70000"})).isEqualTo(1);
-        assertThat(admin(Map.of(), new ByteArrayOutputStream()).run(new String[] {"interface", "--cles", p("org.json"),
-                "--codes", p("codes.json"), "--annuaire", directoryUrl})).as("sans compte").isEqualTo(2);
+        assertThat(admin.run(new String[] {"interface", "--cles", p("org.json"), "--codes", p("codes.json")}))
+                .as("sans annuaire").isEqualTo(2);
+
+        // Sans compte ni organisation : l'interface démarre quand même, le compte se saisit dans la page.
+        ByteArrayOutputStream second = new ByteArrayOutputStream();
+        DirectoryAdmin bare = admin(Map.of(), second);
+        Thread again = Thread.ofPlatform().start(() -> exit[0] = bare.run(new String[] {"interface", "--cles",
+                p("neuve/org.json"), "--codes", p("neuve/codes.json"), "--annuaire", directoryUrl}));
+        String url2 = null;
+        for (int i = 0; i < 200 && url2 == null; i++) {
+            url2 = second.toString(StandardCharsets.UTF_8).lines().filter(l -> l.startsWith("Interface du responsable"))
+                    .map(l -> l.substring(l.indexOf("http"))).findFirst().orElse(null);
+            Thread.sleep(25);
+        }
+        assertThat(url2).isNotNull();
+        URI uri2 = URI.create(url2);
+        String token2 = uri2.getFragment().substring("jeton=".length());
+        HttpResponse<String> state = http.send(HttpRequest.newBuilder(uri2.resolve("/api/etat")).header("X-Jeton", token2)
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(state.body()).contains("\"initialisee\":false").contains("\"compte\":\"requis\"");
+        http.send(HttpRequest.newBuilder(uri2.resolve("/api/quitter")).header("X-Jeton", token2)
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        again.join(10_000);
+        assertThat(exit[0]).isZero();
+        assertThat(second.toString(StandardCharsets.UTF_8)).contains("propose de la créer");
     }
 }

@@ -57,12 +57,55 @@ final class LocalInterface implements AutoCloseable {
     private final Clock clock;
     private final PrintStream out;
     private final char[] environmentPassphrase;
-    private final KeyFiles.OrganizationPublicKey publicKey;
+    private final Accounts accounts;
+    /** Clé publique de l'organisation ; {@code null} tant qu'elle n'est pas créée (onglet « Démarrage »). */
+    private volatile KeyFiles.OrganizationPublicKey publicKey;
     private final HttpServer server;
     private final String token;
     private final CountDownLatch closed = new CountDownLatch(1);
     private Organization kept;
     private Instant keptUntil = Instant.MIN;
+
+    /**
+     * Compte de dépôt sur l'annuaire : fourni au lancement (option {@code --compte} ou variable d'environnement), ou
+     * saisi dans la page et gardé en mémoire pour la session seulement.
+     */
+    static final class Accounts {
+        private final String fixed;
+        private final boolean external;
+        private volatile String typed;
+
+        /** @param fixed compte fourni au lancement, ou {@code null} : à saisir dans la page */
+        Accounts(String fixed) {
+            this(fixed, false);
+        }
+
+        private Accounts(String fixed, boolean external) {
+            this.fixed = fixed == null || !fixed.contains(":") ? null : fixed;
+            this.external = external;
+        }
+
+        /** Compte géré hors de l'interface (par celui qui fournit les appels à l'annuaire). */
+        static Accounts external() {
+            return new Accounts(null, true);
+        }
+
+        String get() {
+            if (fixed != null) {
+                return fixed;
+            }
+            String t = typed;
+            if (t == null) {
+                throw new Refusal(401, "Compte de dépôt de l'annuaire à saisir : onglet « Démarrage », étape 3");
+            }
+            return t;
+        }
+
+        /** {@code fourni}, {@code saisi} ou {@code requis}. */
+        String state() {
+            return fixed != null || external ? "fourni" : typed != null ? "saisi" : "requis";
+        }
+    }
 
     /** Refus à renvoyer à la page, avec son statut HTTP. */
     static final class Refusal extends RuntimeException {
@@ -75,7 +118,7 @@ final class LocalInterface implements AutoCloseable {
     }
 
     private LocalInterface(Path keys, Path codesFile, DirectoryCalls calls, long days, int port, Clock clock,
-                           PrintStream out, char[] environmentPassphrase) throws IOException {
+                           PrintStream out, char[] environmentPassphrase, Accounts accounts) throws IOException {
         this.keys = keys;
         this.codesFile = codesFile;
         this.calls = calls;
@@ -83,7 +126,13 @@ final class LocalInterface implements AutoCloseable {
         this.clock = clock;
         this.out = out;
         this.environmentPassphrase = environmentPassphrase;
-        this.publicKey = KeyFiles.readOrganizationPublic(Path.of(keys + ".pub.json"));
+        this.accounts = accounts;
+        Path publicFile = publicFile(keys);
+        if (java.nio.file.Files.exists(keys) != java.nio.file.Files.exists(publicFile)) {
+            throw new DirectoryException("Clé de l'organisation incomplète : " + (java.nio.file.Files.exists(keys)
+                    ? publicFile : keys) + " manquant (restaurer la sauvegarde des deux fichiers)");
+        }
+        this.publicKey = java.nio.file.Files.exists(publicFile) ? KeyFiles.readOrganizationPublic(publicFile) : null;
         byte[] random = new byte[32];
         new SecureRandom().nextBytes(random);
         this.token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
@@ -99,7 +148,35 @@ final class LocalInterface implements AutoCloseable {
      */
     static LocalInterface start(Path keys, Path codesFile, DirectoryCalls calls, long days, int port, Clock clock,
                                 PrintStream out, char[] environmentPassphrase) throws IOException {
-        return new LocalInterface(keys, codesFile, calls, days, port, clock, out, environmentPassphrase);
+        return new LocalInterface(keys, codesFile, calls, days, port, clock, out, environmentPassphrase,
+                Accounts.external());
+    }
+
+    /**
+     * Démarre l'interface, avec un compte de dépôt fourni ou à saisir dans la page ({@code calls} doit le lire dans
+     * {@code accounts}). Sans clé de l'organisation, la page propose de la créer.
+     */
+    static LocalInterface start(Path keys, Path codesFile, DirectoryCalls calls, long days, int port, Clock clock,
+                                PrintStream out, char[] environmentPassphrase, Accounts accounts) throws IOException {
+        return new LocalInterface(keys, codesFile, calls, days, port, clock, out, environmentPassphrase, accounts);
+    }
+
+    static Path publicFile(Path keys) {
+        return Path.of(keys + ".pub.json");
+    }
+
+    /** Fichiers de la clé de fraîcheur déléguée, rangés à côté de la clé de l'organisation. */
+    private Path freshnessKey() {
+        return keys.toAbsolutePath().resolveSibling("fraicheur.json");
+    }
+
+    private Path delegationFile() {
+        return keys.toAbsolutePath().resolveSibling("delegation.json");
+    }
+
+    /** Vrai une fois la clé de l'organisation créée ou trouvée. */
+    boolean initialized() {
+        return publicKey != null;
     }
 
     /** Adresse à ouvrir dans le navigateur de ce poste, jeton compris (dans le fragment). */
@@ -208,9 +285,22 @@ final class LocalInterface implements AutoCloseable {
         }
     }
 
+    /** Appels permis avant la création de l'organisation. */
+    private static final java.util.Set<String> BEFORE_CREATION = java.util.Set.of("GET /api/etat",
+            "GET /api/demarrage", "POST /api/organisation", "POST /api/compte", "POST /api/quitter");
+
     private Object dispatch(String call, JsonNode body) throws IOException {
+        if (!initialized() && !BEFORE_CREATION.contains(call)) {
+            throw new Refusal(409, "Organisation pas encore créée : onglet « Démarrage », étape 1");
+        }
         return switch (call) {
             case "GET /api/etat" -> state();
+            case "GET /api/demarrage" -> startup();
+            case "POST /api/organisation" -> createOrganization(body);
+            case "POST /api/compte" -> typeAccount(body);
+            case "GET /api/cle-publique" -> Map.of("nom", publicFile(keys).getFileName().toString(), "contenu",
+                    java.nio.file.Files.readString(publicFile(keys)));
+            case "POST /api/fraicheur" -> delegateFreshness(body);
             case "GET /api/demandes" -> pending();
             case "POST /api/valider" -> validate(body);
             case "POST /api/refuser" -> refuse(body);
@@ -249,6 +339,14 @@ final class LocalInterface implements AutoCloseable {
 
     private Map<String, Object> state() throws IOException {
         Map<String, Object> state = new LinkedHashMap<>();
+        state.put("initialisee", initialized());
+        state.put("annuaire", calls.directory());
+        state.put("compte", accounts.state());
+        state.put("fichierCle", keys.toAbsolutePath().toString());
+        state.put("dossier", keys.toAbsolutePath().getParent().toString());
+        if (!initialized()) {
+            return state;
+        }
         state.put("organisation", publicKey.organization());
         state.put("empreinteOrganisation", publicKey.key().shortCode());
         state.put("annuaire", calls.directory());
@@ -256,6 +354,142 @@ final class LocalInterface implements AutoCloseable {
         state.put("renouvelerAvantJours", RENEW_BEFORE.toDays());
         state.put("phrase", phraseState());
         return state;
+    }
+
+    // --- Démarrage : création de l'organisation, vérifications, clé de fraîcheur ---
+
+    /** Crée la clé de l'organisation (équivalent de {@code organisation-creer}), si elle n'existe pas encore. */
+    private synchronized Map<String, Object> createOrganization(JsonNode body) throws IOException {
+        if (initialized() || java.nio.file.Files.exists(keys)) {
+            throw new Refusal(409, "L'organisation existe déjà (" + keys.toAbsolutePath() + ") : une seule clé par "
+                    + "organisation ; pour repartir de zéro, déplacer d'abord ses fichiers");
+        }
+        String id = Organization.requireValidId(body.path("organisation").asString("").strip());
+        char[] first = body.path("phrase").asString("").toCharArray();
+        char[] second = body.path("confirmation").asString("").toCharArray();
+        try {
+            if (!Arrays.equals(first, second)) {
+                throw new Refusal(422, "Les deux saisies de la phrase de passe diffèrent");
+            }
+            KeyProtection.requireStrong(first);
+            HybridKeyPair pair = HybridKeyPair.generate();
+            Path dir = keys.toAbsolutePath().getParent();
+            if (dir != null) {
+                java.nio.file.Files.createDirectories(dir);
+            }
+            KeyFiles.writePrivate(keys, pair, first);
+            KeyFiles.writeOrganizationPublic(publicFile(keys), id, pair.publicKey());
+            publicKey = KeyFiles.readOrganizationPublic(publicFile(keys));
+            out.println("Organisation « " + id + " » créée depuis l'interface : " + keys.toAbsolutePath()
+                    + " ; empreinte " + pair.publicKey().shortCode());
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("message", "Organisation « " + id + " » créée. Notez son empreinte et sauvegardez les deux fichiers.");
+            r.put("empreinte", pair.publicKey().shortCode());
+            r.put("etat", state());
+            return r;
+        } finally {
+            Arrays.fill(first, '\0');
+            Arrays.fill(second, '\0');
+        }
+    }
+
+    /** Vérifie un compte de dépôt saisi dans la page, puis le garde en mémoire pour la session. */
+    private Map<String, Object> typeAccount(JsonNode body) throws IOException {
+        String user = body.path("utilisateur").asString("").strip();
+        String password = body.path("motDePasse").asString("");
+        if (user.isEmpty() || user.contains(":") || password.isEmpty()) {
+            throw new Refusal(422, "Utilisateur (sans « : ») et mot de passe du compte de dépôt requis");
+        }
+        String account = user + ":" + password;
+        HttpResponse<String> response = new DirectoryCalls(calls.directory(), () -> account)
+                .get("/directory/v1/enrollment-requests", true);
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            throw new Refusal(403, "Compte refusé par l'annuaire : vérifier l'utilisateur et le mot de passe");
+        }
+        if (response.statusCode() != 200) {
+            throw new Refusal(502, "Annuaire : réponse HTTP " + response.statusCode());
+        }
+        accounts.typed = account;
+        return Map.of("message", "Compte de dépôt accepté par l'annuaire (gardé pour cette session seulement)",
+                "etat", state());
+    }
+
+    /**
+     * Où en est la mise en route : organisation créée, annuaire joignable et installé avec la bonne clé, compte,
+     * clé de fraîcheur déléguée et publiée. Chaque étape est vérifiée à l'instant.
+     */
+    private Map<String, Object> startup() {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("etat", uncheckedState());
+        Map<String, Object> directory = new LinkedHashMap<>();
+        try {
+            HttpResponse<String> response = calls.get("/directory/v1/organization", false);
+            directory.put("joignable", response.statusCode() == 200);
+            if (response.statusCode() == 200) {
+                JsonNode o = Json.MAPPER.readTree(response.body());
+                directory.put("organisation", o.path("organization").asString(""));
+                directory.put("empreinte", o.path("shortCode").asString(""));
+                directory.put("memeCle", initialized() && publicKey.key().shortCode().equals(o.path("shortCode")
+                        .asString("")));
+                directory.put("fraicheurPubliee", calls.get("/directory/v1/freshness", false).statusCode() == 200);
+            } else {
+                directory.put("detail", "réponse HTTP " + response.statusCode());
+            }
+        } catch (IOException | RuntimeException e) {
+            directory.put("joignable", false);
+            directory.put("detail", e.getMessage());
+        }
+        r.put("annuaire", directory);
+        Map<String, Object> freshness = new LinkedHashMap<>();
+        freshness.put("cle", freshnessKey().toString());
+        freshness.put("delegation", delegationFile().toString());
+        if (java.nio.file.Files.exists(delegationFile())) {
+            try {
+                FreshnessDelegation d = Json.read(SignedDocument.fromJson(java.nio.file.Files.readString(
+                        delegationFile())).payload(), FreshnessDelegation.class, "Délégation de fraîcheur");
+                freshness.put("numero", d.serial());
+                freshness.put("jusquAu", d.validUntil().toString());
+                freshness.put("expireBientot", d.validUntil().isBefore(clock.instant().plus(Duration.ofDays(7))));
+            } catch (IOException | RuntimeException e) {
+                freshness.put("erreur", "Délégation illisible : " + e.getMessage());
+            }
+        }
+        r.put("fraicheur", freshness);
+        return r;
+    }
+
+    private Map<String, Object> uncheckedState() {
+        try {
+            return state();
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    /** Délègue (ou renouvelle) la clé de fraîcheur, équivalent de {@code fraicheur-deleguer}. */
+    private Map<String, Object> delegateFreshness(JsonNode body) throws IOException {
+        long validity = body.path("jours").asLong(30);
+        if (validity < 1 || validity > 90) {
+            throw new Refusal(422, "Validité de la délégation : de 1 à 90 jours");
+        }
+        long serial = 1;
+        if (java.nio.file.Files.exists(delegationFile())) {
+            serial = Json.read(SignedDocument.fromJson(java.nio.file.Files.readString(delegationFile())).payload(),
+                    FreshnessDelegation.class, "Délégation de fraîcheur").serial() + 1;
+        }
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        HybridKeyPair key = HybridKeyPair.generate();
+        SignedDocument delegation = organization.delegateFreshness(key.publicKey(), clock.instant(),
+                Duration.ofDays(validity), serial);
+        java.nio.file.Files.deleteIfExists(freshnessKey());
+        KeyFiles.writePrivate(freshnessKey(), key, null);
+        KeyFiles.replace(delegationFile(), delegation.toJson());
+        String message = "Clé de fraîcheur n° " + serial + " déléguée pour " + validity + " jours : "
+                + freshnessKey().getFileName() + " et " + delegationFile().getFileName() + " sont à installer sur le "
+                + "service d'annuaire";
+        out.println(message + " (" + freshnessKey().getParent() + ")");
+        return Map.of("message", message, "phrase", phraseState());
     }
 
     /** {@code inutile} (clé en clair), {@code environnement}, {@code gardee} ou {@code requise}. */

@@ -66,6 +66,15 @@ const listeGroupes = (texte) => texte.split(",").map((g) => g.trim()).filter(Boo
 // --- En-tête et onglets ---
 
 function afficherEtat() {
+  document.querySelectorAll("[data-onglet]").forEach((b) => {
+    b.disabled = !etat.initialisee && !["demarrage", "aide"].includes(b.dataset.onglet);
+  });
+  if (!etat.initialisee) {
+    $("contexte").textContent = "Aucune organisation sur ce poste pour l'instant : commencez par l'onglet « Démarrage » — annuaire " + etat.annuaire;
+    $("etat-phrase").textContent = "";
+    $("oublier").hidden = true;
+    return;
+  }
   $("contexte").textContent = "Organisation " + etat.organisation + " (empreinte " + etat.empreinteOrganisation
     + ") — annuaire " + etat.annuaire + " — entrées signées pour " + etat.validiteJours + " jours";
   const textes = {
@@ -78,9 +87,14 @@ function afficherEtat() {
   $("oublier").hidden = etat.phrase !== "gardee";
 }
 
+function ongletCourant() {
+  const b = document.querySelector("[data-onglet][aria-selected=true]");
+  return b ? b.dataset.onglet : "demarrage";
+}
+
 function ongletActif(nom) {
   document.querySelectorAll("[data-onglet]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.onglet === nom)));
-  ["demandes", "box", "codes", "partenaires"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
+  ["demarrage", "demandes", "box", "codes", "partenaires", "aide"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
   try { sessionStorage.setItem("onglet", nom); } catch (e) { /* sans stockage : onglet non retenu */ }
 }
 
@@ -491,16 +505,180 @@ function revoquerAccord(p) {
 
 // --- Chargement ---
 
+// --- Démarrage ---
+
+function statut(id, fait, texteFait, texteAFaire, genre) {
+  const b = $("statut-" + id);
+  b.textContent = fait ? texteFait : texteAFaire;
+  b.className = "badge " + (fait ? "ok" : genre || "attention");
+  const etape = b.closest(".etape");
+  if (etape) etape.classList.toggle("faite", Boolean(fait));
+  return fait ? 1 : 0;
+}
+
+function copiable(id, texte) {
+  const conteneur = $(id);
+  const code = element("code", null, texte);
+  conteneur.replaceChildren(code, bouton("Copier", "secondaire petit", () => copier(texte)));
+}
+
+async function copier(texte) {
+  try {
+    await navigator.clipboard.writeText(texte);
+    message("Copié dans le presse-papiers", "ok");
+  } catch (e) {
+    message("Copie impossible : sélectionner le texte à la main", "erreur");
+  }
+}
+
+function afficherDemarrage(d, extras) {
+  const e = d.etat;
+  const a = d.annuaire || {};
+  let faites = 0;
+  $("org-dossier").textContent = e.dossier;
+  $("organisation-a-creer").hidden = e.initialisee;
+  $("organisation-creee").hidden = !e.initialisee;
+  faites += statut("organisation", e.initialisee, "faite", "à faire");
+  const empreinte = e.initialisee ? e.empreinteOrganisation : "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX";
+  if (e.initialisee) {
+    $("org-nom").textContent = e.organisation;
+    $("org-empreinte").textContent = e.empreinteOrganisation;
+    $("org-cle-privee").textContent = e.fichierCle;
+    $("org-cle-publique").textContent = e.fichierCle + ".pub.json";
+  }
+  copiable("ligne-env-empreinte", "EMPREINTE_RESPONSABLE=" + empreinte);
+  copiable("ligne-bat-empreinte", 'set "ORGANISATION_CODE=' + empreinte + '"');
+  if (!a.joignable) {
+    faites += statut("site", false, "", "annuaire injoignable", "refus");
+    $("site-detail").textContent = "Annuaire " + e.annuaire + " injoignable" + (a.detail ? " (" + a.detail + ")" : "")
+      + " : normal tant que le site central n'est pas installé.";
+  } else if (!e.initialisee || !a.memeCle) {
+    faites += statut("site", false, "", e.initialisee ? "clé différente" : "en attente de l'étape 1", e.initialisee ? "refus" : "attention");
+    $("site-detail").textContent = "L'annuaire publie l'organisation « " + a.organisation + " », empreinte " + a.empreinte
+      + (e.initialisee ? " : ce n'est pas la clé de ce poste. Installer la clé publique de l'étape 1, puis le redémarrer." : ".");
+  } else {
+    faites += statut("site", true, "annuaire installé avec votre clé", "");
+    $("site-detail").textContent = "L'annuaire " + e.annuaire + " publie bien « " + a.organisation + " » avec l'empreinte " + a.empreinte + ".";
+  }
+  $("formulaire-compte").hidden = e.compte !== "requis";
+  faites += statut("compte", e.compte !== "requis", e.compte === "saisi" ? "connecté pour cette session" : "compte fourni au lancement", "à saisir");
+  const f = d.fraicheur || {};
+  $("fraicheur-fichiers").textContent = f.cle + " et " + f.delegation;
+  $("deleguer").disabled = !e.initialisee;
+  $("deleguer").textContent = f.numero ? "Renouveler la délégation pour 30 jours" : "Déléguer la clé de fraîcheur pour 30 jours";
+  $("fraicheur-detail").textContent = f.erreur || (f.numero ? "Délégation n° " + f.numero + " jusqu'au " + jour(f.jusquAu)
+    + (a.fraicheurPubliee ? " ; l'annuaire publie sa preuve" : " ; pas encore installée sur l'annuaire") : "Pas encore déléguée.");
+  faites += statut("fraicheur", f.numero && !f.expireBientot && a.fraicheurPubliee, "publiée",
+    f.expireBientot ? "à renouveler" : f.numero ? "à installer" : "à faire");
+  $("lignes-box").textContent = ["IMAGUNITY_DIRECTORY_ENABLED=true",
+    "IMAGUNITY_DIRECTORY_URL=" + e.annuaire,
+    "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY=/etc/imagunity/organisation.pub.json",
+    "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=" + empreinte,
+    "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=<code tiré pour cette box>"].join("\n");
+  const boites = extras ? extras.boites.length : 0;
+  faites += statut("box", boites > 0, boites + " box enrôlée(s)", extras ? (extras.codes.length ? extras.codes.length + " code(s) tiré(s)" : "aucun code tiré") : "après l'étape 1");
+  const demandes = extras ? extras.demandes.length : 0;
+  statut("demandes", extras && demandes === 0 && boites > 0, "rien en attente", demandes ? demandes + " en attente" : "aucune demande");
+  $("compte-demarrage").textContent = faites + "/5";
+}
+
+async function creerOrganisation(evenement) {
+  evenement.preventDefault();
+  $("org-creer").disabled = true;
+  try {
+    const r = await api("POST", "/api/organisation", { organisation: $("org-id").value.trim(),
+      phrase: $("org-phrase").value, confirmation: $("org-confirmation").value });
+    $("org-phrase").value = "";
+    $("org-confirmation").value = "";
+    message(r.message + " Empreinte : " + r.empreinte, "ok");
+    await charger();
+  } catch (e) {
+    message(e.message, "erreur");
+  } finally {
+    $("org-creer").disabled = false;
+  }
+}
+
+async function seConnecter(evenement) {
+  evenement.preventDefault();
+  try {
+    const r = await api("POST", "/api/compte", { utilisateur: $("compte-utilisateur").value, motDePasse: $("compte-mot-de-passe").value });
+    $("compte-mot-de-passe").value = "";
+    message(r.message, "ok");
+    await charger();
+  } catch (e) {
+    message(e.message, "erreur");
+  }
+}
+
+function deleguer() {
+  signer({
+    titre: "Déléguer la clé de fraîcheur",
+    resume: "Une nouvelle clé de fraîcheur est créée sur ce poste et autorisée pour 30 jours par la clé de l'organisation. "
+      + "Ses deux fichiers sont ensuite à installer sur le service d'annuaire (étape 4).",
+    libelle: "Signer la délégation",
+    action: (phrase, garder) => api("POST", "/api/fraicheur", { phrase, garder, jours: 30 }),
+  });
+}
+
+async function telechargerCle() {
+  try {
+    const r = await api("GET", "/api/cle-publique");
+    const lien = element("a");
+    lien.href = URL.createObjectURL(new Blob([r.contenu], { type: "application/json" }));
+    lien.download = "organisation.pub.json";
+    document.body.append(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(() => URL.revokeObjectURL(lien.href), 10000);
+  } catch (e) {
+    message(e.message, "erreur");
+  }
+}
+
+/** Onglet dont la liste n'a pas pu être lue : le motif s'affiche à sa place. */
+function indisponible(onglet, texte) {
+  const zone = $(onglet);
+  if (zone.tagName === "TBODY") {
+    const td = element("td", "erreur-texte", texte);
+    td.colSpan = 8;
+    const tr = element("tr");
+    tr.append(td);
+    zone.replaceChildren(tr);
+  } else {
+    zone.replaceChildren(element("p", "erreur-texte", texte));
+  }
+  const compteur = $("compte-" + onglet);
+  if (compteur) compteur.textContent = "";
+}
+
 async function charger() {
   try {
     etat = await api("GET", "/api/etat");
     afficherEtat();
-    const [demandes, boites, codes, partenaires] = await Promise.all([api("GET", "/api/demandes"),
+    if (!etat.initialisee) {
+      afficherDemarrage(await api("GET", "/api/demarrage"), null);
+      ongletActif(["demarrage", "aide"].includes(ongletCourant()) ? ongletCourant() : "demarrage");
+      return;
+    }
+    // Démarrage d'abord : il s'affiche même si l'annuaire est injoignable ou le compte pas encore saisi.
+    const demarrage = await api("GET", "/api/demarrage");
+    afficherDemarrage(demarrage, null);
+    // Chaque onglet se charge seul : un annuaire injoignable ou un compte pas encore saisi n'empêche pas les autres.
+    const resultats = await Promise.allSettled([
+      etat.compte === "requis" ? Promise.reject(new Error("Compte de dépôt de l'annuaire à saisir : onglet « Démarrage », étape 3"))
+        : api("GET", "/api/demandes"),
       api("GET", "/api/box"), api("GET", "/api/codes"), api("GET", "/api/partenaires")]);
-    afficherDemandes(demandes);
-    afficherBox(boites);
-    afficherCodes(codes);
-    afficherPartenaires(partenaires);
+    const [demandes, boites, codes, partenaires] = resultats.map((r, i) => {
+      if (r.status === "fulfilled") return r.value;
+      indisponible(["demandes", "box", "codes", "partenaires"][i], r.reason.message);
+      return null;
+    });
+    if (demandes) afficherDemandes(demandes);
+    if (boites) afficherBox(boites);
+    if (codes) afficherCodes(codes);
+    if (partenaires) afficherPartenaires(partenaires);
+    afficherDemarrage(demarrage, { demandes: demandes || [], boites: boites || [], codes: codes || [] });
   } catch (e) {
     message(e.message, "erreur");
   }
@@ -508,9 +686,15 @@ async function charger() {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-onglet]").forEach((b) => b.addEventListener("click", () => ongletActif(b.dataset.onglet)));
-  let onglet = "demandes";
+  let onglet = "demarrage";
   try { onglet = sessionStorage.getItem("onglet") || onglet; } catch (e) { /* onglet par défaut */ }
   ongletActif(onglet);
+  $("formulaire-organisation").addEventListener("submit", creerOrganisation);
+  $("formulaire-compte").addEventListener("submit", seConnecter);
+  $("deleguer").addEventListener("click", deleguer);
+  $("telecharger-cle").addEventListener("click", telechargerCle);
+  document.querySelectorAll("[data-copier]").forEach((b) => b.addEventListener("click", () => copier($(b.dataset.copier).textContent)));
+  document.querySelectorAll("[data-aller]").forEach((b) => b.addEventListener("click", () => ongletActif(b.dataset.aller)));
   $("formulaire-signer").addEventListener("submit", soumettreSignature);
   $("annuler-signer").addEventListener("click", () => { $("phrase").value = ""; $("dialogue-signer").close(); });
   $("confirmer-oui").addEventListener("click", soumettreConfirmation);
@@ -565,7 +749,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => {
     const actif = document.activeElement;
     const saisie = document.querySelector("dialog[open], .verification input:checked")
-      || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire"));
+      || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire, #formulaire-organisation, #formulaire-compte"));
     if (!saisie) charger();
   }, 30000);
 });

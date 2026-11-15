@@ -393,8 +393,10 @@ public final class DirectoryAdmin {
     private int localInterface(Map<String, String> o) throws IOException {
         Path keys = Path.of(require(o, "cles"));
         Path codes = Path.of(require(o, "codes"));
-        DirectoryCalls calls = calls(o);
-        account(o);
+        // Compte de dépôt : fourni au lancement, sinon saisi dans la page (onglet « Démarrage »).
+        LocalInterface.Accounts accounts = new LocalInterface.Accounts(o.getOrDefault("compte",
+                environment.get(ACCOUNT_VARIABLE)));
+        DirectoryCalls calls = new DirectoryCalls(require(o, "annuaire"), accounts::get);
         long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
         int port = Integer.parseInt(o.getOrDefault("port", "0"));
         if (days < 1 || days > 3650 || port < 0 || port > 65535) {
@@ -402,8 +404,12 @@ public final class DirectoryAdmin {
         }
         String phrase = environment.get(ORGANIZATION_PASSPHRASE);
         try (LocalInterface ui = LocalInterface.start(keys, codes, calls, days, port, clock, out,
-                phrase == null || phrase.isEmpty() ? null : phrase.toCharArray())) {
+                phrase == null || phrase.isEmpty() ? null : phrase.toCharArray(), accounts)) {
             out.println("Interface du responsable : " + ui.url());
+            if (!ui.initialized()) {
+                out.println("Aucune organisation dans " + keys.toAbsolutePath() + " : la page propose de la créer "
+                        + "(onglet « Démarrage »).");
+            }
             out.println("À ouvrir dans le navigateur de ce poste (adresse personnelle, ne pas la partager) ; "
                     + "arrêt par le bouton « Quitter » ou Ctrl+C.");
             if (o.containsKey("ouvrir")) {

@@ -7,7 +7,8 @@ Scripts pour lancer, sur une seule station Windows, l'**annuaire**, le **relais*
 | `config.bat` | Réglages communs : chemin de Java et de `psql`, ports, mots de passe d'essai, empreinte du responsable |
 | `construire.bat` | Construit l'annuaire, le relais et la box (sans les tests) |
 | `creer-bases.bat` | Crée, une fois, les bases PostgreSQL `relais` et `annuaire` et leurs comptes |
-| `admin.bat` | Outil du responsable : clé de l'organisation, enrôlement, publication |
+| `interface.bat` | **Interface du responsable** dans le navigateur : crée l'organisation au premier lancement, puis guide pas à pas |
+| `admin.bat` | Outil du responsable en ligne de commande : clé de l'organisation, enrôlement, publication |
 | `dev-annuaire.bat` | Annuaire sur http://localhost:8090 (administration : `/admin/`) |
 | `dev-relais.bat` | Relais sur http://localhost:8443 |
 | `dev-box.bat` · `dev-box.bat b` | Box A (console http://localhost:8081, DICOM 11112) · box B (http://localhost:8082, DICOM 11113) |
@@ -28,10 +29,10 @@ Dans une invite de commandes (`cmd`), depuis ce dossier :
 ```bat
 construire.bat
 creer-bases.bat
-admin.bat organisation-creer --organisation essai --cles donnees\organisation.json
+interface.bat
 ```
 
-`organisation-creer` demande une phrase de passe (16 caractères au moins) et affiche l'**empreinte courte** du responsable. La recopier dans `config.bat` :
+`interface.bat` ouvre l'interface du responsable dans le navigateur. Sans organisation, elle s'ouvre sur l'onglet « Démarrage » : saisir l'identifiant (`essai`) et une phrase de passe (16 caractères au moins), puis « Créer l'organisation ». C'est l'équivalent de `admin.bat organisation-creer --organisation essai --cles donnees\organisation.json`, qui reste possible. La page affiche l'**empreinte courte** du responsable et la ligne à recopier dans `config.bat` :
 
 ```bat
 set "ORGANISATION_CODE=XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
@@ -65,7 +66,7 @@ admin.bat enroler-attente --cles donnees\organisation.json --codes donnees\codes
 Ou, depuis le navigateur, avec l'interface locale du responsable : valider les demandes une à une (une demande sans code se valide après comparaison de l'empreinte), renouveler ou révoquer les box, tirer les codes d'enrôlement :
 
 ```bat
-admin.bat interface --cles donnees\organisation.json --codes donnees\codes.json --annuaire http://localhost:8090 --ouvrir
+interface.bat
 ```
 
 Même chose pour la box B (`set CODE_ENROLEMENT=…` avec un autre code, puis `dev-box.bat b`). Détails : [guide du responsable, § 2](../../../docs/guides/guide-responsable.md).

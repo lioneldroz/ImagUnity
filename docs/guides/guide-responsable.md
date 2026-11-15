@@ -118,6 +118,8 @@ Toutes ces tâches se font au choix en ligne de commande ou depuis l'**interface
 
 ### 2.1 Créer la clé de l'organisation (une seule fois)
 
+**Le plus simple : depuis l'interface.** Double-cliquez sur `interface-responsable.bat` (kit du poste du responsable, dossier `poste-responsable` de la livraison ; sur la station d'essai, `interface.bat`). Sans organisation sur le poste, la page s'ouvre sur l'onglet « Démarrage », qui la crée et guide la suite (§ 2.4). La commande ci-dessous fait la même chose en ligne de commande.
+
 ```bash
 admin organisation-creer --organisation chu-exemple --cles organisation.json
 ```
@@ -190,7 +192,9 @@ La durée de validité des entrées se règle avec `--validite-jours` (90 jours 
 
 ### 2.4 L'interface locale du responsable
 
-Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a quatre onglets : « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement », et « Organisations partenaires » pour la fédération (§ 2.9).
+Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a six onglets : « Démarrage », « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement », « Organisations partenaires » pour la fédération (§ 2.9), et « Aide ».
+
+**Sous Windows, sans commande à taper** : le kit du poste du responsable (dossier `poste-responsable` de la livraison, ou [`deploy/poste-responsable`](../../deploy/poste-responsable/LISEZMOI.md)) contient `imagunity-directory.jar`, `reglages.bat` (adresse de l'annuaire, dossier des fichiers) et `interface-responsable.bat`, à lancer d'un double-clic. Seul Java 25 est à installer. Le compte de dépôt et la phrase de passe se saisissent dans la page.
 
 ```bash
 admin interface --cles organisation.json --codes codes.json --annuaire https://annuaire.exemple.org
@@ -201,7 +205,27 @@ Interface du responsable : http://127.0.0.1:52817/#jeton=TV1vrcQWjDYVb15-c7tFmhx
 À ouvrir dans le navigateur de ce poste (adresse personnelle, ne pas la partager) ; arrêt par le bouton « Quitter » ou Ctrl+C.
 ```
 
-Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement).
+Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement). Sans `--compte` ni `IMAGUNITY_ANNUAIRE_COMPTE`, le compte de dépôt se saisit dans la page ; il n'est gardé qu'en mémoire, le temps de la session.
+
+#### Onglet « Démarrage »
+
+Au premier lancement, sans clé d'organisation dans le dossier, seuls les onglets « Démarrage » et « Aide » sont ouverts :
+
+![Onglet Démarrage avant la création de l'organisation : formulaire de l'étape 1, puis les étapes suivantes](../images/guide-responsable/19-demarrage-creer.png)
+
+Les étapes, chacune vérifiée à l'instant (coche verte quand c'est fait) :
+
+1. **Créer l'organisation** : identifiant et phrase de passe (deux fois). C'est `organisation-creer`, sans terminal. La page affiche ensuite l'empreinte, l'emplacement des deux fichiers, et propose de télécharger la clé publique sous le nom attendu par le site central (`organisation.pub.json`).
+2. **Installer la clé publique et l'empreinte sur le site central** : où déposer le fichier (`deploy/site-central/config/organisation.pub.json`) et la ligne à copier dans `.env` (`EMPREINTE_RESPONSABLE=…`) ; sur la station d'essai, la ligne de `config.bat`. L'étape passe au vert quand l'annuaire publie bien cette clé ; « clé différente » signale un annuaire installé avec une autre.
+3. **Se connecter à l'annuaire** avec le compte de dépôt, vérifié auprès de lui.
+4. **Déléguer la clé de fraîcheur** (§ 2.10) d'un clic ; `fraicheur.json` et `delegation.json` sont créés à côté de la clé, avec l'endroit où les installer. Au vert quand l'annuaire publie sa preuve ; à renouveler chaque mois (rappel 7 jours avant la fin).
+5. **Préparer les box** : les lignes de `box.env` déjà remplies (adresse de l'annuaire, empreinte), et un lien vers les codes d'enrôlement.
+6. **Valider les box** qui se présentent.
+7. **Au fil du temps** : renouvellements, révocations, partenaires.
+
+![Onglet Démarrage une fois l'organisation installée : étapes 1 à 4 au vert](../images/guide-responsable/20-demarrage.png)
+
+L'onglet « Aide » explique le principe, chaque fichier et sa raison d'être, l'empreinte, la phrase de passe, les groupes, l'enrôlement, la fraîcheur, les partenaires, et que faire en cas de problème.
 
 #### Onglet « Demandes en attente »
 
