@@ -95,11 +95,24 @@ public final class QueueStore {
         }));
     }
 
+    /**
+     * Dépose un message dans la file.
+     *
+     * @throws RelayException 404 si la file n'existe plus : renouvelée pendant le dépôt (le dépôt attend la fin du
+     *                        renouvellement, puis sa clé étrangère ne désigne plus aucune file)
+     */
     public void deposit(String recvId, String messageId, UUID senderBox, byte[] content, Instant at,
                         Instant expiresAt) {
-        jdbc.sql("INSERT INTO queue_message (message_id, recv_id, sender_box, content, received_at, expires_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)")
-                .params(messageId, recvId, senderBox, content, utc(at), utc(expiresAt)).update();
+        try {
+            jdbc.sql("INSERT INTO queue_message (message_id, recv_id, sender_box, content, received_at, expires_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)")
+                    .params(messageId, recvId, senderBox, content, utc(at), utc(expiresAt)).update();
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            if (byRecvId(recvId).isPresent()) {
+                throw e; // file toujours là : autre violation (identifiant de message en double…), non masquée
+            }
+            throw new RelayException(org.springframework.http.HttpStatus.NOT_FOUND, "File inconnue");
+        }
     }
 
     /** Messages en attente déposés par cette box dans cette file. */

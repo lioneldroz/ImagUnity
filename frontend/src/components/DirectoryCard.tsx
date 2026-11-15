@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   BOX_STATUS_LABELS,
   ENROLLMENT_REQUEST_URL,
@@ -35,6 +35,18 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
       setTimeout(() => void queryClient.invalidateQueries(), 3000)
     },
   })
+  // Sans liaison au bout d'une minute (poignée de main en échec, box injoignable), le formulaire revient : sinon
+  // l'opérateur resterait sur « connexion en cours » sans pouvoir réessayer avant de recharger la page.
+  const [unconfirmed, setUnconfirmed] = useState(false)
+  const { isSuccess: pairRequested, reset: resetPair } = pair
+  useEffect(() => {
+    if (!pairRequested) return
+    const timer = setTimeout(() => {
+      resetPair()
+      setUnconfirmed(true)
+    }, 60_000)
+    return () => clearTimeout(timer)
+  }, [pairRequested, resetPair])
   if (own) {
     return <span className="muted small">cette box</span>
   }
@@ -63,6 +75,9 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
         Appairer
       </button>
       {pair.isError && <div className="error small">{pair.error.message}</div>}
+      {unconfirmed && !pair.isError && (
+        <div className="muted small">pas encore lié après une minute : vérifier la box d’en face, puis réessayer</div>
+      )}
     </form>
   )
 }

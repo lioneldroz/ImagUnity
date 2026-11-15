@@ -10,6 +10,28 @@
 
 - **Interface du responsable : démarrage guidé** : l'interface s'ouvre même sans organisation et la crée depuis la page (onglet « Démarrage », équivalent de `organisation-creer`), puis guide pas à pas : clé publique et empreinte à installer sur le site central (vérifiées auprès de l'annuaire), compte de dépôt saisi dans la page, clé de fraîcheur déléguée d'un clic, lignes de `box.env` préremplies. Nouvel onglet « Aide » : fichiers et leur raison d'être, empreinte, phrase de passe, groupes, incidents. Nouveau **kit du poste du responsable** dans la livraison (`poste-responsable/` : jar, `interface-responsable.bat` à lancer d'un double-clic, `reglages.bat`) ; `interface.bat` sur la station d'essai Windows, et `dev-annuaire.bat` prend la clé de fraîcheur créée par l'interface.
 
+Corrections de la relecture du code du 15 novembre 2026 :
+
+- **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.
+- **Relance d'un transfert reçu en plusieurs paquets** : les paquets renvoyés qui arrivaient avant l'annonce de la relance étaient supprimés comme doublons, et le transfert restait annoncé sans fin. Correction côté box destinataire.
+- **Arrêt de la box pendant l'empaquetage** : une étude dont les instances étaient déjà enregistrées, mais pas encore empaquetées, était supprimée sans être envoyée quand l'entrée DICOM la signalait de nouveau.
+- **Motif d'échec d'un envoi** borné et nettoyé, comme à la réception. Un long message du relais empêchait d'enregistrer l'échec, et le transfert ne pouvait plus être relancé.
+- **Réception d'un morceau** : il est noté reçu avant d'être acquitté auprès du relais. Une coupure de courant entre les deux faisait échouer la réception.
+- **Création de la file de réception** : une réponse illisible du relais (proxy) est réessayée, au lieu d'arrêter la relève de ce relais jusqu'au redémarrage.
+- **Clés protégées par le TPM** : le délai de 60 s des commandes `tpm2-tools` s'applique vraiment. Un TPM figé bloquait le démarrage sans fin.
+- **Relais : limites de débit** : chaque seau est jugé d'après sa propre limite. Au-delà de 100 000 seaux, ceux des box étaient remis à plein.
+- **Mises à jour** : le choix au démarrage et la mise à jour de la nuit peuvent lire le dépôt en même temps sans faire échouer le démarrage. La sonde de santé après mise à jour fonctionne avec une adresse d'écoute IPv6 ou `0.0.0.0` (`SERVER_ADDRESS`) ; relancer `installer.sh` pour en profiter.
+- **Anomalies mineures** :
+  - règle DICOM : un motif inversé précédé d'espaces (` !SR|KO`) inverse bien la condition ;
+  - horodatage extrême d'une requête signée refusé sans débordement ;
+  - lecture par différence : un identifiant de box revendiqué par deux partenaires ne force plus une lecture complète à chaque fois ;
+  - journaux : apostrophes doublées dans quelques messages ;
+  - annuaire : publication simultanée d'une même configuration centralisée en conflit (409), au lieu d'une erreur 500 ;
+  - relais : dépôt d'un message dans une file renouvelée au même moment refusé en 404 (« File inconnue »), au lieu d'une erreur 500 ;
+  - console : après une demande d'appairage restée sans liaison au bout d'une minute, le formulaire revient pour réessayer.
+- **Base de la box** : migration `V9` (colonne des paquets restitués élargie pour les plus grosses études), appliquée seule au démarrage.
+- **Tests de scénarios** de bout en bout (nouveau module `backend/scenarios`) : deux vraies box, un relais, l'annuaire et deux PACS simulés, rejoués à chaque `./mvnw verify` ([liste](../../backend/scenarios/README.md)).
+
 Corrections issues de la revue de novembre 2026 :
 
 - **Séries arrivées après l'envoi de leur étude** : elles étaient supprimées sans être envoyées. Chaque transfert enregistre désormais ses instances ; une série arrivée plus tard part dans un nouveau transfert. Migration de la base de la box (`V8`), appliquée seule au démarrage. Les transferts en cours lors de la mise à jour n'ont pas encore cette liste : si une instance d'un tel transfert revient (arrêt de la box juste après l'empaquetage), elle est renvoyée une seconde fois au lieu d'être supprimée ; elle n'est jamais perdue.
