@@ -96,7 +96,7 @@ class RelayConfiguration {
                 client.resetCursors();
             }
         } catch (RuntimeException e) {
-            LOG.log(Level.ERROR, "Lecture de l''annuaire en échec, nouvel essai au prochain intervalle", e);
+            LOG.log(Level.ERROR, "Lecture de l'annuaire en échec, nouvel essai au prochain intervalle", e);
         }
     }
 

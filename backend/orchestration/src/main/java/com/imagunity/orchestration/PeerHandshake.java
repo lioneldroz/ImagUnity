@@ -132,7 +132,7 @@ public final class PeerHandshake {
         }
         Optional<Peer> peer = peers.findByTransportPeerId(message.peer().value());
         if (peer.isEmpty()) {
-            LOG.log(Level.WARNING, "Poignée de main d''un contact non appairé : ignorée");
+            LOG.log(Level.WARNING, "Poignée de main d'un contact non appairé : ignorée");
             return;
         }
         try {
