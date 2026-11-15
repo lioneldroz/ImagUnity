@@ -4,6 +4,8 @@
 
 ## Version suivante (en préparation)
 
+- **Interface du responsable : démarrage guidé** : l'interface s'ouvre même sans organisation et la crée depuis la page (onglet « Démarrage », équivalent de `organisation-creer`), puis guide pas à pas : clé publique et empreinte à installer sur le site central (vérifiées auprès de l'annuaire), compte de dépôt saisi dans la page, clé de fraîcheur déléguée d'un clic, lignes de `box.env` préremplies. Nouvel onglet « Aide » : fichiers et leur raison d'être, empreinte, phrase de passe, groupes, incidents. Nouveau **kit du poste du responsable** dans la livraison (`poste-responsable/` : jar, `interface-responsable.bat` à lancer d'un double-clic, `reglages.bat`) ; `interface.bat` sur la station d'essai Windows, et `dev-annuaire.bat` prend la clé de fraîcheur créée par l'interface.
+
 Corrections issues de la revue de novembre 2026 :
 
 - **Séries arrivées après l'envoi de leur étude** : elles étaient supprimées sans être envoyées. Chaque transfert enregistre désormais ses instances ; une série arrivée plus tard part dans un nouveau transfert. Migration de la base de la box (`V8`), appliquée seule au démarrage. Les transferts en cours lors de la mise à jour n'ont pas encore cette liste : si une instance d'un tel transfert revient (arrêt de la box juste après l'empaquetage), elle est renvoyée une seconde fois au lieu d'être supprimée ; elle n'est jamais perdue.

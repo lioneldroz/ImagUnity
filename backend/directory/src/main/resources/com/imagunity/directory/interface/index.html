@@ -21,15 +21,257 @@
   </div>
 </header>
 <nav class="onglets" role="tablist">
+  <button type="button" role="tab" data-onglet="demarrage">Démarrage <span class="compteur" id="compte-demarrage"></span></button>
   <button type="button" role="tab" data-onglet="demandes">Demandes en attente <span class="compteur" id="compte-demandes"></span></button>
   <button type="button" role="tab" data-onglet="box">Box de l'organisation <span class="compteur" id="compte-box"></span></button>
   <button type="button" role="tab" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
   <button type="button" role="tab" data-onglet="partenaires">Organisations partenaires <span class="compteur" id="compte-partenaires"></span></button>
+  <button type="button" role="tab" data-onglet="aide">Aide</button>
 </nav>
 <main>
   <p class="message" id="message" hidden></p>
 
-  <section id="onglet-demandes" role="tabpanel">
+  <section id="onglet-demarrage" role="tabpanel" hidden>
+    <h2>Démarrer et faire vivre l'organisation</h2>
+    <p class="aide">Les étapes dans l'ordre. Chacune est vérifiée à l'instant : une coche verte veut dire que c'est
+      fait. Vous pouvez revenir ici à tout moment. Les explications détaillées sont dans l'onglet « Aide ».</p>
+    <ol class="etapes">
+      <li class="etape" id="etape-organisation">
+        <div class="entete"><h3>1. Créer l'organisation et sa clé</h3><span class="badge" id="statut-organisation"></span></div>
+        <div id="organisation-a-creer" hidden>
+          <p>La clé du responsable signe tout ce que publie l'organisation : l'entrée de chaque box, les accords avec
+            les partenaires, les règles communes. Elle se crée <strong>une seule fois</strong>, ici, sur ce poste, et
+            ne le quitte jamais.</p>
+          <form id="formulaire-organisation" class="formulaire-organisation">
+            <label>Identifiant de l'organisation (minuscules, chiffres et tirets ; il ne changera plus)
+              <input type="text" id="org-id" required pattern="[a-z0-9][a-z0-9-]{0,63}" maxlength="64" placeholder="chu-exemple" autocomplete="off">
+            </label>
+            <label>Phrase de passe de la clé (16 caractères au moins ; une phrase de plusieurs mots est plus facile à retenir)
+              <input type="password" id="org-phrase" required minlength="16" autocomplete="new-password">
+            </label>
+            <label>Phrase de passe, une seconde fois
+              <input type="password" id="org-confirmation" required minlength="16" autocomplete="new-password">
+            </label>
+            <label class="choix"><input type="checkbox" id="org-notee" required>
+              J'ai noté la phrase de passe en lieu sûr (coffre, enveloppe scellée) : sans elle, la clé est perdue et il
+              faudrait réenrôler toutes les box</label>
+            <p class="discret">Fichiers créés dans <code id="org-dossier"></code>.</p>
+            <div class="actions"><button type="submit" id="org-creer">Créer l'organisation</button></div>
+          </form>
+        </div>
+        <div id="organisation-creee" hidden>
+          <dl>
+            <dt>Organisation</dt><dd id="org-nom"></dd>
+            <dt>Empreinte</dt><dd><span class="empreinte" id="org-empreinte"></span>
+              <button type="button" class="secondaire petit" data-copier="org-empreinte">Copier</button></dd>
+            <dt>Clé privée</dt><dd><code id="org-cle-privee"></code> <span class="discret">secrète, protégée par la phrase de passe, ne quitte pas ce poste</span></dd>
+            <dt>Clé publique</dt><dd><code id="org-cle-publique"></code> <span class="discret">à distribuer</span></dd>
+          </dl>
+          <p class="attention-texte">Sauvegardez dès maintenant les deux fichiers sur un support séparé (clé USB rangée au
+            coffre, par exemple). La phrase de passe se range ailleurs que la sauvegarde.</p>
+          <div class="actions"><button type="button" class="secondaire" id="telecharger-cle">Télécharger la clé publique (organisation.pub.json)</button></div>
+        </div>
+      </li>
+
+      <li class="etape" id="etape-site">
+        <div class="entete"><h3>2. Installer la clé publique et l'empreinte sur le site central</h3><span class="badge" id="statut-site"></span></div>
+        <p>L'annuaire et le relais doivent connaître la clé publique de l'organisation, et son empreinte pour la
+          vérifier. Remettez-les à l'exploitant du site central (ou faites-le vous-même) :</p>
+        <div class="tableau">
+          <table>
+            <thead><tr><th>Quoi</th><th>Site central (Docker, Linux)</th><th>Station d'essai Windows</th></tr></thead>
+            <tbody>
+              <tr><td>Clé publique</td>
+                <td>copier le fichier téléchargé à l'étape 1 sous le nom <code>deploy/site-central/config/organisation.pub.json</code></td>
+                <td>rien à faire : déjà dans <code>donnees\organisation.json.pub.json</code></td></tr>
+              <tr><td>Empreinte</td>
+                <td>dans <code>deploy/site-central/.env</code> : <span class="copiable" id="ligne-env-empreinte"></span></td>
+                <td>dans <code>config.bat</code> : <span class="copiable" id="ligne-bat-empreinte"></span></td></tr>
+              <tr><td>Redémarrer</td><td><code>docker compose up -d</code></td><td>relancer <code>dev-annuaire.bat</code> et <code>dev-relais.bat</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="discret" id="site-detail"></p>
+      </li>
+
+      <li class="etape" id="etape-compte">
+        <div class="entete"><h3>3. Se connecter à l'annuaire</h3><span class="badge" id="statut-compte"></span></div>
+        <p>Publier une entrée ou un accord demande le <strong>compte de dépôt</strong> de l'annuaire (utilisateur
+          <code>responsable</code> par défaut, mot de passe fixé par l'exploitant dans <code>.env</code> :
+          <code>ANNUAIRE_MOT_DE_PASSE</code>). Il n'est gardé qu'en mémoire, le temps de cette session.</p>
+        <form id="formulaire-compte" class="grille-code" hidden>
+          <label>Utilisateur <input type="text" id="compte-utilisateur" value="responsable" autocomplete="username"></label>
+          <label>Mot de passe <input type="password" id="compte-mot-de-passe" autocomplete="current-password"></label>
+          <span></span>
+          <div class="actions"><button type="submit">Se connecter</button></div>
+        </form>
+      </li>
+
+      <li class="etape" id="etape-fraicheur">
+        <div class="entete"><h3>4. Déléguer la clé de fraîcheur (puis chaque mois)</h3><span class="badge" id="statut-fraicheur"></span></div>
+        <p>L'annuaire signe chaque jour un état daté de ce qu'il publie, avec une clé que vous lui déléguez pour 30
+          jours. Les box s'en servent pour détecter un annuaire qui cacherait une révocation, ou qui serait figé.</p>
+        <div class="actions"><button type="button" id="deleguer">Déléguer la clé de fraîcheur pour 30 jours</button>
+          <span class="discret" id="fraicheur-detail"></span></div>
+        <p>Puis installer les deux fichiers créés à côté de la clé (<code id="fraicheur-fichiers"></code>) :</p>
+        <ul>
+          <li>site central : les copier dans <code>deploy/site-central/config/fraicheur/</code>, puis
+            <code>docker compose up -d directory</code> ;</li>
+          <li>station d'essai Windows : rien à copier, <code>dev-annuaire.bat</code> les prend dans <code>donnees\</code> ; le relancer.</li>
+        </ul>
+      </li>
+
+      <li class="etape" id="etape-box">
+        <div class="entete"><h3>5. Préparer les box</h3><span class="badge" id="statut-box"></span></div>
+        <p>Pour chaque box à installer : tirez un <strong>code d'enrôlement</strong> (onglet « Codes d'enrôlement »),
+          avec son nom et ses groupes, et transmettez-le à l'installateur par téléphone ou en main propre. Il recopie
+          dans le fichier <code>box.env</code> de la box :</p>
+        <pre class="bloc-lignes" id="lignes-box"></pre>
+        <div class="actions"><button type="button" class="secondaire" data-copier="lignes-box">Copier ces lignes</button>
+          <button type="button" class="secondaire" data-aller="codes">Tirer un code</button></div>
+        <p class="discret">Il copie aussi la clé publique (étape 1) dans <code>/etc/imagunity/organisation.pub.json</code>.</p>
+      </li>
+
+      <li class="etape" id="etape-demandes">
+        <div class="entete"><h3>6. Valider les box qui se présentent</h3><span class="badge" id="statut-demandes"></span></div>
+        <p>Au démarrage, chaque box dépose sa demande dans l'annuaire, avec la preuve de son code. Elle apparaît dans
+          l'onglet « Demandes en attente » : un clic sur « Valider » la signe et la publie. La box est active quelques
+          minutes après.</p>
+        <div class="actions"><button type="button" class="secondaire" data-aller="demandes">Voir les demandes</button></div>
+      </li>
+
+      <li class="etape" id="etape-entretien">
+        <div class="entete"><h3>7. Au fil du temps</h3></div>
+        <ul>
+          <li><strong>Chaque semaine</strong> : onglet « Box », renouveler les entrées qui expirent bientôt (elles sont cochées d'office).</li>
+          <li><strong>Chaque mois</strong> : étape 4, renouveler la délégation de fraîcheur.</li>
+          <li><strong>Box perdue, volée ou retirée</strong> : onglet « Box », la révoquer.</li>
+          <li><strong>Échanger avec un autre établissement</strong> : onglet « Organisations partenaires ».</li>
+        </ul>
+      </li>
+    </ol>
+  </section>
+
+  <section id="onglet-aide" role="tabpanel" hidden>
+    <h2>Aide</h2>
+    <nav class="sommaire">
+      <a href="#aide-principe">Le principe</a> · <a href="#aide-fichiers">Les fichiers</a> ·
+      <a href="#aide-empreinte">L'empreinte</a> · <a href="#aide-phrase">La phrase de passe</a> ·
+      <a href="#aide-groupes">Les groupes</a> · <a href="#aide-enrolement">L'enrôlement</a> ·
+      <a href="#aide-fraicheur">La fraîcheur</a> · <a href="#aide-partenaires">Les partenaires</a> ·
+      <a href="#aide-incidents">En cas de problème</a> · <a href="#aide-mots">Les mots</a>
+    </nav>
+
+    <h3 id="aide-principe">Le principe</h3>
+    <p>ImagUnity échange des examens d'imagerie entre <strong>box</strong> installées dans les établissements. Les
+      examens sont chiffrés de box à box et passent par un <strong>relais</strong> qui ne peut pas les lire. Pour qu'une
+      box sache à qui elle parle, chaque box est inscrite dans l'<strong>annuaire</strong> de l'organisation, par une
+      <strong>entrée signée</strong> par vous, le responsable. Les box et le relais ne croient que ce qui porte votre
+      signature : un annuaire piraté ne peut pas ajouter de fausse box.</p>
+    <p>Vous signez sur ce poste, hors du site central : c'est le seul endroit où se trouve votre clé privée.
+      L'annuaire ne fait que publier ce que vous avez signé.</p>
+
+    <h3 id="aide-fichiers">Les fichiers et leur raison d'être</h3>
+    <div class="tableau">
+      <table>
+        <thead><tr><th>Fichier</th><th>Ce que c'est</th><th>Pourquoi</th><th>Où il va</th></tr></thead>
+        <tbody>
+          <tr><td><code>organisation.json</code></td><td><strong>Clé privée</strong> du responsable, chiffrée par la phrase de passe</td>
+            <td>Signe les entrées des box, les révocations, les accords et la délégation de fraîcheur. Qui la détient
+              (avec la phrase) peut faire entrer n'importe quelle box dans le réseau.</td>
+            <td><strong>Reste sur ce poste.</strong> Une sauvegarde sur un support séparé, rangée au coffre. Jamais par
+              courriel, jamais sur le site central.</td></tr>
+          <tr><td><code>organisation.json.pub.json</code><br><span class="discret">(à renommer <code>organisation.pub.json</code>)</span></td>
+            <td><strong>Clé publique</strong> et identifiant de l'organisation</td>
+            <td>Permet à tous de vérifier vos signatures. Elle ne permet pas de signer : elle peut circuler.</td>
+            <td>Site central (<code>config/organisation.pub.json</code>), chaque box
+              (<code>/etc/imagunity/organisation.pub.json</code>), et les responsables partenaires.</td></tr>
+          <tr><td><code>codes.json</code></td><td>Les codes d'enrôlement tirés, avec le nom et les groupes prévus</td>
+            <td>Vérifier qu'une box qui se présente est bien celle prévue, et l'enrôler sous le bon nom.</td>
+            <td>Sur ce poste, à côté de la clé. À sauvegarder avec elle.</td></tr>
+          <tr><td><code>fraicheur.json</code></td><td>Clé de fraîcheur, <strong>en clair</strong></td>
+            <td>Laisser l'annuaire dater lui-même son état sans vous déranger. Elle ne peut rien signer d'autre.</td>
+            <td>Sur le service d'annuaire (<code>config/fraicheur/</code>). Remplacée chaque mois.</td></tr>
+          <tr><td><code>delegation.json</code></td><td>Votre autorisation signée de cette clé, pour 30 jours</td>
+            <td>Prouve aux box que la clé de fraîcheur vient de vous, et jusqu'à quand.</td>
+            <td>Avec <code>fraicheur.json</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="aide-empreinte">L'empreinte</h3>
+    <p>L'empreinte (24 caractères, par exemple <code>QZYY-WDJT-LDE4-GY7V-5GPV-5RQW</code>) est un résumé de la clé
+      publique. Un fichier peut être remplacé en chemin ; l'empreinte, lue de vive voix, ne peut pas l'être. Chaque
+      installateur la recopie dans la configuration de sa box (<code>IMAGUNITY_DIRECTORY_ORGANIZATION_CODE</code>),
+      l'exploitant dans celle du site central (<code>EMPREINTE_RESPONSABLE</code>) : sans la bonne empreinte, la box et
+      le relais refusent de démarrer. Communiquez-la par un autre canal que le fichier (téléphone, papier).</p>
+
+    <h3 id="aide-phrase">La phrase de passe</h3>
+    <p>Elle chiffre la clé privée sur le disque. Un voleur du fichier sans la phrase ne peut rien en faire. Choisissez
+      une phrase de plusieurs mots (16 caractères au moins), notez-la et rangez-la à part. Elle n'est jamais envoyée sur
+      le réseau : la page la transmet à l'outil qui tourne sur ce poste, qui signe. Vous pouvez garder la clé
+      déverrouillée 15 minutes pour enchaîner plusieurs signatures.</p>
+    <p><strong>Perte de la phrase ou de la clé</strong> : il n'y a pas de récupération. Il faut créer une nouvelle
+      organisation, réinstaller la clé publique partout et réenrôler toutes les box. D'où la sauvegarde.</p>
+
+    <h3 id="aide-groupes">Les groupes</h3>
+    <p>Un groupe est une <strong>étiquette</strong> que vous posez sur une box quand vous l'enrôlez (au tirage du
+      code) : <code>imagerie-nord</code>, <code>urgences</code>, <code>neurochirurgie</code>… Minuscules, chiffres et
+      tirets, 16 au plus par box. Ils sont signés dans l'entrée de la box : elle ne peut pas se les attribuer seule.</p>
+    <p>Ils servent à deux choses :</p>
+    <ul>
+      <li><strong>Les règles communes</strong> (configuration centralisée, interface d'administration de l'annuaire) :
+        une règle de routage ou de priorité s'applique « aux box du groupe <code>urgences</code> » plutôt qu'à une
+        liste de box. Une nouvelle box du groupe reçoit les règles d'elle-même.</li>
+      <li><strong>Les échanges avec les partenaires</strong> : un accord dit quels groupes de chez vous peuvent échanger
+        avec quels groupes de chez lui. Par exemple, seules vos box <code>neurochirurgie</code> échangent avec les box
+        <code>neuro</code> du CHU voisin. Sans groupe désigné, aucun échange (<code>*</code> : toutes les box).</li>
+    </ul>
+    <p>Conseil : des noms de service ou de site, stables, décidés avant d'enrôler. Pour changer les groupes d'une box,
+      il faut réémettre son entrée.</p>
+
+    <h3 id="aide-enrolement">L'enrôlement d'une box</h3>
+    <ol>
+      <li>Vous tirez un code (nom et groupes de la box), à usage unique, valable 30 jours.</li>
+      <li>L'installateur recopie l'adresse de l'annuaire, l'empreinte et le code dans <code>box.env</code>, et copie la clé publique.</li>
+      <li>La box démarre, crée sa propre clé et dépose sa demande avec la preuve du code. Le code lui-même ne circule pas.</li>
+      <li>Vous validez : l'entrée est signée ici, publiée, et la box devient active.</li>
+    </ol>
+    <p>Sans code, la demande se valide après avoir comparé par téléphone l'empreinte de la box, lue dans sa console.</p>
+
+    <h3 id="aide-fraicheur">La clé de fraîcheur</h3>
+    <p>Une entrée signée dit ce qui était vrai au moment de la signature, pas qu'elle est la dernière. Un annuaire
+      piraté pourrait resservir l'entrée d'une box d'avant sa révocation. La preuve de fraîcheur l'en empêche : l'annuaire
+      signe régulièrement « voici le dernier numéro de chaque entrée », avec la clé que vous lui avez déléguée. Une box
+      qui reçoit une entrée plus ancienne que l'annoncée ne s'en sert pas, et une box qui ne voit plus de preuve récente
+      (48 h) arrête les échanges. D'où le renouvellement mensuel : une délégation expirée arrête tout au bout de 48 h.</p>
+
+    <h3 id="aide-partenaires">Les organisations partenaires</h3>
+    <p>Pour échanger avec un autre établissement, chaque responsable reconnaît l'autre : il colle la clé publique du
+      partenaire, compare l'empreinte avec lui au téléphone, indique son annuaire, ses relais et les groupes autorisés,
+      puis signe. L'échange ne marche que dans le sens où les deux ont signé.</p>
+
+    <h3 id="aide-incidents">En cas de problème</h3>
+    <dl>
+      <dt>« Annuaire injoignable »</dt><dd>L'adresse de l'annuaire (en haut de page) est fausse, ou le service est arrêté. Relancer l'interface avec la bonne adresse, ou demander à l'exploitant.</dd>
+      <dt>« Clé différente » à l'étape 2</dt><dd>L'annuaire a été installé avec une autre clé publique que celle de ce poste : recopier la bonne (étape 1) et le redémarrer.</dd>
+      <dt>« Phrase de passe incorrecte »</dt><dd>Majuscules, accents, espaces comptent. Après plusieurs échecs, vérifier le fichier de clé utilisé (en haut de l'onglet Démarrage).</dd>
+      <dt>Une box ne devient pas active</dt><dd>Vérifier sa demande dans « Demandes en attente » ; une box lit l'annuaire toutes les 5 minutes.</dd>
+      <dt>Ce poste est perdu ou en panne</dt><dd>Restaurer la sauvegarde des fichiers sur un autre poste, puis relancer l'interface avec <code>interface-responsable.bat</code>.</dd>
+    </dl>
+
+    <h3 id="aide-mots">Les mots</h3>
+    <dl>
+      <dt>Organisation</dt><dd>L'ensemble des box sous la responsabilité d'un même responsable, avec son annuaire et son relais.</dd>
+      <dt>Box</dt><dd>Le boîtier (ou la machine virtuelle) installé près du PACS d'un établissement, qui envoie et reçoit les examens.</dd>
+      <dt>Annuaire</dt><dd>Le service qui publie les entrées signées des box, sur le site central.</dd>
+      <dt>Relais</dt><dd>La « poste restante » : il garde les morceaux chiffrés jusqu'à ce que la box destinataire les retire.</dd>
+      <dt>Entrée</dt><dd>La fiche signée d'une box : son nom, ses clés, ses adresses, ses groupes, sa validité (90 jours).</dd>
+      <dt>Révocation</dt><dd>Une nouvelle entrée signée qui retire la box du réseau, définitivement.</dd>
+    </dl>
+  </section>
+
+  <section id="onglet-demandes" role="tabpanel" hidden>
     <h2>Demandes en attente</h2>
     <p class="aide">Chaque box non enrôlée dépose sa demande dans l'annuaire. Valider signe son entrée ici, sur ce
       poste, avec la clé de l'organisation, puis la publie. Une demande sans code d'enrôlement ne se valide

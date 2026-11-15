@@ -13,6 +13,11 @@ set "IMAGUNITY_DIRECTORY_DB_USER=annuaire"
 set "IMAGUNITY_DIRECTORY_DB_PASSWORD=%ANNUAIRE_DB_MOT_DE_PASSE%"
 set "IMAGUNITY_DIRECTORY_PUBLISHER_USER=%ANNUAIRE_COMPTE_UTILISATEUR%"
 set "IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD=%ANNUAIRE_COMPTE_MOT_DE_PASSE%"
+rem Cle de fraicheur deleguee depuis l'interface du responsable (etape 4), si elle existe.
+if exist "%DONNEES%\fraicheur.json" if exist "%DONNEES%\delegation.json" (
+    set "IMAGUNITY_DIRECTORY_FRESHNESS_KEY=%DONNEES%\fraicheur.json"
+    set "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION=%DONNEES%\delegation.json"
+)
 if not exist "%DONNEES%\annuaire" mkdir "%DONNEES%\annuaire"
 cd /d "%DONNEES%\annuaire"
 echo Annuaire sur http://localhost:%ANNUAIRE_PORT%  (interface d'administration : /admin/)
@@ -22,6 +27,7 @@ exit /b %errorlevel%
 echo Annuaire pas encore construit : lancer construire.bat
 exit /b 1
 :cle
-echo Cle du responsable absente (%CLE_ORGANISATION%) : la creer avec
+echo Cle du responsable absente (%CLE_ORGANISATION%) : la creer depuis l'interface (interface.bat,
+echo onglet Demarrage), ou avec
 echo   admin.bat organisation-creer --organisation essai --cles donnees\organisation.json
 exit /b 1
