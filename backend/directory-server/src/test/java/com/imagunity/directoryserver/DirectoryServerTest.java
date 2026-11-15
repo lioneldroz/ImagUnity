@@ -152,6 +152,37 @@ class DirectoryServerTest {
     }
 
     @Test
+    void twoSimultaneousPublicationsOfTheSameConfigurationNumberGiveAConflict() {
+        long sequence = 1_000_000 + new java.util.Random().nextInt(1_000_000);
+        ConfigurationStore store = new ConfigurationStore(dataSource);
+        // Seconde publication du même numéro, dont la lecture du plus haut numéro a précédé l'écriture de la première.
+        ConfigurationStore late = new ConfigurationStore(dataSource) {
+            @Override
+            java.util.OptionalLong highestSequence() {
+                return java.util.OptionalLong.empty();
+            }
+        };
+        java.time.Clock clock = java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC);
+        ConfigurationService first = new ConfigurationService(store, new EntryStore(dataSource), "chu-exemple",
+                ORG_KEYS.publicKey(), clock);
+        ConfigurationService second = new ConfigurationService(late, new EntryStore(dataSource), "chu-exemple",
+                ORG_KEYS.publicKey(), clock);
+        first.publish(configuration(sequence, "CT"));
+
+        assertThatThrownBy(() -> second.publish(configuration(sequence, "MR")))
+                .isInstanceOf(PublicationService.ConflictException.class).hasMessageContaining("vient d'être publiée");
+    }
+
+    private static SignedDocument configuration(long sequence, String modality) {
+        return ORGANIZATION.signConfiguration(com.imagunity.directory.CentralConfiguration.draft("chu-exemple",
+                com.imagunity.directory.CentralConfiguration.Target.everyone(), sequence, NOW, "responsable", "essai",
+                new com.imagunity.directory.CentralConfiguration.Priority(5, java.util.List.of(
+                        new com.imagunity.directory.CentralConfiguration.Rule("r", 1, Map.of("Modality", modality),
+                                null, null))),
+                new com.imagunity.directory.CentralConfiguration.Routing(java.util.List.of())));
+    }
+
+    @Test
     void onlyThePublisherCanPublish() throws Exception {
         String entry = enrolled(UUID.randomUUID(), "B", 1).toJson();
 

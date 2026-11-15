@@ -59,7 +59,13 @@ public class ConfigurationService {
                     + " refusée : la dernière publiée est la n° " + highest.getAsLong()
                     + " (numéro de version croissant)");
         }
-        store.save(configuration.sequence(), document, configuration.issuedAt(), clock.instant());
+        try {
+            store.save(configuration.sequence(), document, configuration.issuedAt(), clock.instant());
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // Même numéro publié au même moment par une autre requête : conflit, comme pour les entrées.
+            throw new PublicationService.ConflictException("Une autre configuration n° " + configuration.sequence()
+                    + " vient d'être publiée");
+        }
         LOG.info("Configuration publiée : {} ({}){}", configuration.describe(),
                 configuration.target().all() ? "toute l'organisation" : configuration.target().boxes().size() + " box",
                 configuration.author() == null ? "" : ", par " + configuration.author());
