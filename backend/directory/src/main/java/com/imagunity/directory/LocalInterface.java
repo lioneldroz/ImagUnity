@@ -473,7 +473,8 @@ final class LocalInterface implements AutoCloseable {
         for (UUID id : ids) {
             Published p = all.get(id);
             HttpResponse<String> response = calls.post("/directory/v1/entries",
-                    organization.renew(p.document(), clock.instant(), Duration.ofDays(days)));
+                    organization.renew(p.document(), clock.instant(), Duration.ofDays(days),
+                            calls.reportedProtocols(p.entry())));
             if (response.statusCode() == 201 || response.statusCode() == 200) {
                 done.add(p.entry().displayName());
             } else {

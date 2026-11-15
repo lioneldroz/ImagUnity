@@ -404,6 +404,12 @@ def run(work, h2):
         wait(lambda: (box_view(org, box_ids[org]) or {}).get("reachable"), 120, f"box {org} active et joignable")
     result("Enrôlement des deux box", True, f"A = {box_ids['A']}, B = {box_ids['B']}")
 
+    # Versions du protocole : annoncées par la box dans sa demande, recopiées dans son entrée signée.
+    announced = {org: json.loads(http("GET", annuaire_url(org) + f"/directory/v1/entries/{box_ids[org]}")["payload"])
+                 .get("protocols") for org in ORGS}
+    result("Versions du protocole annoncées", all(v == ["iu1.0"] for v in announced.values()),
+           f"entrées signées : A {announced['A']}, B {announced['B']}")
+
     # Reconnaissance mutuelle : groupes des deux box, relais de chaque organisation.
     recognize(work, "A", "B", "imagerie", "neuro")
     recognize(work, "B", "A", "neuro", "imagerie")

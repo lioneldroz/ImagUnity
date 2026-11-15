@@ -202,6 +202,12 @@ export function DirectoryCard() {
                   <td>
                     {b.displayName}
                     {b.organization && <div className="muted small">organisation partenaire : {b.organization}</div>}
+                    {/* Une seule version (iu1.0 partout) : rien à signaler ; un refus s'affiche à part. */}
+                    {b.protocols && b.protocols.length > 1 && (
+                      <div className="muted small" title="Versions du protocole annoncées par la box">
+                        protocole {b.protocol ?? 'aucun en commun'} ({b.protocols.join(', ')})
+                      </div>
+                    )}
                   </td>
                   <td>
                     <StateBadge label={BOX_STATUS_LABELS[b.status]} tone={b.status === 'ACTIVE' ? 'ok' : 'error'} />

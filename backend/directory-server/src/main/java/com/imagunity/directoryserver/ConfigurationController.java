@@ -63,6 +63,13 @@ class ConfigurationController {
     /** Plus long compte rendu admis ; lu avec cette limite, avant toute vérification (l'appel est public). */
     static final int MAX_REPORT = 64 * 1024;
 
+    /** Dernier compte rendu signé d'une box (compte du responsable) : 404 s'il n'y en a pas. */
+    @GetMapping(path = "/directory/v1/configurations/reports/{boxId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<String> reportDocument(@org.springframework.web.bind.annotation.PathVariable java.util.UUID boxId) {
+        return service.reportDocument(boxId).map(d -> ResponseEntity.ok(d.toJson()))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @PostMapping(path = "/directory/v1/configurations/reports", consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<Void> report(jakarta.servlet.http.HttpServletRequest request) throws java.io.IOException {
         byte[] body = request.getInputStream().readNBytes(MAX_REPORT + 1);

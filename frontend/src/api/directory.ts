@@ -18,6 +18,10 @@ export interface DirectoryBox {
   organization: string | null
   /** Motif pour lequel cette box ne peut pas échanger avec elle (accord, périmètre), ou null. */
   refusal: string | null
+  /** Versions du protocole annoncées par la box (iu1.0 si son entrée n’en annonce pas). */
+  protocols?: string[]
+  /** Plus haute version commune avec cette box, ou null s’il n’y en a pas. */
+  protocol?: string | null
 }
 
 export interface SyncState {

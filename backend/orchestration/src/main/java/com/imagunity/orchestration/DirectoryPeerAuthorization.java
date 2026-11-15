@@ -34,7 +34,9 @@ public final class DirectoryPeerAuthorization implements PeerAuthorization {
         }
         BoxEntry.Status status = directory.status(peer.boxId());
         // Accord, périmètre et relais (box d'un partenaire) ; entrée en retard sur la preuve de fraîcheur, annuaire figé.
-        Optional<String> federation = self == null ? Optional.empty() : directory.exchangeRefusal(self, peer.boxId());
+        // Versions du protocole : aucune en commun, refus.
+        Optional<String> federation = self == null ? directory.protocolRefusal(peer.boxId())
+                : directory.boxRefusal(self, peer.boxId());
         if (status == null) {
             return Optional.of(federation.map(m -> "Partenaire « " + peer.name() + " » : " + m)
                     .orElse("Box du partenaire « " + peer.name() + " » absente de l'annuaire"));

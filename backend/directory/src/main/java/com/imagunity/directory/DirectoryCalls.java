@@ -62,6 +62,25 @@ final class DirectoryCalls {
         return send(authorized(HttpRequest.newBuilder(URI.create(directory + path)).DELETE()), "Suppression");
     }
 
+    /**
+     * Versions du protocole que la box annonce dans son dernier compte rendu, signé par elle (vérifié avec la clé de
+     * son entrée) ; {@code null} sans compte rendu lisible ou sans versions : l'entrée garde alors les siennes.
+     */
+    java.util.List<String> reportedProtocols(BoxEntry entry) throws IOException {
+        HttpResponse<String> response = get("/directory/v1/configurations/reports/" + entry.boxId(), true);
+        if (response.statusCode() != 200) {
+            return null;
+        }
+        try {
+            ConfigurationReport report = ConfigurationReport.verify(SignedDocument.fromJson(response.body()),
+                    id -> id.equals(entry.boxId()) ? java.util.Optional.of(entry.signingKey())
+                            : java.util.Optional.empty());
+            return report.protocols().isEmpty() ? null : report.protocols();
+        } catch (RuntimeException e) {
+            return null; // compte rendu altéré ou d'une autre box : ignoré
+        }
+    }
+
     /** Numéro de la prochaine entrée de cette box : 1, ou le suivant de son entrée publiée. */
     long nextSerial(UUID boxId) throws IOException {
         HttpResponse<String> current = get("/directory/v1/entries/" + boxId, false);

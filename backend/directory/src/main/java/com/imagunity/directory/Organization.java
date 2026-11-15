@@ -58,7 +58,7 @@ public final class Organization {
         EnrollmentRequest r = EnrollmentRequest.verify(request);
         BoxEntry entry = new BoxEntry(Suite.ID, id, r.boxId(), displayName == null ? r.displayName() : displayName,
                 r.signingKeys(), r.encryptionKeys(), r.transport(),
-                serial, now, now.plus(validity), false, null, null, groups);
+                serial, now, now.plus(validity), false, null, null, groups, r.protocols());
         return SignedDocument.sign(Json.write(entry), keys);
     }
 
@@ -69,6 +69,16 @@ public final class Organization {
      * @throws DirectoryException si l'entrée n'est pas signée par cette organisation, ou si la box est révoquée
      */
     public SignedDocument renew(SignedDocument entry, Instant now, Duration validity) {
+        return renew(entry, now, validity, null);
+    }
+
+    /**
+     * Renouvelle l'entrée d'une box en mettant à jour les versions du protocole qu'elle annonce (celles de son dernier
+     * compte rendu, signé par elle) : une box mise à jour annonce ainsi ses nouvelles versions.
+     *
+     * @param protocols versions à annoncer ; {@code null} : celles de l'entrée
+     */
+    public SignedDocument renew(SignedDocument entry, Instant now, Duration validity, java.util.List<String> protocols) {
         if (!entry.isSignedBy(publicKey())) {
             throw new DirectoryException("Entrée non signée par cette organisation");
         }
@@ -76,7 +86,8 @@ public final class Organization {
         if (current.revoked()) {
             throw new DirectoryException("Box révoquée : pas de renouvellement");
         }
-        return SignedDocument.sign(Json.write(current.renew(now, validity)), keys);
+        return SignedDocument.sign(Json.write(protocols == null ? current.renew(now, validity)
+                : current.renew(now, validity, protocols)), keys);
     }
 
     /**

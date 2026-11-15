@@ -92,7 +92,7 @@ public interface IuDirectory {
 
             @Override
             public Optional<String> refusal(UUID self, UUID other) {
-                return directory.exchangeRefusal(self, other);
+                return directory.boxRefusal(self, other);
             }
 
             private Partner partner(BoxEntry entry) {

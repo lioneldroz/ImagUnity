@@ -88,4 +88,18 @@ class DirectoryPeerAuthorizationTest {
         assertThat(authorization.refusal(new Peer("x", 7, "x", now).boundTo(box.boxId()))).as("box locale inconnue")
                 .hasValueSatisfying(r -> assertThat(r).contains("absente"));
     }
+
+    @Test
+    void boxesWithoutACommonProtocolVersionAreRefused() {
+        BoxIdentity future = fixture.box();
+        fixture.published.add(fixture.organization.enroll(com.imagunity.directory.EnrollmentRequest.create(
+                future.keys(), future.encryption().publicKey(), future.boxId(), "Box future", java.util.Map.of(),
+                DirectoryFixture.NOW, List.of("iu2.0")), DirectoryFixture.NOW, Duration.ofDays(10), 1));
+        Peer peer = new Peer("box-future", 6, "box-future", DirectoryFixture.NOW).boundTo(future.boxId());
+        assertThat(at(DirectoryFixture.NOW).refusal(peer)).hasValueSatisfying(r -> assertThat(r)
+                .contains("Aucune version du protocole en commun").contains("iu1.0").contains("iu2.0"));
+        assertThat(new DirectoryPeerAuthorization(fixture.directory(Clock.fixed(DirectoryFixture.NOW,
+                ZoneOffset.UTC)), box.boxId()).refusal(peer)).hasValueSatisfying(r -> assertThat(r)
+                .contains("Aucune version du protocole en commun"));
+    }
 }
