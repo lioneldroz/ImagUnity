@@ -42,9 +42,37 @@ public class FederationService {
 
     public FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey,
                              Clock clock) {
-        this(store, organization, organizationKey, clock,
-                directory -> new DirectoryClient(directory, Duration.ofSeconds(20)).fetch(),
-                directory -> new DirectoryClient(directory, Duration.ofSeconds(20)).fetchFreshness());
+        this(store, organization, organizationKey, clock, (com.imagunity.directory.SignedRead) null);
+    }
+
+    /**
+     * @param reader lectures des annuaires des partenaires signées par la clé de fraîcheur de cette organisation
+     *               (lecture réservée chez eux) ; {@code null} sans clé de fraîcheur
+     */
+    public FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey,
+                             Clock clock, com.imagunity.directory.SignedRead reader) {
+        this(store, organization, organizationKey, clock, new PartnerClients(reader));
+    }
+
+    private FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey,
+                              Clock clock, PartnerClients clients) {
+        this(store, organization, organizationKey, clock, directory -> clients.of(directory).fetch(),
+                directory -> clients.of(directory).fetchFreshness());
+    }
+
+    /** Un client par annuaire de partenaire, pour garder son curseur (lecture par différence). */
+    private record PartnerClients(com.imagunity.directory.SignedRead reader,
+                                  java.util.Map<URI, DirectoryClient> clients) {
+        PartnerClients(com.imagunity.directory.SignedRead reader) {
+            this(reader, new java.util.concurrent.ConcurrentHashMap<>());
+        }
+
+        DirectoryClient of(URI directory) {
+            return clients.computeIfAbsent(directory, d -> {
+                DirectoryClient client = new DirectoryClient(d, Duration.ofSeconds(20));
+                return reader == null ? client : client.readAs(reader);
+            });
+        }
     }
 
     FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey, Clock clock,
@@ -120,7 +148,8 @@ public class FederationService {
         return store.current().stream().map(d -> new Current(verify(d), d)).toList();
     }
 
-    private Optional<Recognition> active(String partner) {
+    /** Reconnaissance active de ce partenaire, s'il y en a une. */
+    public Optional<Recognition> activePartner(String partner) {
         return currentRecognitions().stream().map(Current::recognition)
                 .filter(r -> r.partner().fingerprint().equals(partner)
                         && r.statusAt(clock.instant()) == BoxEntry.Status.ACTIVE)
@@ -133,9 +162,36 @@ public class FederationService {
      * @throws NoSuchElementException si aucun accord actif ne le reconnaît
      */
     public PartnerEntries partnerEntries(String partner) {
-        Recognition r = active(partner).orElseThrow(() -> new NoSuchElementException(
+        return partnerEntries(partner, 0);
+    }
+
+    /** Entrées relayées d'un partenaire dont l'accord est actif, reçues après le curseur {@code since}. */
+    public PartnerEntries partnerEntries(String partner, long since) {
+        Recognition r = activePartner(partner).orElseThrow(() -> new NoSuchElementException(
                 "Aucun accord actif avec cette organisation"));
-        return new PartnerEntries(r.partner().organization(), store.partnerEntries(partner));
+        long cursor = store.partnerCursor(partner);
+        return new PartnerEntries(r.partner().organization(), store.partnerEntriesSince(partner, since), cursor);
+    }
+
+    /**
+     * Clé de fraîcheur déléguée d'un partenaire dont l'accord est actif, d'après sa dernière preuve relayée : elle
+     * signe les lectures de son service d'annuaire (lecture réservée).
+     */
+    public Optional<HybridPublicKey> partnerReadKey(String partner) {
+        Optional<Recognition> r = activePartner(partner);
+        if (r.isEmpty()) {
+            return Optional.empty();
+        }
+        Recognition.Partner p = r.get().partner();
+        return store.partnerFreshness(partner).flatMap(f -> {
+            try {
+                f.verify(p.organization(), p.publicKey(), clock.instant());
+                com.imagunity.directory.FreshnessDelegation d = f.delegationContent();
+                return d.coversAt(clock.instant()) ? Optional.of(d.publicKey()) : Optional.empty();
+            } catch (DirectoryException e) {
+                return Optional.empty();
+            }
+        });
     }
 
     /**
@@ -144,13 +200,13 @@ public class FederationService {
      * @throws NoSuchElementException si aucun accord actif ne le reconnaît, ou si aucune preuve n'a été relayée
      */
     public com.imagunity.directory.Freshness partnerFreshness(String partner) {
-        active(partner).orElseThrow(() -> new NoSuchElementException("Aucun accord actif avec cette organisation"));
+        activePartner(partner).orElseThrow(() -> new NoSuchElementException("Aucun accord actif avec cette organisation"));
         return store.partnerFreshness(partner).orElseThrow(() -> new NoSuchElementException(
                 "Aucune preuve de fraîcheur relayée pour cette organisation"));
     }
 
     /** Entrées relayées d'un partenaire. */
-    public record PartnerEntries(String organization, List<SignedDocument> entries) {
+    public record PartnerEntries(String organization, List<SignedDocument> entries, long cursor) {
     }
 
     /** Lit l'annuaire de chaque partenaire reconnu et relaie les entrées qui se vérifient avec sa clé. */

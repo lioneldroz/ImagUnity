@@ -24,8 +24,8 @@ public class EntryStore {
     }
 
     void save(BoxEntry entry, SignedDocument document, Instant publishedAt) {
-        jdbc.sql("INSERT INTO box_entry (box_id, serial, display_name, revoked, valid_until, document, published_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?)")
+        jdbc.sql("INSERT INTO box_entry (box_id, serial, display_name, revoked, valid_until, document, published_at, "
+                        + "seq) VALUES (?, ?, ?, ?, ?, ?, ?, nextval('directory_seq'))")
                 .params(entry.boxId(), entry.serial(), entry.displayName(), entry.revoked(), utc(entry.validUntil()),
                         document.toJson(), utc(publishedAt))
                 .update();
@@ -46,6 +46,18 @@ public class EntryStore {
         return jdbc.sql("SELECT e.document FROM box_entry e WHERE e.serial = "
                         + "(SELECT MAX(serial) FROM box_entry m WHERE m.box_id = e.box_id) ORDER BY e.display_name, e.box_id")
                 .query(String.class).list().stream().map(SignedDocument::fromJson).toList();
+    }
+
+    /** Curseur courant : plus haut numéro d'ordre (0 sans entrée). À lire avant {@link #currentSince}. */
+    long cursor() {
+        return jdbc.sql("SELECT COALESCE(MAX(seq), 0) FROM box_entry").query(Long.class).single();
+    }
+
+    /** Entrée courante des box publiées après le curseur {@code since} (toutes pour 0). */
+    List<SignedDocument> currentSince(long since) {
+        return jdbc.sql("SELECT e.document FROM box_entry e WHERE e.seq > ? AND e.serial = "
+                        + "(SELECT MAX(serial) FROM box_entry m WHERE m.box_id = e.box_id) ORDER BY e.display_name, e.box_id")
+                .param(since).query(String.class).list().stream().map(SignedDocument::fromJson).toList();
     }
 
     Optional<SignedDocument> current(UUID boxId) {

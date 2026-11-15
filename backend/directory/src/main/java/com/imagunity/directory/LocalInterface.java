@@ -394,7 +394,7 @@ final class LocalInterface implements AutoCloseable {
 
     /** Entrées publiées dans l'annuaire et signées par cette organisation (les autres sont ignorées). */
     private Map<UUID, Published> published() throws IOException {
-        HttpResponse<String> response = calls.get("/directory/v1/entries", false);
+        HttpResponse<String> response = calls.read("/directory/v1/entries");
         if (response.statusCode() != 200) {
             throw new Refusal(502, "Lecture de l'annuaire refusée (HTTP " + response.statusCode() + ")");
         }
@@ -588,7 +588,7 @@ final class LocalInterface implements AutoCloseable {
     }
 
     private List<PublishedRecognition> recognitions() throws IOException {
-        HttpResponse<String> response = calls.get("/directory/v1/recognitions", false);
+        HttpResponse<String> response = calls.read("/directory/v1/recognitions");
         if (response.statusCode() == 404) {
             return List.of();
         }

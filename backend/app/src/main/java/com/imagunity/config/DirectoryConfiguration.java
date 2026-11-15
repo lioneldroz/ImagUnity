@@ -299,8 +299,10 @@ class DirectoryConfiguration {
     }
 
     @Bean
-    DirectoryClient directoryClient(DirectoryProperties properties) {
-        return new DirectoryClient(properties.url(), Duration.ofSeconds(10));
+    DirectoryClient directoryClient(DirectoryProperties properties, BoxIdentity identity) {
+        // Lectures signées par la box : elles passent la lecture réservée de l'annuaire une fois la box enrôlée.
+        return new DirectoryClient(properties.url(), Duration.ofSeconds(10)).readAs(new com.imagunity.directory
+                .SignedRead(identity.boxId().toString(), identity.keys()));
     }
 
     /**
@@ -452,6 +454,10 @@ class DirectoryConfiguration {
                 directory.synchronizePartnerFreshness(partner, () -> client.fetchPartnerFreshness(partner));
                 directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
             }
+        }
+        if (directory.incomplete()) {
+            // Lecture par différence en défaut d'après la preuve de fraîcheur : la prochaine lecture est complète.
+            client.resetCursors();
         }
         executor.execute(handshake::greetUnbound);
     }

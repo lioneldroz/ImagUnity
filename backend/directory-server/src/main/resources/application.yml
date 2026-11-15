@@ -12,6 +12,12 @@ imagunity:
     # délégation. Vides : l'annuaire ne publie pas de preuve de fraîcheur.
     freshness-key: ${IMAGUNITY_DIRECTORY_FRESHNESS_KEY:}
     freshness-delegation: ${IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION:}
+    # Lecture réservée (étape 4 de la fédération) : listes lisibles des seules box actives, des partenaires reconnus
+    # et des comptes. À activer une fois toutes les box et tous les relais à jour.
+    restricted-read: ${IMAGUNITY_DIRECTORY_RESTRICTED_READ:false}
+    # Compte de lecture (relais). Vide : pas de compte de lecture.
+    reader-user: ${IMAGUNITY_DIRECTORY_READER_USER:lecteur}
+    reader-password: ${IMAGUNITY_DIRECTORY_READER_PASSWORD:}
     # Lecture des annuaires des partenaires (entrées et preuves de fraîcheur).
     partner-sync-interval: ${IMAGUNITY_DIRECTORY_PARTNER_SYNC_INTERVAL:5m}
 

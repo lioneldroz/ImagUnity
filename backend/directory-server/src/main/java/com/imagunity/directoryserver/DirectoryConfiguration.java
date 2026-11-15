@@ -22,8 +22,8 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * Clé de l'organisation, service de publication et accès.
  *
- * <p>Lecture libre : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de
- * transport. Dépôt réservé au compte du responsable (HTTP Basic, sans session ; client en ligne de commande, d'où
+ * <p>Lecture libre par défaut : les entrées sont signées et ne contiennent que des clés publiques, des noms et des
+ * adresses de transport. Lecture réservée sur option ({@link RestrictedReadFilter}). Dépôt réservé au compte du responsable (HTTP Basic, sans session ; client en ligne de commande, d'où
  * l'absence de jeton CSRF).
  */
 @Configuration(proxyBeanMethods = false)
@@ -83,8 +83,14 @@ class DirectoryConfiguration {
     }
 
     @Bean
-    FederationService federationService(RecognitionStore store, KeyFiles.OrganizationPublicKey key, Clock clock) {
-        return new FederationService(store, key.organization(), key.key(), clock);
+    FederationService federationService(RecognitionStore store, KeyFiles.OrganizationPublicKey key, Clock clock,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.freshness-key:}") String keyFile)
+            throws IOException {
+        // Lectures des annuaires partenaires signées par la clé de fraîcheur : elles y passent la lecture réservée.
+        com.imagunity.directory.SignedRead reader = keyFile.isBlank() ? null : new com.imagunity.directory.SignedRead(
+                com.imagunity.directory.SignedRead.ORGANIZATION + key.key().fingerprint(),
+                KeyFiles.readPrivate(java.nio.file.Path.of(keyFile)));
+        return new FederationService(store, key.organization(), key.key(), clock, reader);
     }
 
     /**
@@ -137,7 +143,12 @@ class DirectoryConfiguration {
     static final String ADMIN_HEADER = "X-ImagUnity-Admin";
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, DirectoryServerProperties properties,
+            EntryStore entries, FederationService federation, KeyFiles.OrganizationPublicKey key, Clock clock)
+            throws Exception {
+        if (properties.restrictedRead()) {
+            LOG.info("Lecture réservée : listes de l'annuaire lisibles des seuls box actives, partenaires et comptes");
+        }
         return http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/directory/v1/entries").hasRole("PUBLISHER")
@@ -159,6 +170,8 @@ class DirectoryConfiguration {
                 .csrf(csrf -> csrf.disable())
                 .addFilterAfter(new AdminHeaderFilter(), org.springframework.security.web.authentication.www
                         .BasicAuthenticationFilter.class)
+                .addFilterAfter(new RestrictedReadFilter(properties.restrictedRead(), entries, federation,
+                        key.organization(), key.key(), clock), AdminHeaderFilter.class)
                 .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(
                         "default-src 'self'; frame-ancestors 'none'; form-action 'self'")))
                 .build();
@@ -203,7 +216,13 @@ class DirectoryConfiguration {
                     properties.publisherUser(), file.toAbsolutePath());
         }
         String stored = password.startsWith("{") ? password : encoder.encode(password);
-        return new InMemoryUserDetailsManager(User.withUsername(properties.publisherUser()).password(stored)
-                .roles("PUBLISHER").build());
+        InMemoryUserDetailsManager users = new InMemoryUserDetailsManager(User.withUsername(properties.publisherUser())
+                .password(stored).roles("PUBLISHER").build());
+        String reader = properties.readerPassword();
+        if (reader != null && !reader.isBlank()) {
+            users.createUser(User.withUsername(properties.readerUser()).password(reader.startsWith("{") ? reader
+                    : encoder.encode(reader)).roles("READER").build());
+        }
+        return users;
     }
 }

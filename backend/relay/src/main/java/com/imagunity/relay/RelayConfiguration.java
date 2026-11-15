@@ -92,6 +92,9 @@ class RelayConfiguration {
                     directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
                 }
             }
+            if (directory.incomplete()) {
+                client.resetCursors();
+            }
         } catch (RuntimeException e) {
             LOG.log(Level.ERROR, "Lecture de l''annuaire en échec, nouvel essai au prochain intervalle", e);
         }
@@ -99,7 +102,8 @@ class RelayConfiguration {
 
     @Bean
     DirectoryClient directoryClient(RelayProperties properties) {
-        return new DirectoryClient(properties.directory().url(), Duration.ofSeconds(10));
+        return new DirectoryClient(properties.directory().url(), Duration.ofSeconds(10))
+                .account(properties.directory().account());
     }
 
     /** Vue locale chargée au démarrage, puis synchronisée périodiquement (la première fois aussitôt). */

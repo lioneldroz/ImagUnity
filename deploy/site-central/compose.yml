@@ -32,6 +32,7 @@ services:
       IMAGUNITY_RELAY_DB_PASSWORD: ${RELAIS_DB_MOT_DE_PASSE}
       IMAGUNITY_RELAY_STORAGE_DIR: /data/morceaux
       IMAGUNITY_RELAY_DIRECTORY_URL: http://directory:8090
+      IMAGUNITY_RELAY_DIRECTORY_ACCOUNT: ${ANNUAIRE_COMPTE_LECTURE:-lecteur}:${ANNUAIRE_MOT_DE_PASSE_LECTURE:-}
       IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
       IMAGUNITY_RELAY_ORGANIZATION_CODE: ${EMPREINTE_RESPONSABLE:?empreinte du responsable, vérifiée hors bande}
       IMAGUNITY_RELAY_QUOTA_PER_BOX: ${RELAIS_QUOTA_PAR_BOX:-100GB}
@@ -75,6 +76,9 @@ services:
       # Preuve de fraîcheur : clé déléguée par le responsable (fraicheur-deleguer), dans config/fraicheur/.
       IMAGUNITY_DIRECTORY_FRESHNESS_KEY: ${ANNUAIRE_CLE_FRAICHEUR:-}
       IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION: ${ANNUAIRE_DELEGATION_FRAICHEUR:-}
+      IMAGUNITY_DIRECTORY_RESTRICTED_READ: ${ANNUAIRE_LECTURE_RESERVEE:-false}
+      IMAGUNITY_DIRECTORY_READER_USER: ${ANNUAIRE_COMPTE_LECTURE:-lecteur}
+      IMAGUNITY_DIRECTORY_READER_PASSWORD: ${ANNUAIRE_MOT_DE_PASSE_LECTURE:-}
     volumes:
       - ./config/organisation.pub.json:/config/organisation.pub.json:ro
       - ./config/fraicheur:/config/fraicheur:ro

@@ -112,14 +112,14 @@ Module `directory-server` : une application Spring Boot autonome, sur **PostgreS
 | Requête | Accès | Réponse |
 |---|---|---|
 | `GET /directory/v1/organization` | libre | organisation, clé publique et empreinte courte du responsable (pour information : chaque box épingle sa copie, vérifiée hors bande) |
-| `GET /directory/v1/entries` | libre | entrée courante (numéro le plus haut) de chaque box |
+| `GET /directory/v1/entries` | libre, ou réservée (§ 5 quater) | entrée courante (numéro le plus haut) de chaque box ; avec `?since=<curseur>`, seulement celles publiées depuis, et le curseur suivant |
 | `GET /directory/v1/entries/{boxId}` | libre | entrée courante d'une box ; 404 si inconnue |
-| `GET /directory/v1/entries/{boxId}/history` | libre | toutes ses entrées, par numéro croissant |
+| `GET /directory/v1/entries/{boxId}/history` | libre, ou comptes seulement (§ 5 quater) | toutes ses entrées, par numéro croissant |
 | `POST /directory/v1/entries` | compte du responsable (HTTP Basic) | 201 publiée, 200 déjà publiée à l'identique, 409 retour en arrière ou autre entrée sous le même numéro, 422 entrée invalide (signature, organisation, format) |
 
 - **Le service revérifie** chaque dépôt avec la clé publique de l'organisation (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`). C'est une défense en profondeur : les box revérifient tout, le service n'étant pas de confiance.
 - **Historique** : chaque entrée publiée est gardée, une ligne par box et par numéro.
-- **Lecture libre** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. Les réserver aux box enrôlées est possible plus tard (signature des requêtes, § 6.4 de la spécification).
+- **Lecture libre par défaut** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. La lecture réservée (§ 5 quater) évite qu'un inconnu dresse la carte des établissements.
 - **Compte de dépôt** : `IMAGUNITY_DIRECTORY_PUBLISHER_USER` (par défaut `responsable`) et `IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD`, en clair ou haché `{bcrypt}`. Sans mot de passe, il est généré au démarrage et écrit dans `IMAGUNITY_DIRECTORY_GENERATED_PASSWORD_FILE` (par défaut `./mot-de-passe-depot.txt`), lisible du seul compte du service ; jamais dans les journaux.
 - **Publication** depuis l'outil du responsable : `publier --annuaire <url> --entree <fichier>`. Le compte passe par `IMAGUNITY_ANNUAIRE_COMPTE=utilisateur:mot-de-passe`, plutôt que par l'option `--compte` qui est visible dans la liste des processus.
 - **Compose** : services `directory` et `directory-db` du Compose de base, avec la clé publique de l'organisation dans `deploy/banc-essai/annuaire/organisation.pub.json`.
@@ -156,6 +156,30 @@ Une entrée signée dit ce qui était vrai au moment de sa signature, pas qu'ell
 - **Annuaire figé** : une fois une preuve reçue d'une organisation, si la dernière a plus de 48 h (`IMAGUNITY_DIRECTORY_FRESHNESS_MAX_AGE`, `IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE` ; 0 : jamais), les échanges avec ses box s'arrêtent, avec le motif. Un annuaire qui n'a jamais publié de preuve n'arrête rien (compatibilité).
 - **Contrôle par le responsable** : `fraicheur-verifier` vérifie la preuve servie et la compare aux entrées et reconnaissances publiées.
 - **Limite** : la clé de fraîcheur est en ligne. Si le service d'annuaire lui-même est compromis, il peut signer des preuves qui omettent une révocation, au plus pendant la validité de la délégation. `fraicheur-verifier`, lancé régulièrement depuis le poste du responsable, le détecte. La clé déléguée ne peut signer ni entrée ni reconnaissance.
+
+## 5 quater. Lecture par différence et lecture réservée
+
+Étape 4 de la [note sur la fédération](federation-organisations.md#7-étapes-suivantes).
+
+**Lecture par différence.** Chaque entrée publiée, et chaque entrée de partenaire relayée, reçoit un numéro d'ordre croissant (`seq`, migration V7). `GET /directory/v1/entries?since=N` et `GET /directory/v1/partners/{empreinte}/entries?since=N` ne renvoient que les entrées courantes publiées ou changées après le curseur `N`, avec le curseur suivant (`"cursor"`). Sans `since`, la réponse est la liste complète, sans curseur, comme avant. Le curseur est lu avant les entrées : une publication concurrente est relue la fois suivante, jamais perdue.
+
+Le client (`DirectoryClient`, box, relais, service d'annuaire pour ses partenaires) garde un curseur pour ses entrées et un par partenaire. Il refait une lecture complète au premier passage, au moins toutes les 24 heures, et dès que la preuve de fraîcheur (§ 5 ter) annonce une box absente ou plus récente que celle reçue (`LocalDirectory.incomplete()`). Une entrée n'est jamais retirée de la vue locale par une lecture partielle : une révocation est une nouvelle entrée, qui arrive comme les autres. À 10 000 box, une lecture toutes les 5 minutes passe d'environ 75 Mo à quelques Ko.
+
+**Lecture réservée.** Avec `IMAGUNITY_DIRECTORY_RESTRICTED_READ=true`, les listes ne se lisent plus librement :
+
+| Requête | Qui la lit |
+|---|---|
+| `GET /organization`, `GET /freshness`, `GET /entries/{boxId}` | tout le monde (une box qui s'enrôle lit sa propre entrée) |
+| `GET /entries` | comptes, box actives, service d'annuaire d'un partenaire reconnu |
+| `GET /recognitions`, `GET /configurations`, `GET /partners/…` | comptes, box actives |
+| `GET /entries/{boxId}/history` | comptes |
+
+- **Comptes** : celui du responsable, et un compte de lecture pour les relais (`IMAGUNITY_DIRECTORY_READER_USER`, par défaut `lecteur`, et `IMAGUNITY_DIRECTORY_READER_PASSWORD` ; côté relais `IMAGUNITY_RELAY_DIRECTORY_ACCOUNT=lecteur:<mot de passe>`). L'outil du responsable et l'interface locale lisent avec le compte du responsable (`IMAGUNITY_ANNUAIRE_COMPTE`) quand il est connu.
+- **Lecture signée d'une box** : en-têtes `IU-Lecteur` (identifiant de la box), `IU-Lecture-Heure` (secondes Unix) et `IU-Lecture-Signature` (Ed25519 et ML-DSA-65, en base64, séparés par un point) sur `"IU1-lecture\n" ‖ lecteur ‖ "\n" ‖ chemin et paramètres ‖ "\n" ‖ heure`. Le service revérifie l'entrée courante de la box avec la clé de l'organisation, exige qu'elle soit active, et vérifie la signature avec sa clé, à 5 minutes près. Pas d'anti-rejeu : une lecture rejouée ne donne que ce que ce lecteur pouvait déjà lire, et seulement pendant 5 minutes.
+- **Lecture signée d'un partenaire** : lecteur `organisation:<empreinte de la clé du responsable>`, signé par la **clé de fraîcheur** de son annuaire. Le service la vérifie avec la délégation de la dernière preuve du partenaire qu'il a relayée (§ 5 ter), tant que l'accord est actif. Un partenaire ne lit que la liste des entrées. Il faut donc qu'il publie une preuve de fraîcheur ; son annuaire la lit librement sur `GET /freshness`, puis signe ses lectures dès le cycle suivant.
+- **Box pas encore enrôlée** : refusée sur la liste (401), elle lit sa propre entrée (`GET /entries/{boxId}`) et voit ainsi son enrôlement.
+- **Mise en service** : mettre à jour toutes les box et tous les relais (et leur donner le compte de lecture), et les annuaires des partenaires (clé de fraîcheur installée), puis activer l'option. Une ancienne box, qui ne signe pas ses lectures, cesse de voir l'annuaire.
+- **Refus** : 401, avec `WWW-Authenticate: Basic`. Un compte au mauvais mot de passe est refusé même sur une lecture publique, comme avant.
 
 ## 6. Intégration dans la box (étape C1)
 
