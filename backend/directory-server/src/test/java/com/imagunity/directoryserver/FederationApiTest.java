@@ -54,6 +54,7 @@ class FederationApiTest {
             Path key = Files.createTempDirectory("annuaire").resolve("organisation.pub.json");
             KeyFiles.writeOrganizationPublic(key, A.id(), A_KEYS.publicKey());
             registry.add("imagunity.directory.organization-key", key::toString);
+            registry.add("imagunity.directory.organization-code", () -> A_KEYS.publicKey().shortCode());
             registry.add("imagunity.directory.partner-sync-interval", () -> "1h");
             registry.add("spring.datasource.url", () -> "jdbc:h2:mem:federation-" + UUID.randomUUID()
                     + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");

@@ -160,6 +160,7 @@ def start_directory(work, org, h2):
                               str(BACKEND / "directory-server/target/imagunity-directory.jar"), LAUNCHER], {
         "IMAGUNITY_DIRECTORY_PORT": str(o["annuaire"]),
         "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
+        "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE": o["empreinte"],
         "IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD": COMPTE.split(":")[1],
         "IMAGUNITY_DIRECTORY_DB_URL": f"jdbc:h2:file:{work / org / 'annuaire'};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
         "IMAGUNITY_DIRECTORY_DB_USER": "sa",

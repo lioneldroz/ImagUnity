@@ -84,3 +84,8 @@ textarea { width: 100%; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas
 #onglet-aide h3 { margin-top: 16px; }
 #onglet-aide p, #onglet-aide ul, #onglet-aide ol { margin: 6px 0; }
 .erreur-texte { color: var(--alerte); }
+.info { position: relative; display: inline-block; vertical-align: middle; }
+.info-bouton { width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: 12px; font-weight: 700; line-height: 18px; background: transparent; color: var(--accent); }
+.info .bulle { visibility: hidden; opacity: 0; transition: opacity .15s; position: absolute; z-index: 10; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); width: min(360px, 80vw); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--carte); color: var(--texte); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); font-size: 13px; font-weight: 400; line-height: 1.45; text-align: left; }
+.info:hover .bulle, .info:focus-within .bulle { visibility: visible; opacity: 1; }
+dt .info .bulle { left: 0; transform: none; }

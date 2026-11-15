@@ -57,6 +57,7 @@ class FreshnessApiTest {
             Files.writeString(delegation, A.delegateFreshness(FRESH.publicKey(), Instant.now().minusSeconds(60),
                     Duration.ofDays(5), 1).toJson());
             registry.add("imagunity.directory.organization-key", key::toString);
+            registry.add("imagunity.directory.organization-code", () -> A_KEYS.publicKey().shortCode());
             registry.add("imagunity.directory.freshness-key", freshKey::toString);
             registry.add("imagunity.directory.freshness-delegation", delegation::toString);
             registry.add("imagunity.directory.partner-sync-interval", () -> "1h");

@@ -119,6 +119,7 @@ Module `directory-server` : une application Spring Boot autonome, sur **PostgreS
 | `GET /directory/v1/entries/{boxId}/history` | libre, ou comptes seulement (§ 5 quater) | toutes ses entrées, par numéro croissant |
 | `POST /directory/v1/entries` | compte du responsable (HTTP Basic) | 201 publiée, 200 déjà publiée à l'identique, 409 retour en arrière ou autre entrée sous le même numéro, 422 entrée invalide (signature, organisation, format) |
 
+- **Clé épinglée** : au démarrage, le service recalcule l'empreinte courte de la clé publique installée (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`) et la compare à `IMAGUNITY_DIRECTORY_ORGANIZATION_CODE`, vérifiée hors bande avec le responsable (site central : `EMPREINTE_RESPONSABLE`). Absente ou différente, il refuse de démarrer, en affichant l'empreinte trouvée. Comme au relais et dans les box : un fichier remplacé en chemin, ou celui d'une autre organisation, se voit dès l'installation.
 - **Le service revérifie** chaque dépôt avec la clé publique de l'organisation (`IMAGUNITY_DIRECTORY_ORGANIZATION_KEY`). C'est une défense en profondeur : les box revérifient tout, le service n'étant pas de confiance.
 - **Historique** : chaque entrée publiée est gardée, une ligne par box et par numéro.
 - **Lecture libre par défaut** : les entrées sont signées et ne contiennent que des clés publiques, des noms et des adresses de transport. La lecture réservée (§ 5 quater) évite qu'un inconnu dresse la carte des établissements.

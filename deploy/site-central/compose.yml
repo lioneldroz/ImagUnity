@@ -71,6 +71,7 @@ services:
       IMAGUNITY_DIRECTORY_DB_URL: jdbc:postgresql://directory-db:5432/annuaire
       IMAGUNITY_DIRECTORY_DB_PASSWORD: ${ANNUAIRE_DB_MOT_DE_PASSE}
       IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
+      IMAGUNITY_DIRECTORY_ORGANIZATION_CODE: ${EMPREINTE_RESPONSABLE:?empreinte du responsable, vérifiée hors bande}
       IMAGUNITY_DIRECTORY_PUBLISHER_USER: ${ANNUAIRE_COMPTE:-responsable}
       IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD: ${ANNUAIRE_MOT_DE_PASSE:?mot de passe du compte de dépôt du responsable}
       # Preuve de fraîcheur : clé déléguée par le responsable (fraicheur-deleguer), dans config/fraicheur/.

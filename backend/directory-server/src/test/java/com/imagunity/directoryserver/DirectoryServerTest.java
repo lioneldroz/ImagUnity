@@ -44,6 +44,7 @@ class DirectoryServerTest {
             Path key = Files.createTempDirectory("annuaire").resolve("organisation.pub.json");
             KeyFiles.writeOrganizationPublic(key, "chu-exemple", ORG_KEYS.publicKey());
             registry.add("imagunity.directory.organization-key", key::toString);
+            registry.add("imagunity.directory.organization-code", () -> ORG_KEYS.publicKey().shortCode());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -181,6 +182,21 @@ class DirectoryServerTest {
 
         assertThatThrownBy(() -> configuration.organizationKey(new DirectoryServerProperties(null, "r", "p")))
                 .hasMessageContaining("IMAGUNITY_DIRECTORY_ORGANIZATION_KEY");
+        // Clé épinglée : l'empreinte vérifiée hors bande doit être celle de la clé installée.
+        java.nio.file.Path pub = dir.resolve("organisation.pub.json");
+        com.imagunity.directory.KeyFiles.writeOrganizationPublic(pub, "chu-exemple", ORG_KEYS.publicKey());
+        String code = ORG_KEYS.publicKey().shortCode();
+        java.util.function.Function<String, DirectoryServerProperties> with = c -> new DirectoryServerProperties(pub,
+                "r", "p", dir.resolve("p.txt"), false, "lecteur", null, c);
+        assertThatThrownBy(() -> configuration.organizationKey(with.apply(null)))
+                .hasMessageContaining("non confirmée").hasMessageContaining(code)
+                .hasMessageContaining("IMAGUNITY_DIRECTORY_ORGANIZATION_CODE");
+        assertThatThrownBy(() -> configuration.organizationKey(with.apply(
+                com.imagunity.directory.HybridKeyPair.generate().publicKey().shortCode())))
+                .as("empreinte d'une autre clé").hasMessageContaining("non confirmée");
+        assertThat(configuration.organizationKey(with.apply(code)).organization()).isEqualTo("chu-exemple");
+        assertThat(configuration.organizationKey(with.apply(" " + code.toLowerCase().replace("-", " ") + " "))
+                .organization()).as("mise en forme indifférente").isEqualTo("chu-exemple");
         java.nio.file.Path file = dir.resolve("depot/mot-de-passe.txt");
         String generated = configuration.publisher(new DirectoryServerProperties(null, "r", "", file), encoder)
                 .loadUserByUsername("r").getPassword();
