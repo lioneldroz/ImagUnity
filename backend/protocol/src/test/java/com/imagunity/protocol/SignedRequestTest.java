@@ -95,6 +95,12 @@ class SignedRequestTest {
                 .hasValueSatisfying(r -> assertThat(r).contains("horodatage"));
         assertThat(guard.admit(SignedRequest.of("GET", "/x", BODY, NOW.plus(Duration.ofMinutes(6))))).isPresent();
         assertThat(guard.admit(SignedRequest.of("GET", "/x", BODY, NOW.plus(Duration.ofMinutes(4))))).isEmpty();
+        // Horodatage extrême : « maintenant - horodatage » déborderait (Math.abs(Long.MIN_VALUE) < 0).
+        long extreme = NOW.getEpochSecond() + Long.MIN_VALUE;
+        assertThat(guard.admit(new SignedRequest("GET", "/x", extreme, "AAECAwQFBgcICQoLDA0ODw",
+                Codec.sha256Hex(BODY)))).as("horodatage extrême refusé").isPresent();
+        assertThat(guard.admit(new SignedRequest("GET", "/x", Long.MAX_VALUE, "AAECAwQFBgcICQoLDA0OEA",
+                Codec.sha256Hex(BODY)))).isPresent();
     }
 
     @Test
