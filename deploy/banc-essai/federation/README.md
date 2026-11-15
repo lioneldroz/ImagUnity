@@ -17,10 +17,26 @@ pip install -r deploy/banc-essai/federation/requirements.txt
 python3 deploy/banc-essai/federation/banc.py            # --garder : laisse tout tourner à la fin
 ```
 
-Le script efface puis remplit `travail/` : clés des responsables, bases H2, journaux de chaque composant (`travail/journaux/`), et le compte rendu `travail/resultats.md`. Il sort en erreur si un essai échoue. Le jar H2 est pris dans le dépôt Maven local, ou dans `H2_JAR`.
+Le script efface puis remplit `travail/`, une **machine simulée par dossier** :
+
+```
+travail/
+  A/, B/                  une organisation chacune
+    poste-responsable/    organisation.json (clé privée), organisation.json.pub.json, codes.json,
+                          fraicheur.json, delegation-fraicheur.json, partenaire-<id>.pub.json
+    annuaire/             config/organisation.pub.json, config/fraicheur/ ; donnees/ (base H2)
+    relais/               config/organisation.pub.json ; donnees/, morceaux/
+    box/                  config/organisation.pub.json ; donnees/ (identité, base, transferts)
+    pacs/                 instances reçues par le PACS simulé
+  journaux/               un journal par composant
+  resultats.md            le compte rendu
+```
+
+Chaque composant ne lit que ses propres fichiers. Le banc les y **dépose** depuis le poste du responsable, comme l'exploitant et l'installateur : la clé publique à chaque machine, la clé de fraîcheur à l'annuaire seulement. La clé publique du partenaire est **remise** d'un responsable à l'autre, sur son poste. Le premier essai vérifie qu'aucune machine n'a reçu de clé privée, de code d'enrôlement ou de clé de partenaire. L'outil du responsable s'exécute dans `poste-responsable/`. Il sort en erreur si un essai échoue. Le jar H2 est pris dans le dépôt Maven local, ou dans `H2_JAR`.
 
 ## Ce qu'il vérifie
 
+0. **Machines séparées** : fichiers déposés sur chaque machine, rien de secret hors du poste du responsable.
 1. **Enrôlement** : chaque responsable tire un code par box, la box envoie sa demande avec la preuve du code, `enroler-attente` la signe.
    L'entrée signée de chaque box annonce les versions du protocole de sa demande (`"protocols": ["iu1.0"]`).
 2. **Reconnaissance mutuelle** : chaque responsable reconnaît l'autre (`reconnaitre`). Le périmètre couvre les groupes des deux box, et les relais autorisés sont ceux de chaque organisation. Chaque box voit alors l'autre comme box partenaire utilisable.

@@ -2,7 +2,10 @@
 """Banc d'essai de la fédération : deux organisations sur un même poste, sans Docker.
 
 Chaque organisation a son service d'annuaire, son relais IU-T et une box ; un PACS simulé (pynetdicom) envoie et
-reçoit de chaque côté. Le banc :
+reçoit de chaque côté. Chaque composant tourne comme sur sa propre machine, dans son dossier
+(travail/<org>/poste-responsable, annuaire, relais, box, pacs) et ne lit que ses propres fichiers : la clé publique et
+la clé de fraîcheur y sont déposées depuis le poste du responsable (deposer), la clé publique du partenaire est remise
+d'un responsable à l'autre. Le banc :
 
 1. crée les deux clés de responsable, tire un code d'enrôlement par box, démarre tout, enrôle les box ;
 2. fait signer à chaque responsable la reconnaissance de l'autre (périmètre en groupes, relais autorisés) ;
@@ -114,10 +117,39 @@ def h2_jar():
     return jars[-1]
 
 
-def start(name, args, env, work):
+def machine(work, org, name):
+    """Dossier d'une machine simulée de l'organisation : rien n'y arrive que par deposer() ou remettre()."""
+    path = work / org / name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def deposer(work, org, *machines):
+    """Le responsable remet aux machines de son organisation ce dont elles ont besoin : la clé publique à chacune,
+    la clé de fraîcheur et sa délégation à l'annuaire. La clé privée et les codes restent sur son poste."""
+    poste = machine(work, org, "poste-responsable")
+    for name in machines:
+        config = machine(work, org, name) / "config"
+        config.mkdir(exist_ok=True)
+        shutil.copyfile(poste / "organisation.json.pub.json", config / "organisation.pub.json")
+        if name == "annuaire" and (poste / "fraicheur.json").exists():
+            (config / "fraicheur").mkdir(exist_ok=True)
+            shutil.copyfile(poste / "fraicheur.json", config / "fraicheur" / "fraicheur.json")
+            shutil.copyfile(poste / "delegation-fraicheur.json", config / "fraicheur" / "delegation.json")
+
+
+def remettre(work, org, partner):
+    """Le responsable du partenaire remet sa clé publique (son empreinte se vérifie de vive voix) : elle arrive sur
+    le poste du responsable, sous un nom à elle."""
+    target = machine(work, org, "poste-responsable") / f"partenaire-{ORGS[partner]['id']}.pub.json"
+    shutil.copyfile(machine(work, partner, "poste-responsable") / "organisation.json.pub.json", target)
+    return target
+
+
+def start(name, args, env, work, cwd=None):
     logfile = open(work / "journaux" / f"{name}.log", "w")
     full = dict(os.environ, LANG="C.UTF-8", **env)
-    process = subprocess.Popen(args, cwd=work, env=full, stdout=logfile, stderr=subprocess.STDOUT,
+    process = subprocess.Popen(args, cwd=cwd or work, env=full, stdout=logfile, stderr=subprocess.STDOUT,
                                start_new_session=True)
     PROCESSES.append(process)
     return process
@@ -140,7 +172,7 @@ def admin(work, org, *args, check=True):
     env = dict(os.environ, LANG="C.UTF-8", IMAGUNITY_PHRASE_ORGANISATION=PHRASE, IMAGUNITY_ANNUAIRE_COMPTE=COMPTE)
     command = [JAVA, "-Dstdout.encoding=UTF-8", "-cp", str(BACKEND / "directory-server/target/imagunity-directory.jar"),
                "-Dloader.main=com.imagunity.directory.DirectoryAdmin", LAUNCHER, *args]
-    done = subprocess.run(command, cwd=work / org, env=env, capture_output=True, text=True)
+    done = subprocess.run(command, cwd=machine(work, org, "poste-responsable"), env=env, capture_output=True, text=True)
     if check and done.returncode != 0:
         raise RuntimeError(f"admin {' '.join(args)} : {done.stdout}{done.stderr}")
     return done.stdout + done.stderr
@@ -156,44 +188,47 @@ def relais_url(org):
 
 def start_directory(work, org, h2):
     o = ORGS[org]
+    m = machine(work, org, "annuaire")
     return start(f"annuaire-{org}", [JAVA, f"-Dloader.path={h2}", "-cp",
                               str(BACKEND / "directory-server/target/imagunity-directory.jar"), LAUNCHER], {
         "IMAGUNITY_DIRECTORY_PORT": str(o["annuaire"]),
-        "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
+        "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(m / "config" / "organisation.pub.json"),
         "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE": o["empreinte"],
         "IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD": COMPTE.split(":")[1],
-        "IMAGUNITY_DIRECTORY_DB_URL": f"jdbc:h2:file:{work / org / 'annuaire'};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
+        "IMAGUNITY_DIRECTORY_DB_URL": f"jdbc:h2:file:{m / 'donnees' / 'annuaire'};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
         "IMAGUNITY_DIRECTORY_DB_USER": "sa",
         "IMAGUNITY_DIRECTORY_PARTNER_SYNC_INTERVAL": INTERVAL,
-        "IMAGUNITY_DIRECTORY_FRESHNESS_KEY": str(work / org / "fraicheur.json"),
-        "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION": str(work / org / "delegation-fraicheur.json"),
+        "IMAGUNITY_DIRECTORY_FRESHNESS_KEY": str(m / "config" / "fraicheur" / "fraicheur.json"),
+        "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION": str(m / "config" / "fraicheur" / "delegation.json"),
         "IMAGUNITY_DIRECTORY_FRESHNESS_INTERVAL": "20s",
         "IMAGUNITY_DIRECTORY_RESTRICTED_READ": "true",
         "IMAGUNITY_DIRECTORY_READER_PASSWORD": LECTEUR.split(":")[1],
-    }, work)
+    }, work, m)
 
 
 def start_relay(work, org, h2):
     o = ORGS[org]
+    m = machine(work, org, "relais")
     start(f"relais-{org}", [JAVA, f"-Dloader.path={h2}", "-cp",
                             str(BACKEND / "relay/target/imagunity-relay-exec.jar"), LAUNCHER], {
         "IMAGUNITY_RELAY_PORT": str(o["relais"]),
-        "IMAGUNITY_RELAY_STORAGE_DIR": str(work / org / "morceaux"),
+        "IMAGUNITY_RELAY_STORAGE_DIR": str(m / "morceaux"),
         "IMAGUNITY_RELAY_INSTANCE": f"relais-{org}",
         "IMAGUNITY_RELAY_DIRECTORY_URL": annuaire_url(org),
-        "IMAGUNITY_RELAY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
+        "IMAGUNITY_RELAY_ORGANIZATION_KEY": str(m / "config" / "organisation.pub.json"),
         "IMAGUNITY_RELAY_ORGANIZATION_CODE": ORGS[org]["empreinte"],
         "IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL": INTERVAL,
         "IMAGUNITY_RELAY_DIRECTORY_ACCOUNT": LECTEUR,
         "IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE": FRESHNESS_MAX_AGE,
-        "IMAGUNITY_RELAY_DB_URL": f"jdbc:h2:file:{work / org / 'relais'};MODE=PostgreSQL",
+        "IMAGUNITY_RELAY_DB_URL": f"jdbc:h2:file:{m / 'donnees' / 'relais'};MODE=PostgreSQL",
         "IMAGUNITY_RELAY_DB_USER": "sa",
-    }, work)
+    }, work, m)
 
 
 def start_box(work, org, code):
     o = ORGS[org]
-    data = work / org / "box"
+    m = machine(work, org, "box")
+    data = m / "donnees"
     data.mkdir(parents=True, exist_ok=True)
     start(f"box-{org}", [JAVA, "-Dstdout.encoding=UTF-8", "-jar", str(BACKEND / "app/target/imagunity-box.jar")], {
         "IMAGUNITY_BOX_NAME": f"Box {org} (nom local)",
@@ -213,13 +248,13 @@ def start_box(work, org, code):
         "IMAGUNITY_BOX_AET": f"IU_{org}",
         "IMAGUNITY_DIRECTORY_ENABLED": "true",
         "IMAGUNITY_DIRECTORY_URL": annuaire_url(org),
-        "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
+        "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(m / "config" / "organisation.pub.json"),
         "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE": o["empreinte"],
         "IMAGUNITY_DIRECTORY_SYNC_INTERVAL": INTERVAL,
         "IMAGUNITY_DIRECTORY_FRESHNESS_MAX_AGE": FRESHNESS_MAX_AGE,
         "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE": code,
         "IMAGUNITY_IU_RELAY": relais_url(org),
-    }, work)
+    }, work, m)
 
 
 def up(url):
@@ -237,8 +272,7 @@ def up(url):
 def start_pacs(work, org):
     """PACS destinataire : SCP de stockage, garde chaque instance reçue (empreinte des pixels)."""
     received = {}
-    target = work / org / "pacs"
-    target.mkdir(parents=True, exist_ok=True)
+    target = machine(work, org, "pacs")
 
     def on_store(event):
         ds = event.dataset
@@ -341,7 +375,7 @@ def box_view(viewer, other_id):
 
 def recognize(work, org, partner, local_groups, partner_groups, relays=None):
     admin(work, org, "reconnaitre", "--cles", "organisation.json", "--annuaire", annuaire_url(org),
-          "--partenaire", str(work / partner / "organisation.json.pub.json"), "--annuaire-partenaire",
+          "--partenaire", str(remettre(work, org, partner)), "--annuaire-partenaire",
           annuaire_url(partner), "--relais", relays or relais_url(partner), "--groupes-locaux", local_groups,
           "--groupes-partenaire", partner_groups, "--confirmer")
 
@@ -374,7 +408,7 @@ def main():
 def run(work, h2):
     codes = {}
     for org, o in ORGS.items():
-        (work / org).mkdir()
+        machine(work, org, "poste-responsable")
         out = admin(work, org, "organisation-creer", "--organisation", o["id"], "--cles", "organisation.json")
         o["empreinte"] = out.split("hors bande : ")[1].split()[0]
         admin(work, org, "fraicheur-deleguer", "--cles", "organisation.json", "--sortie-cle", "fraicheur.json",
@@ -382,6 +416,17 @@ def run(work, h2):
         out = admin(work, org, "code-creer", "--codes", "codes.json", "--nom", f"Box {org}", "--groupes", o["groupe"])
         codes[org] = out.split("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=")[1].split()[0]
         log(f"Organisation {org} « {o['id']} » : empreinte {o['empreinte']}")
+
+    # Remise des fichiers aux machines, puis contrôle : aucune n'a reçu de clé privée ni de code d'enrôlement.
+    for org in ORGS:
+        deposer(work, org, "annuaire", "relais", "box")
+    secrets = [str(f.relative_to(work)) for org in ORGS for name in ("annuaire", "relais", "box")
+               for f in machine(work, org, name).rglob("*")
+               if f.name in ("organisation.json", "codes.json") or f.name.startswith("partenaire-")]
+    deposited = sorted(str(f.relative_to(work / "A")) for f in (work / "A").rglob("config/**/*") if f.is_file())
+    result("Machines séparées", not secrets and len(deposited) == 5,
+           f"fichiers déposés chez A : {', '.join(deposited)} ; clé privée et codes seulement sur le poste du "
+           f"responsable" + (f" ; FUITE : {secrets}" if secrets else ""))
 
     directories = {}
     for org in ORGS:
