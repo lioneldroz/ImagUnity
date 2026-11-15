@@ -8,8 +8,9 @@ reçoit de chaque côté. Le banc :
 2. fait signer à chaque responsable la reconnaissance de l'autre (périmètre en groupes, relais autorisés) ;
 3. appaire les box par l'annuaire, envoie un examen synthétique de A vers B puis de B vers A, et vérifie qu'il arrive
    intact au PACS destinataire, accusé compris ;
-4. vérifie les refus : box hors périmètre, relais non autorisé, accord à sens unique, identifiant de box revendiqué
-   par l'autre organisation, accord révoqué.
+4. vérifie les preuves de fraîcheur des deux annuaires (clés déléguées par les responsables) ;
+5. vérifie les refus : box hors périmètre, relais non autorisé, accord à sens unique, identifiant de box revendiqué
+   par l'autre organisation, annuaire du partenaire figé, accord révoqué.
 
 Données synthétiques uniquement. Prérequis : jars construits (cd backend && mvn -DskipTests package), Java 25,
 python3 avec pydicom et pynetdicom (pip install -r requirements.txt). Les bases sont en H2 (fichier) : le jar H2 est
@@ -46,6 +47,7 @@ JAVA = os.environ.get("JAVA", str(Path(os.environ.get("JAVA_HOME", "/usr")) / "b
 PHRASE = "phrase synthétique du responsable"
 CONSOLE = ("operateur", "essai-synthetique")
 INTERVAL = "5s"
+FRESHNESS_MAX_AGE = "90s"   # court pour l'essai (48 h par défaut)
 LAUNCHER = "org.springframework.boot.loader.launch.PropertiesLauncher"
 
 ORGS = {
@@ -153,7 +155,7 @@ def relais_url(org):
 
 def start_directory(work, org, h2):
     o = ORGS[org]
-    start(f"annuaire-{org}", [JAVA, f"-Dloader.path={h2}", "-cp",
+    return start(f"annuaire-{org}", [JAVA, f"-Dloader.path={h2}", "-cp",
                               str(BACKEND / "directory-server/target/imagunity-directory.jar"), LAUNCHER], {
         "IMAGUNITY_DIRECTORY_PORT": str(o["annuaire"]),
         "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
@@ -161,6 +163,9 @@ def start_directory(work, org, h2):
         "IMAGUNITY_DIRECTORY_DB_URL": f"jdbc:h2:file:{work / org / 'annuaire'};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE",
         "IMAGUNITY_DIRECTORY_DB_USER": "sa",
         "IMAGUNITY_DIRECTORY_PARTNER_SYNC_INTERVAL": INTERVAL,
+        "IMAGUNITY_DIRECTORY_FRESHNESS_KEY": str(work / org / "fraicheur.json"),
+        "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION": str(work / org / "delegation-fraicheur.json"),
+        "IMAGUNITY_DIRECTORY_FRESHNESS_INTERVAL": "20s",
     }, work)
 
 
@@ -175,6 +180,7 @@ def start_relay(work, org, h2):
         "IMAGUNITY_RELAY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
         "IMAGUNITY_RELAY_ORGANIZATION_CODE": ORGS[org]["empreinte"],
         "IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL": INTERVAL,
+        "IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE": FRESHNESS_MAX_AGE,
         "IMAGUNITY_RELAY_DB_URL": f"jdbc:h2:file:{work / org / 'relais'};MODE=PostgreSQL",
         "IMAGUNITY_RELAY_DB_USER": "sa",
     }, work)
@@ -205,6 +211,7 @@ def start_box(work, org, code):
         "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
         "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE": o["empreinte"],
         "IMAGUNITY_DIRECTORY_SYNC_INTERVAL": INTERVAL,
+        "IMAGUNITY_DIRECTORY_FRESHNESS_MAX_AGE": FRESHNESS_MAX_AGE,
         "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE": code,
         "IMAGUNITY_IU_RELAY": relais_url(org),
     }, work)
@@ -365,12 +372,15 @@ def run(work, h2):
         (work / org).mkdir()
         out = admin(work, org, "organisation-creer", "--organisation", o["id"], "--cles", "organisation.json")
         o["empreinte"] = out.split("hors bande : ")[1].split()[0]
+        admin(work, org, "fraicheur-deleguer", "--cles", "organisation.json", "--sortie-cle", "fraicheur.json",
+              "--sortie-delegation", "delegation-fraicheur.json")
         out = admin(work, org, "code-creer", "--codes", "codes.json", "--nom", f"Box {org}", "--groupes", o["groupe"])
         codes[org] = out.split("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=")[1].split()[0]
         log(f"Organisation {org} « {o['id']} » : empreinte {o['empreinte']}")
 
+    directories = {}
     for org in ORGS:
-        start_directory(work, org, h2)
+        directories[org] = start_directory(work, org, h2)
     for org in ORGS:
         wait(lambda: up(annuaire_url(org) + "/directory/v1/organization"), 120, f"annuaire {org}")
         start_relay(work, org, h2)
@@ -398,6 +408,18 @@ def run(work, h2):
     wait(lambda: (lambda b: b and b["organization"] == "grand-est" and not b["refusal"])(
         box_view("B", box_ids["A"])), 120, "box A vue par B, dans l'accord")
     result("Reconnaissance mutuelle", True, "chaque box voit l'autre comme box partenaire utilisable")
+
+    # Preuves de fraîcheur : celle de son annuaire, et celle du partenaire relayée par son annuaire.
+    def fresh(view):
+        partners = view["partners"]
+        return view["freshness"] and view["freshness"]["issuedAt"] and partners \
+            and partners[0]["freshness"] and partners[0]["freshness"]["issuedAt"]
+    wait(lambda: fresh(console("A", "GET", "/api/v1/directory")) and fresh(console("B", "GET", "/api/v1/directory")),
+         120, "preuves de fraîcheur des deux annuaires vues par chaque box")
+    checks = [admin(work, org, "fraicheur-verifier", "--cles", "organisation.json", "--annuaire", annuaire_url(org))
+              for org in ORGS]
+    result("Preuves de fraîcheur", all("correspond" in c for c in checks),
+           "chaque box a la preuve de son annuaire et celle du partenaire ; fraicheur-verifier : preuves conformes")
 
     console("A", "POST", f"/api/v1/directory/boxes/{box_ids['B']}/pair", {"name": "box-b"})
     wait(lambda: any(p.get("boxId") == box_ids["B"] for p in console("A", "GET", "/api/v1/peers"))
@@ -450,6 +472,13 @@ def run(work, h2):
     result("Refus : identifiant de box revendiqué par l'autre organisation",
            own is not None and own["organization"] is None,
            f"{collisions[-1]['claimant']} écartée, tenu par {collisions[-1]['holder']}")
+
+    # Annuaire du partenaire figé : l'annuaire B s'arrête ; passé l'âge maximal, A refuse d'envoyer vers B.
+    os.killpg(directories["B"].pid, signal.SIGTERM)
+    directories["B"].wait(timeout=60)
+    wait(lambda: "fraîcheur" in ((box_view("A", box_ids["B"]) or {}).get("refusal") or ""), 240,
+         "annuaire de B vu figé par A", 5)
+    refused_send("A", "annuaire du partenaire figé", "sans preuve de fraîcheur récente")
 
     # Accord révoqué par A : plus d'envoi vers B.
     fingerprint_b = admin(work, "A", "reconnaissances", "--cles", "organisation.json", "--annuaire",

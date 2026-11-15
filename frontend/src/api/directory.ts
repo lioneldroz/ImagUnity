@@ -39,6 +39,14 @@ export interface PartnerOrganization {
   lastSync: SyncState | null
   /** Box utilisables de ce partenaire. */
   boxes: number
+  freshness: Freshness | null
+}
+
+/** Fraîcheur d'un annuaire : date de la dernière preuve, annuaire figé, motif d'une lecture écartée. */
+export interface Freshness {
+  issuedAt: string | null
+  stale: boolean
+  error: string | null
 }
 
 /** Identifiant de box revendiqué par deux organisations. */
@@ -58,6 +66,7 @@ export interface DirectoryView {
   boxes: DirectoryBox[]
   partners: PartnerOrganization[]
   collisions: IdentifierCollision[]
+  freshness: Freshness | null
 }
 
 export const fetchDirectory = () => getJson<DirectoryView>('/api/v1/directory')

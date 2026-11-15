@@ -25,11 +25,13 @@ Le script efface puis remplit `travail/` : clés des responsables, bases H2, jou
 2. **Reconnaissance mutuelle** : chaque responsable reconnaît l'autre (`reconnaitre`). Le périmètre couvre les groupes des deux box, et les relais autorisés sont ceux de chaque organisation. Chaque box voit alors l'autre comme box partenaire utilisable.
 3. **Appairage entre organisations**, par l'annuaire, depuis la console de la box A.
 4. **Examens** de A vers B, puis de B vers A : C-STORE du PACS émetteur vers sa box, puis réception au PACS destinataire, instances comparées une à une (pixels) et accusé de réception.
-5. **Refus**, chacun avec son motif :
+5. **Preuves de fraîcheur** : chaque responsable délègue une clé de fraîcheur à son annuaire (`fraicheur-deleguer`). Chaque box reçoit la preuve de son annuaire et celle du partenaire, relayée, et `fraicheur-verifier` les trouve conformes.
+6. **Refus**, chacun avec son motif :
    - box locale hors du périmètre de l'accord ;
    - relais du partenaire non autorisé par l'accord ;
    - accord à sens unique : B révoque, le relais de B refuse les dépôts de A, et la box A le signale dans son journal en gardant le message ;
    - identifiant de box revendiqué par l'autre organisation : B publie une entrée sous l'identifiant de la box A, qui est écartée et signalée dans la console de A ;
+   - annuaire du partenaire figé : l'annuaire de B s'arrête, et passé l'âge maximal de sa preuve (90 s sur le banc, 48 h par défaut), la box A refuse d'envoyer vers B ;
    - accord révoqué par A.
 
 ## Dernier compte rendu

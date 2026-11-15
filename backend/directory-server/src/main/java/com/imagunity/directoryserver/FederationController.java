@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
  * POST /directory/v1/recognitions                 dépôt par le responsable : 201 publiée, 200 déjà publiée,
  *                                                 409 retour en arrière ou conflit, 422 invalide
  * GET  /directory/v1/partners/{empreinte}/entries entrées relayées d'un partenaire dont l'accord est actif (404 sinon)
+ * GET  /directory/v1/partners/{empreinte}/freshness sa preuve de fraîcheur relayée (404 sinon)
+ * GET  /directory/v1/freshness                    preuve de fraîcheur de cet annuaire (404 sans clé de fraîcheur)
  * </pre>
  */
 @RestController
@@ -37,9 +39,25 @@ class FederationController {
     }
 
     private final FederationService federation;
+    private final FreshnessService freshness;
 
-    FederationController(FederationService federation) {
+    FederationController(FederationService federation, FreshnessService freshness) {
         this.federation = federation;
+        this.freshness = freshness;
+    }
+
+    @GetMapping(path = "/freshness", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    String freshness() {
+        return freshness.current().orElseThrow(() -> new NoSuchElementException(
+                "Cet annuaire ne publie pas de preuve de fraîcheur")).toJson();
+    }
+
+    @GetMapping(path = "/partners/{partner}/freshness", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    String partnerFreshness(@PathVariable String partner) {
+        if (!partner.matches("[0-9a-f]{64}")) {
+            throw new NoSuchElementException("Empreinte de partenaire mal formée");
+        }
+        return federation.partnerFreshness(partner).toJson();
     }
 
     @GetMapping("/recognitions")

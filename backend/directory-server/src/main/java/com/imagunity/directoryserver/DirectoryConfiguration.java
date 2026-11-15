@@ -88,6 +88,32 @@ class DirectoryConfiguration {
     }
 
     /**
+     * Preuve de fraîcheur : clé déléguée par le responsable ({@code imagunity.directory.freshness-key}, fichier de clé
+     * privée produit par {@code fraicheur-deleguer}) et sa délégation ({@code freshness-delegation}). Sans elles,
+     * l'annuaire ne publie pas de preuve.
+     */
+    @Bean
+    FreshnessService freshnessService(EntryStore entries, RecognitionStore recognitions,
+            KeyFiles.OrganizationPublicKey key, Clock clock,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.freshness-key:}") String keyFile,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.freshness-delegation:}")
+            String delegationFile,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.freshness-interval:10m}")
+            java.time.Duration interval) throws IOException {
+        if (keyFile.isBlank()) {
+            return new FreshnessService(entries, recognitions, key.organization(), key.key(), null, null, interval,
+                    clock);
+        }
+        if (delegationFile.isBlank()) {
+            throw new IllegalStateException("Clé de fraîcheur sans sa délégation (IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION)");
+        }
+        return new FreshnessService(entries, recognitions, key.organization(), key.key(),
+                KeyFiles.readPrivate(java.nio.file.Path.of(keyFile)),
+                com.imagunity.directory.SignedDocument.fromJson(java.nio.file.Files.readString(
+                        java.nio.file.Path.of(delegationFile))), interval, clock);
+    }
+
+    /**
      * Relais des entrées des partenaires : lecture de leur annuaire au démarrage puis à intervalle régulier
      * ({@code imagunity.directory.partner-sync-interval}, 5 minutes par défaut).
      */

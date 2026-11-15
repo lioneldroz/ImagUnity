@@ -77,6 +77,9 @@ imagunity:
     # d'enrôlement avec la preuve de ce code (docs/guides/guide-responsable.md).
     enrollment-code: ${IMAGUNITY_DIRECTORY_ENROLLMENT_CODE:}
     sync-interval: ${IMAGUNITY_DIRECTORY_SYNC_INTERVAL:5m}
+    # Âge maximal de la preuve de fraîcheur d'un annuaire (le sien ou celui d'un partenaire), une fois une preuve
+    # reçue : au-delà, les échanges avec les box de cette organisation s'arrêtent (annuaire figé). 0 : jamais.
+    freshness-max-age: ${IMAGUNITY_DIRECTORY_FRESHNESS_MAX_AGE:48h}
   # Configuration centralisée (docs/reference/configuration-centralisee.md) : règles de priorité et de routage signées par le
   # responsable, lues avec l'annuaire et appliquées sans redémarrage. false : configuration locale seulement.
   central-configuration:

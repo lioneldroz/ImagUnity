@@ -249,12 +249,15 @@ class DirectoryConfiguration {
     }
 
     @Bean
-    LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, JdbcDirectoryStore store, Clock clock) {
+    LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, JdbcDirectoryStore store, Clock clock,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.directory.freshness-max-age:48h}")
+            Duration freshnessMaxAge) {
         // Le cache est relu au démarrage du cycle de vie, une fois les migrations de la base faites.
         // Fédération : reconnaissances signées par le responsable et entrées des partenaires, gardées dans le même
         // cache (un identifiant de box n'appartient qu'à une organisation).
         return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock)
-                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store);
+                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store)
+                .checkFreshness(key.organization(), key.key(), freshnessMaxAge);
     }
 
     /** Annonces et accusés signés par cette box, vérifiés avec l'annuaire à la réception. */
@@ -434,6 +437,10 @@ class DirectoryConfiguration {
 
     static void synchronize(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                             java.util.concurrent.Executor executor) {
+        // Preuve de fraîcheur d'abord : plus ancienne que les entrées lues ensuite, elle n'en signale aucune à tort.
+        if (directory.freshnessChecked()) {
+            directory.synchronizeFreshness(client::fetchFreshness);
+        }
         LocalDirectory.SyncStatus status = directory.synchronize(client::fetch);
         if (status.error() == null) {
             LOG.debug("Annuaire lu : {} entrée(s) retenue(s), {} écartée(s)", status.accepted(), status.rejected());
@@ -442,6 +449,7 @@ class DirectoryConfiguration {
             directory.synchronizeRecognitions(client::fetchRecognitions);
             for (com.imagunity.directory.Recognition r : directory.activeRecognitions()) {
                 String partner = r.partner().fingerprint();
+                directory.synchronizePartnerFreshness(partner, () -> client.fetchPartnerFreshness(partner));
                 directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
             }
         }

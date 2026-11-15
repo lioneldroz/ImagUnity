@@ -26,7 +26,13 @@ import java.util.function.Supplier;
  * de partenaire n'est utilisable ({@link #entry}) que si l'accord est actif, si ses groupes sont dans le périmètre et
  * si ses adresses sont sur les relais autorisés. Un identifiant de box n'appartient qu'à une organisation : l'entrée
  * locale l'emporte toujours, sinon la première organisation vue ; une revendication concurrente est écartée et
- * signalée ({@link #collisions}). Thread-safe.
+ * signalée ({@link #collisions}).
+ *
+ * <p><b>Fraîcheur</b> : la preuve de fraîcheur d'une organisation (la sienne ou celle d'un partenaire), signée par sa
+ * clé de fraîcheur déléguée, annonce le plus haut numéro de chaque entrée et reconnaissance. Une box dont l'entrée
+ * reçue est plus ancienne que l'annoncée n'est plus utilisable, le temps de recevoir la plus récente (une révocation
+ * retenue ne passe pas). Une fois une preuve reçue d'une organisation, une preuve trop ancienne
+ * ({@link #freshnessMaxAge}) arrête les échanges avec ses box (annuaire figé). Thread-safe.
  */
 public final class LocalDirectory {
 
@@ -59,6 +65,9 @@ public final class LocalDirectory {
     private record Foreign(BoxEntry entry, String partner) {
     }
 
+    /** Fraîcheur par défaut au-delà de laquelle les échanges avec une organisation s'arrêtent. */
+    public static final java.time.Duration DEFAULT_FRESHNESS_MAX_AGE = java.time.Duration.ofHours(48);
+
     private final EntryVerifier verifier;
     private final EntryCache cache;
     private final Clock clock;
@@ -72,6 +81,11 @@ public final class LocalDirectory {
     private volatile SyncStatus recognitionSync = new SyncStatus(null, 0, 0, null);
     private volatile RecognitionVerifier recognitionVerifier;
     private volatile SerialMemory serials;
+    private final Map<String, FreshnessProof> freshness = new ConcurrentHashMap<>();
+    private final Map<String, SyncStatus> freshnessSyncs = new ConcurrentHashMap<>();
+    private volatile java.time.Duration freshnessMaxAge = DEFAULT_FRESHNESS_MAX_AGE;
+    private volatile String localOrganization;
+    private volatile HybridPublicKey localKey;
 
     public LocalDirectory(EntryVerifier verifier, EntryCache cache, Clock clock) {
         this.verifier = verifier;
@@ -94,10 +108,32 @@ public final class LocalDirectory {
         return recognitionVerifier != null;
     }
 
+    /**
+     * Active le contrôle de fraîcheur de l'annuaire de l'organisation (la clé de son responsable) ; celui des
+     * partenaires suit leurs reconnaissances. À appeler avant {@link #load}.
+     *
+     * @param maxAge âge maximal d'une preuve, une fois une preuve reçue ; zéro : jamais d'arrêt pour cause d'âge
+     */
+    public LocalDirectory checkFreshness(String organization, HybridPublicKey organizationKey,
+                                         java.time.Duration maxAge) {
+        this.localOrganization = organization;
+        this.localKey = organizationKey;
+        this.freshnessMaxAge = maxAge;
+        return this;
+    }
+
     /** Recharge les entrées et reconnaissances du cache, revérifiées. */
     public synchronized void load() {
         List<SignedDocument> others = new ArrayList<>();
+        Map<String, SignedDocument> delegations = new java.util.HashMap<>();
+        Map<String, SignedDocument> proofs = new java.util.HashMap<>();
         for (SignedDocument document : cache.entries()) {
+            String type = RecognitionVerifier.type(document);
+            if (FreshnessDelegation.TYPE.equals(type) || FreshnessProof.TYPE.equals(type)) {
+                // Rangées par organisation : la délégation et sa preuve sont gardées sous des clés dérivées.
+                (FreshnessDelegation.TYPE.equals(type) ? delegations : proofs).put(organizationOf(document), document);
+                continue;
+            }
             if (RecognitionVerifier.isRecognition(document)) {
                 if (federated()) {
                     try {
@@ -116,6 +152,16 @@ public final class LocalDirectory {
                 others.add(document);
             }
         }
+        proofs.forEach((organization, proof) -> {
+            SignedDocument delegation = delegations.get(organization);
+            if (delegation != null) {
+                try {
+                    acceptFreshness(new Freshness(delegation, proof), false);
+                } catch (DirectoryException e) {
+                    LOG.log(Level.WARNING, "Preuve de fraîcheur en cache écartée : {0}", e.getMessage());
+                }
+            }
+        });
         for (SignedDocument document : others) {
             Optional<Recognition> signer = recognitions.values().stream()
                     .filter(r -> document.isSignedBy(r.partner().publicKey())).findFirst();
@@ -243,6 +289,157 @@ public final class LocalDirectory {
         return status;
     }
 
+    /** Identifiant d'organisation porté par un document signé, sans vérification. */
+    private static String organizationOf(SignedDocument document) {
+        try {
+            return Json.MAPPER.readTree(document.payload()).path("organization").asString("");
+        } catch (tools.jackson.core.JacksonException e) {
+            return "";
+        }
+    }
+
+    /** Clé d'organisation (empreinte) d'une preuve : celle de l'organisation, ou d'un partenaire reconnu. */
+    private Optional<String[]> freshnessOwner(Freshness f) {
+        FreshnessDelegation d;
+        try {
+            d = f.delegationContent();
+        } catch (DirectoryException e) {
+            return Optional.empty();
+        }
+        if (localKey != null && f.delegation().isSignedBy(localKey)) {
+            return Optional.of(new String[] {localKey.fingerprint(), localOrganization});
+        }
+        return recognitions.values().stream().filter(r -> f.delegation().isSignedBy(r.partner().publicKey()))
+                .findFirst().map(r -> new String[] {r.partner().fingerprint(), r.partner().organization()})
+                .filter(o -> o[1].equals(d.organization()));
+    }
+
+    private FreshnessProof acceptFreshness(Freshness f, boolean save) {
+        String[] owner = freshnessOwner(f).orElseThrow(() -> new DirectoryException(
+                "Preuve de fraîcheur d'une organisation inconnue"));
+        HybridPublicKey key = owner[0].equals(localKey == null ? null : localKey.fingerprint()) ? localKey
+                : recognitions.get(owner[0]).partner().publicKey();
+        FreshnessProof proof = f.verify(owner[1], key, clock.instant());
+        FreshnessProof previous = freshness.get(owner[0]);
+        if (previous != null && proof.issuedAt().isBefore(previous.issuedAt())) {
+            throw new DirectoryException("Preuve de fraîcheur plus ancienne que la précédente : refusée");
+        }
+        freshness.put(owner[0], proof);
+        if (save) {
+            cache.save(java.util.UUID.nameUUIDFromBytes(("imagunity-delegation-fraicheur:" + owner[0])
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)), f.delegationContent().serial(), f.delegation(),
+                    clock.instant());
+            cache.save(java.util.UUID.nameUUIDFromBytes(("imagunity-fraicheur:" + owner[0])
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)), proof.issuedAt().getEpochSecond(), f.proof(),
+                    clock.instant());
+        }
+        return proof;
+    }
+
+    /**
+     * Lit la preuve de fraîcheur de l'annuaire de l'organisation ({@code null} : annuaire sans preuve de fraîcheur).
+     *
+     * @throws IllegalStateException si le contrôle de fraîcheur n'est pas activé
+     */
+    public synchronized SyncStatus synchronizeFreshness(Supplier<Optional<Freshness>> fetch) {
+        if (localKey == null) {
+            throw new IllegalStateException("Contrôle de fraîcheur non activé");
+        }
+        return synchronizeFreshness(localKey.fingerprint(), fetch);
+    }
+
+    /** Lit la preuve de fraîcheur d'un partenaire reconnu, relayée par l'annuaire de l'organisation. */
+    public synchronized SyncStatus synchronizePartnerFreshness(String partner, Supplier<Optional<Freshness>> fetch) {
+        if (!recognitions.containsKey(partner)) {
+            SyncStatus status = new SyncStatus(clock.instant(), 0, 0, "Organisation non reconnue");
+            freshnessSyncs.put(partner, status);
+            return status;
+        }
+        return synchronizeFreshness(partner, fetch);
+    }
+
+    private SyncStatus synchronizeFreshness(String owner, Supplier<Optional<Freshness>> fetch) {
+        Instant now = clock.instant();
+        SyncStatus status;
+        try {
+            Optional<Freshness> f = fetch.get();
+            if (f.isEmpty()) {
+                status = new SyncStatus(now, 0, 0, "Annuaire sans preuve de fraîcheur");
+            } else {
+                String[] signer = freshnessOwner(f.get()).orElse(null);
+                if (signer == null || !signer[0].equals(owner)) {
+                    throw new DirectoryException("Preuve de fraîcheur d'une autre organisation");
+                }
+                acceptFreshness(f.get(), true);
+                status = new SyncStatus(now, 1, 0, null);
+            }
+        } catch (DirectoryException e) {
+            LOG.log(Level.WARNING, "Preuve de fraîcheur écartée : {0}", e.getMessage());
+            status = new SyncStatus(now, 0, 1, e.getMessage());
+        }
+        freshnessSyncs.put(owner, status);
+        return status;
+    }
+
+    /** Vrai si l'annuaire de cette organisation (empreinte de sa clé) est figé : preuve reçue, mais trop ancienne. */
+    public boolean stale(String organizationFingerprint) {
+        return stale(organizationFingerprint, "").isPresent();
+    }
+
+    /** Empreinte de la clé de l'organisation, si le contrôle de fraîcheur est activé. */
+    public Optional<String> localFingerprint() {
+        return Optional.ofNullable(localOwner());
+    }
+
+    /** Vrai si le contrôle de fraîcheur de l'annuaire de l'organisation est activé. */
+    public boolean freshnessChecked() {
+        return localKey != null;
+    }
+
+    /** Dernière preuve de fraîcheur retenue pour cette organisation (empreinte de sa clé). */
+    public Optional<FreshnessProof> freshness(String organizationFingerprint) {
+        return Optional.ofNullable(freshness.get(organizationFingerprint));
+    }
+
+    /** Dernière preuve de fraîcheur retenue pour l'annuaire de l'organisation. */
+    public Optional<FreshnessProof> localFreshness() {
+        return localKey == null ? Optional.empty() : freshness(localKey.fingerprint());
+    }
+
+    public SyncStatus freshnessSync(String organizationFingerprint) {
+        return freshnessSyncs.get(organizationFingerprint);
+    }
+
+    /** Motif d'arrêt pour annuaire figé : preuve reçue un jour, mais plus ancienne que l'âge maximal. */
+    private Optional<String> stale(String owner, String name) {
+        FreshnessProof proof = owner == null ? null : freshness.get(owner);
+        if (proof == null || freshnessMaxAge.isZero() || freshnessMaxAge.isNegative()) {
+            return Optional.empty();
+        }
+        if (proof.issuedAt().plus(freshnessMaxAge).isBefore(clock.instant())) {
+            return Optional.of("Annuaire " + name + " sans preuve de fraîcheur récente (dernière : " + proof.issuedAt()
+                    + ") : échanges arrêtés jusqu'à sa prochaine lecture");
+        }
+        return Optional.empty();
+    }
+
+    /** Vrai si la preuve de fraîcheur annonce pour cette box une entrée plus récente que celle reçue. */
+    private boolean lagging(String owner, BoxEntry entry) {
+        FreshnessProof proof = owner == null ? null : freshness.get(owner);
+        Long announced = proof == null ? null : proof.entries().get(entry.boxId());
+        return announced != null && announced > entry.serial();
+    }
+
+    private boolean recognitionLagging(Recognition r) {
+        FreshnessProof proof = localKey == null ? null : freshness.get(localKey.fingerprint());
+        Long announced = proof == null ? null : proof.recognitions().get(r.partner().fingerprint());
+        return announced != null && announced > r.serial();
+    }
+
+    private String localOwner() {
+        return localKey == null ? null : localKey.fingerprint();
+    }
+
     private void acceptForeign(Recognition recognition, SignedDocument document, boolean save) {
         String partner = recognition.partner().fingerprint();
         BoxEntry entry = partnerVerifier(recognition).verify(document).entry();
@@ -290,7 +487,7 @@ public final class LocalDirectory {
     public Optional<BoxEntry> entry(UUID boxId) {
         BoxEntry local = entries.get(boxId);
         if (local != null) {
-            return Optional.of(local);
+            return lagging(localOwner(), local) ? Optional.empty() : Optional.of(local);
         }
         Foreign f = foreign.get(boxId);
         return f != null && usable(f) ? Optional.of(f.entry()) : Optional.empty();
@@ -298,13 +495,14 @@ public final class LocalDirectory {
 
     private boolean usable(Foreign f) {
         Recognition r = recognitions.get(f.partner());
-        return r != null && r.statusAt(clock.instant()) == BoxEntry.Status.ACTIVE
-                && r.scope().allowsPartner(f.entry().groups()) && r.relaysAllowed(f.entry());
+        return r != null && r.statusAt(clock.instant()) == BoxEntry.Status.ACTIVE && !recognitionLagging(r)
+                && r.scope().allowsPartner(f.entry().groups()) && r.relaysAllowed(f.entry())
+                && !lagging(f.partner(), f.entry());
     }
 
     /** Entrées utilisables : celles de l'organisation, puis celles des partenaires (voir {@link #entry}). */
     public Collection<BoxEntry> entries() {
-        List<BoxEntry> all = new ArrayList<>(entries.values());
+        List<BoxEntry> all = new ArrayList<>(entries.values().stream().filter(e -> !lagging(localOwner(), e)).toList());
         foreign.values().stream().filter(this::usable).map(Foreign::entry).forEach(all::add);
         return List.copyOf(all);
     }
@@ -326,26 +524,25 @@ public final class LocalDirectory {
     }
 
     /**
-     * Vrai si cette box locale peut échanger avec cette autre box : toujours entre box de l'organisation (leur état
-     * est contrôlé à part) ; avec une box de partenaire, si son entrée est utilisable et si la box locale est dans les
-     * groupes locaux de l'accord.
+     * Vrai si cette box locale peut échanger avec cette autre box : voir {@link #exchangeRefusal}.
      */
     public boolean exchangeAllowed(UUID localBox, UUID other) {
-        if (isLocal(other)) {
-            return true;
-        }
-        Optional<BoxEntry> remote = entry(other);
-        BoxEntry local = entries.get(localBox);
-        if (remote.isEmpty() || local == null) {
-            return false;
-        }
-        return recognitions.get(foreign.get(other).partner()).scope().allowsLocal(local.groups());
+        return exchangeRefusal(localBox, other).isEmpty();
     }
 
-    /** Motif pour lequel l'échange avec cette box de partenaire est impossible ; vide s'il est possible. */
+    /**
+     * Motif pour lequel l'échange avec cette box est impossible ; vide s'il est possible. Entre box de l'organisation
+     * (leur état est contrôlé à part) : seulement une entrée en retard sur la preuve de fraîcheur, ou un annuaire figé.
+     * Avec une box de partenaire : en plus, accord actif, périmètre des deux côtés, relais autorisés.
+     */
     public Optional<String> exchangeRefusal(UUID localBox, UUID other) {
-        if (exchangeAllowed(localBox, other)) {
-            return Optional.empty();
+        BoxEntry local = entries.get(other);
+        if (local != null) {
+            if (lagging(localOwner(), local)) {
+                return Optional.of("Entrée plus récente de la box « " + local.displayName() + " » annoncée par "
+                        + "l'annuaire, pas encore reçue");
+            }
+            return stale(localOwner(), "de l'organisation");
         }
         Foreign f = foreign.get(other);
         if (f == null) {
@@ -361,6 +558,14 @@ public final class LocalDirectory {
             return Optional.of("Accord avec " + name + (status == BoxEntry.Status.REVOKED ? " révoqué"
                     : status == BoxEntry.Status.EXPIRED ? " expiré" : " pas encore valide"));
         }
+        if (recognitionLagging(r)) {
+            return Optional.of("Version plus récente de l'accord avec " + name + " annoncée par l'annuaire, pas encore "
+                    + "reçue");
+        }
+        if (lagging(f.partner(), f.entry())) {
+            return Optional.of("Entrée plus récente de la box « " + f.entry().displayName() + " » annoncée par "
+                    + "l'annuaire de " + name + ", pas encore reçue");
+        }
         if (!r.relaysAllowed(f.entry())) {
             return Optional.of("Box « " + f.entry().displayName() + " » sur un relais non autorisé par l'accord avec "
                     + name);
@@ -368,7 +573,11 @@ public final class LocalDirectory {
         if (!r.scope().allowsPartner(f.entry().groups())) {
             return Optional.of("Box « " + f.entry().displayName() + " » hors du périmètre de l'accord avec " + name);
         }
-        return Optional.of("Cette box n'est pas dans les groupes autorisés à échanger avec " + name);
+        BoxEntry mine = entries.get(localBox);
+        if (mine == null || !r.scope().allowsLocal(mine.groups())) {
+            return Optional.of("Cette box n'est pas dans les groupes autorisés à échanger avec " + name);
+        }
+        return stale(f.partner(), "de " + name);
     }
 
     /** Reconnaissances vérifiées, tous états confondus. */

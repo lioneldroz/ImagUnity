@@ -8,6 +8,12 @@ imagunity:
     publisher-user: ${IMAGUNITY_DIRECTORY_PUBLISHER_USER:responsable}
     publisher-password: ${IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD:}
     generated-password-file: ${IMAGUNITY_DIRECTORY_GENERATED_PASSWORD_FILE:./mot-de-passe-depot.txt}
+    # Preuve de fraîcheur (étape 2 de la fédération) : clé déléguée par le responsable (fraicheur-deleguer) et sa
+    # délégation. Vides : l'annuaire ne publie pas de preuve de fraîcheur.
+    freshness-key: ${IMAGUNITY_DIRECTORY_FRESHNESS_KEY:}
+    freshness-delegation: ${IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION:}
+    # Lecture des annuaires des partenaires (entrées et preuves de fraîcheur).
+    partner-sync-interval: ${IMAGUNITY_DIRECTORY_PARTNER_SYNC_INTERVAL:5m}
 
 spring:
   application:

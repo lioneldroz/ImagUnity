@@ -52,6 +52,14 @@ public class EntryStore {
         return highestSerial(boxId).stream().boxed().findFirst().flatMap(serial -> find(boxId, serial));
     }
 
+    /** Plus haut numéro publié de chaque box (preuve de fraîcheur). */
+    java.util.Map<UUID, Long> highestSerials() {
+        java.util.Map<UUID, Long> serials = new java.util.TreeMap<>();
+        jdbc.sql("SELECT box_id, MAX(serial) AS serial FROM box_entry GROUP BY box_id")
+                .query((rs, n) -> serials.put(rs.getObject("box_id", UUID.class), rs.getLong("serial"))).list();
+        return serials;
+    }
+
     /** Toutes les entrées d'une box, par numéro croissant. */
     List<SignedDocument> history(UUID boxId) {
         return jdbc.sql("SELECT document FROM box_entry WHERE box_id = ? ORDER BY serial").param(boxId)

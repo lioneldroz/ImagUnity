@@ -74,7 +74,17 @@ public class DirectoryController {
      */
     public record PartnerView(String organization, String shortCode, BoxEntry.Status status, Instant validUntil,
                               List<String> localGroups, List<String> partnerGroups, List<String> relays,
-                              SyncView lastSync, int boxes) {
+                              SyncView lastSync, int boxes, FreshnessView freshness) {
+    }
+
+    /**
+     * Fraîcheur d'un annuaire.
+     *
+     * @param issuedAt date de la dernière preuve retenue ({@code null} : aucune)
+     * @param stale    vrai si elle est trop ancienne : échanges arrêtés avec cette organisation
+     * @param error    motif de la dernière lecture écartée ou impossible, ou {@code null}
+     */
+    public record FreshnessView(Instant issuedAt, boolean stale, String error) {
     }
 
     /** Identifiant de box revendiqué par deux organisations : l'entrée de {@code claimant} a été écartée. */
@@ -91,7 +101,16 @@ public class DirectoryController {
 
     /** Réponse de {@code GET /api/v1/directory}. */
     public record DirectoryView(boolean enabled, UUID boxId, String shortCode, SyncView lastSync, List<BoxView> boxes,
-                                List<PartnerView> partners, List<CollisionView> collisions) {
+                                List<PartnerView> partners, List<CollisionView> collisions, FreshnessView freshness) {
+    }
+
+    private static FreshnessView freshness(LocalDirectory local, String fingerprint) {
+        if (fingerprint == null) {
+            return null;
+        }
+        LocalDirectory.SyncStatus sync = local.freshnessSync(fingerprint);
+        return new FreshnessView(local.freshness(fingerprint).map(com.imagunity.directory.FreshnessProof::issuedAt)
+                .orElse(null), local.stale(fingerprint), sync == null ? null : sync.error());
     }
 
     private static final System.Logger LOG = System.getLogger(DirectoryController.class.getName());
@@ -121,7 +140,7 @@ public class DirectoryController {
         BoxIdentity me = identity.getIfAvailable();
         LocalDirectory local = directory.getIfAvailable();
         if (me == null || local == null) {
-            return new DirectoryView(false, null, null, null, List.of(), List.of(), List.of());
+            return new DirectoryView(false, null, null, null, List.of(), List.of(), List.of(), null);
         }
         LocalDirectory.SyncStatus sync = local.lastSync();
         Instant now = clock.instant();
@@ -147,7 +166,8 @@ public class DirectoryController {
                             r.validUntil(), r.scope().localGroups(), r.scope().partnerGroups(), r.partner().relays(),
                             ps == null ? null : new SyncView(ps.at(), ps.accepted(), ps.rejected(), ps.error()),
                             (int) boxes.stream().filter(b -> b.organization() != null && local.partnerOf(b.boxId())
-                                    .map(p -> p.partner().fingerprint().equals(fp)).orElse(false)).count());
+                                    .map(p -> p.partner().fingerprint().equals(fp)).orElse(false)).count(),
+                            freshness(local, fp));
                 })
                 .toList();
         List<CollisionView> collisions = local.collisions().stream()
@@ -156,7 +176,8 @@ public class DirectoryController {
                                 : names.getOrDefault(c.holder(), c.holder()), c.at()))
                 .toList();
         return new DirectoryView(true, me.boxId(), me.keys().publicKey().shortCode(),
-                new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes, partners, collisions);
+                new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes, partners, collisions,
+                freshness(local, local.localFingerprint().orElse(null)));
     }
 
     /** @param name nom proposé pour la box (par défaut, le nom de la box) */

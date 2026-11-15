@@ -53,6 +53,34 @@ public class RecognitionStore {
                 .query(String.class).list().stream().map(SignedDocument::fromJson).toList();
     }
 
+    /** Plus haut numéro publié de chaque reconnaissance, par empreinte du partenaire (preuve de fraîcheur). */
+    java.util.Map<String, Long> highestSerials() {
+        java.util.Map<String, Long> serials = new java.util.TreeMap<>();
+        jdbc.sql("SELECT partner_fingerprint, MAX(serial) AS serial FROM recognition GROUP BY partner_fingerprint")
+                .query((rs, n) -> serials.put(rs.getString("partner_fingerprint"), rs.getLong("serial"))).list();
+        return serials;
+    }
+
+    /** Retient la preuve de fraîcheur relayée d'un partenaire, si elle est plus récente que la précédente. */
+    void savePartnerFreshness(String partner, com.imagunity.directory.Freshness freshness, Instant issuedAt,
+                              Instant fetchedAt) {
+        Optional<OffsetDateTime> stored = jdbc.sql("SELECT issued_at FROM partner_freshness WHERE partner_fingerprint = ?")
+                .param(partner).query(OffsetDateTime.class).optional();
+        if (stored.isEmpty()) {
+            jdbc.sql("INSERT INTO partner_freshness (partner_fingerprint, freshness, issued_at, fetched_at) "
+                    + "VALUES (?, ?, ?, ?)").params(partner, freshness.toJson(), utc(issuedAt), utc(fetchedAt)).update();
+        } else if (stored.get().toInstant().isBefore(issuedAt)) {
+            jdbc.sql("UPDATE partner_freshness SET freshness = ?, issued_at = ?, fetched_at = ? WHERE "
+                    + "partner_fingerprint = ?").params(freshness.toJson(), utc(issuedAt), utc(fetchedAt), partner)
+                    .update();
+        }
+    }
+
+    Optional<com.imagunity.directory.Freshness> partnerFreshness(String partner) {
+        return jdbc.sql("SELECT freshness FROM partner_freshness WHERE partner_fingerprint = ?").param(partner)
+                .query(String.class).optional().map(com.imagunity.directory.Freshness::fromJson);
+    }
+
     /** Retient l'entrée relayée d'une box de partenaire, si elle est plus récente que celle déjà gardée. */
     boolean savePartnerEntry(String partner, UUID boxId, long serial, SignedDocument document, Instant fetchedAt) {
         Optional<Long> stored = jdbc.sql("SELECT serial FROM partner_entry WHERE partner_fingerprint = ? AND box_id = ?")

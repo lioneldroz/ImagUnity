@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 /** Lecture des entrées publiées par le service d'annuaire ({@code GET /directory/v1/entries}). */
 public final class DirectoryClient {
@@ -114,6 +115,42 @@ public final class DirectoryClient {
         }
         return withoutNulls(Json.read(response.body(), EntriesResponse.class,
                 "Réponse de l'annuaire (entrées du partenaire)").entries());
+    }
+
+    /**
+     * Preuve de fraîcheur de l'annuaire, non vérifiée : à faire passer par {@link LocalDirectory#synchronizeFreshness}.
+     * Vide si l'annuaire n'en publie pas (404).
+     *
+     * @throws DirectoryException si l'annuaire est injoignable ou répond mal
+     */
+    public Optional<Freshness> fetchFreshness() {
+        return freshness(base + "/directory/v1/freshness");
+    }
+
+    /**
+     * Preuve de fraîcheur d'un partenaire reconnu, relayée par l'annuaire de l'organisation ; vide si aucune.
+     *
+     * @param partner empreinte de la clé du partenaire
+     * @throws DirectoryException si l'annuaire est injoignable ou répond mal
+     */
+    public Optional<Freshness> fetchPartnerFreshness(String partner) {
+        if (!partner.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Empreinte de partenaire mal formée");
+        }
+        return freshness(base + "/directory/v1/partners/" + partner + "/freshness");
+    }
+
+    private Optional<Freshness> freshness(String url) {
+        Reply response = send(HttpRequest.newBuilder(URI.create(url)).timeout(timeout).build(),
+                "Lecture de la preuve de fraîcheur");
+        if (response.statusCode() == 404) {
+            return Optional.empty();
+        }
+        if (response.statusCode() != 200) {
+            throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
+                    + " à la lecture de la preuve de fraîcheur");
+        }
+        return Optional.of(Freshness.fromJson(response.body()));
     }
 
     /**
