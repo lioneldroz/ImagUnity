@@ -120,6 +120,7 @@ Dans `/opt/imagunity/deploy/site-central/.env` :
 | `IMAGUNITY_VERSION` | Version des images chargées depuis une livraison (§ 12) ; vide : images construites sur cette machine |
 | `RELAIS_DB_MOT_DE_PASSE`, `ANNUAIRE_DB_MOT_DE_PASSE`, `ANNUAIRE_MOT_DE_PASSE` | Chacun tiré au hasard : `openssl rand -base64 24` |
 | `RELAIS_QUOTA_PAR_BOX` | Volume de morceaux en attente par box (par défaut `100GB`) |
+| `RELAIS_DEPOTS_PAR_MINUTE`, `RELAIS_DEPOTS_PARTENAIRE_PAR_MINUTE` | Limites de débit du relais : requêtes de dépôt par minute d'une box de l'organisation (`600`) et d'une box d'une organisation partenaire (`120`). Au-delà, le relais répond `429` et la box réessaie. Une adresse qui envoie plus de 30 requêtes mal signées par minute est refusée avant toute vérification |
 
 `ANNUAIRE_MOT_DE_PASSE` est celui du compte de dépôt du responsable (`ANNUAIRE_COMPTE`, par défaut `responsable`). Il sert à publier les entrées et à ouvrir l'interface d'administration.
 

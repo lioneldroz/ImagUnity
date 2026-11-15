@@ -31,6 +31,12 @@ imagunity:
       # Empreinte courte du responsable, vérifiée hors bande : sinon le relais refuse de démarrer.
       organization-code: ${IMAGUNITY_RELAY_ORGANIZATION_CODE:}
       sync-interval: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:5m}
+    # Limites de débit, en requêtes par minute (0 : désactivée) : dépôts par box de l'organisation, dépôts de messages
+    # par box d'une organisation partenaire, requêtes mal signées par adresse IP (refusées ensuite avant vérification).
+    limits:
+      deposits-per-minute: ${IMAGUNITY_RELAY_DEPOSITS_PER_MINUTE:600}
+      partner-deposits-per-minute: ${IMAGUNITY_RELAY_PARTNER_DEPOSITS_PER_MINUTE:120}
+      failed-per-minute: ${IMAGUNITY_RELAY_FAILED_PER_MINUTE:30}
 
 spring:
   application:
@@ -47,6 +53,9 @@ spring:
 
 server:
   port: ${IMAGUNITY_RELAY_PORT:8443}
+  # Derrière Caddy ou Traefik (adresses privées), l'adresse du client vient de X-Forwarded-For : c'est elle que
+  # compte la limite des requêtes mal signées. Un client direct ne peut pas imposer cet en-tête.
+  forward-headers-strategy: native
   # Arrêt propre : le répartiteur cesse d'envoyer des requêtes, les attentes longues en cours (30 s au plus) finissent.
   shutdown: graceful
   # Les morceaux arrivent en flux : pas de limite de corps propre à Spring ; la taille est contrôlée par le relais.

@@ -35,6 +35,8 @@ services:
       IMAGUNITY_RELAY_ORGANIZATION_KEY: /config/organisation.pub.json
       IMAGUNITY_RELAY_ORGANIZATION_CODE: ${EMPREINTE_RESPONSABLE:?empreinte du responsable, vérifiée hors bande}
       IMAGUNITY_RELAY_QUOTA_PER_BOX: ${RELAIS_QUOTA_PAR_BOX:-100GB}
+      IMAGUNITY_RELAY_DEPOSITS_PER_MINUTE: ${RELAIS_DEPOTS_PAR_MINUTE:-600}
+      IMAGUNITY_RELAY_PARTNER_DEPOSITS_PER_MINUTE: ${RELAIS_DEPOTS_PARTENAIRE_PAR_MINUTE:-120}
     volumes:
       - relay-data:/data
       - ./config/organisation.pub.json:/config/organisation.pub.json:ro
