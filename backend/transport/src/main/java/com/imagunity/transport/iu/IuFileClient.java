@@ -128,10 +128,6 @@ public final class IuFileClient {
     private static final java.util.concurrent.ScheduledExecutorService WATCHDOG =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual().factory());
 
-    /**
-     * Copie le corps reçu, en le fermant s'il ne progresse plus pendant {@link #idleTimeout} : le délai d'une requête
-     * ne couvre que l'arrivée des en-têtes, et un relais disparu sans fermer la connexion bloquerait la lecture.
-     */
     /** Relais muet : la connexion est abandonnée, sans reprise sur le même relais. */
     static final class Stalled extends IOException {
         Stalled(Duration idle) {
@@ -154,6 +150,10 @@ public final class IuFileClient {
         return body;
     }
 
+    /**
+     * Copie le corps reçu, en le fermant s'il ne progresse plus pendant {@link #idleTimeout} : le délai d'une requête
+     * ne couvre que l'arrivée des en-têtes, et un relais disparu sans fermer la connexion bloquerait la lecture.
+     */
     private static void copyWatched(InputStream body, ByteArrayOutputStream received, int expectedSize)
             throws IOException {
         long idle = idleTimeout.toNanos();

@@ -45,7 +45,6 @@ final class IuStore {
         }
     }
 
-    /** Message scellé en attente de dépôt dans la file de {@code to}. */
     /**
      * Message scellé en attente de dépôt dans une file de {@code to}.
      *
@@ -58,7 +57,6 @@ final class IuStore {
         }
     }
 
-    /** Envoi d'un fichier ; {@code state} vaut {@code null} tant que les morceaux ne sont pas créés. */
     /**
      * Envoi d'un fichier.
      *
