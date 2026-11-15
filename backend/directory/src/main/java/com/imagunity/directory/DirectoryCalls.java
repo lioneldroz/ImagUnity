@@ -31,6 +31,25 @@ final class DirectoryCalls {
         return send(withAccount ? authorized(request) : request, "Lecture");
     }
 
+    /**
+     * Lecture d'une liste de l'annuaire, avec le compte du responsable s'il est connu (lecture réservée) ; sans compte
+     * sinon, pour un annuaire en lecture libre.
+     */
+    HttpResponse<String> read(String path) throws IOException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(directory + path)).GET();
+        String known;
+        try {
+            known = account.get();
+        } catch (RuntimeException e) {
+            known = null;
+        }
+        if (known != null) {
+            request.header("Authorization", "Basic " + Base64.getEncoder().encodeToString(known
+                    .getBytes(StandardCharsets.UTF_8)));
+        }
+        return send(request, "Lecture");
+    }
+
     /** Dépôt d'un document signé, avec le compte du responsable. */
     HttpResponse<String> post(String path, SignedDocument document) throws IOException {
         return send(authorized(HttpRequest.newBuilder(URI.create(directory + path))

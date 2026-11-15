@@ -434,7 +434,7 @@ public final class DirectoryAdmin {
     /** Reconnaissances courantes publiées sur l'annuaire, vérifiées avec la clé publique de l'organisation. */
     private java.util.List<Published> recognitions(Map<String, String> o) throws IOException {
         KeyFiles.OrganizationPublicKey own = KeyFiles.readOrganizationPublic(Path.of(require(o, "cles") + ".pub.json"));
-        HttpResponse<String> response = get(o, "/directory/v1/recognitions", false);
+        HttpResponse<String> response = calls(o).read("/directory/v1/recognitions");
         if (response.statusCode() != 200) {
             throw new DirectoryException("Lecture des reconnaissances refusée (HTTP " + response.statusCode() + ")");
         }
@@ -573,7 +573,9 @@ public final class DirectoryAdmin {
      */
     private int checkFreshness(Map<String, String> o) throws IOException {
         KeyFiles.OrganizationPublicKey own = KeyFiles.readOrganizationPublic(Path.of(require(o, "cles") + ".pub.json"));
-        DirectoryClient client = new DirectoryClient(URI.create(require(o, "annuaire")), Duration.ofSeconds(20));
+        String known = o.getOrDefault("compte", environment.get(ACCOUNT_VARIABLE));
+        DirectoryClient client = new DirectoryClient(URI.create(require(o, "annuaire")), Duration.ofSeconds(20))
+                .account(known != null && known.contains(":") ? known : null);
         Optional<Freshness> served = client.fetchFreshness();
         if (served.isEmpty()) {
             err.println("L'annuaire ne publie pas de preuve de fraîcheur (clé de fraîcheur non installée)");
@@ -633,7 +635,7 @@ public final class DirectoryAdmin {
         Organization organization = organization(o);
         long before = Long.parseLong(o.getOrDefault("avant-jours", "15"));
         long days = Long.parseLong(o.getOrDefault("validite-jours", "90"));
-        HttpResponse<String> response = get(o, "/directory/v1/entries", false);
+        HttpResponse<String> response = calls(o).read("/directory/v1/entries");
         if (response.statusCode() != 200) {
             err.println("Lecture de l'annuaire refusée (HTTP " + response.statusCode() + ") : " + response.body());
             return 1;

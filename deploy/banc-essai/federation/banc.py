@@ -57,6 +57,7 @@ ORGS = {
           "groupe": "neuro", "vers": "IU_TO_A", "partenaire": "box-a"},
 }
 COMPTE = "responsable:depot-synthetique"
+LECTEUR = "lecteur:lecture-synthetique"   # compte de lecture du relais (lecture réservée)
 
 PROCESSES = []
 RESULTS = []
@@ -166,6 +167,8 @@ def start_directory(work, org, h2):
         "IMAGUNITY_DIRECTORY_FRESHNESS_KEY": str(work / org / "fraicheur.json"),
         "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION": str(work / org / "delegation-fraicheur.json"),
         "IMAGUNITY_DIRECTORY_FRESHNESS_INTERVAL": "20s",
+        "IMAGUNITY_DIRECTORY_RESTRICTED_READ": "true",
+        "IMAGUNITY_DIRECTORY_READER_PASSWORD": LECTEUR.split(":")[1],
     }, work)
 
 
@@ -180,6 +183,7 @@ def start_relay(work, org, h2):
         "IMAGUNITY_RELAY_ORGANIZATION_KEY": str(work / org / "organisation.json.pub.json"),
         "IMAGUNITY_RELAY_ORGANIZATION_CODE": ORGS[org]["empreinte"],
         "IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL": INTERVAL,
+        "IMAGUNITY_RELAY_DIRECTORY_ACCOUNT": LECTEUR,
         "IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE": FRESHNESS_MAX_AGE,
         "IMAGUNITY_RELAY_DB_URL": f"jdbc:h2:file:{work / org / 'relais'};MODE=PostgreSQL",
         "IMAGUNITY_RELAY_DB_USER": "sa",
@@ -420,6 +424,21 @@ def run(work, h2):
               for org in ORGS]
     result("Preuves de fraîcheur", all("correspond" in c for c in checks),
            "chaque box a la preuve de son annuaire et celle du partenaire ; fraicheur-verifier : preuves conformes")
+
+    # Lecture réservée : listes refusées sans compte ni signature ; box, relais et annuaires partenaires y lisent.
+    def status(url, auth=None):
+        try:
+            http("GET", url, auth=auth)
+            return 200
+        except urllib.error.HTTPError as e:
+            return e.code
+    closed = [status(annuaire_url(org) + path) for org in ORGS
+              for path in ("/directory/v1/entries", "/directory/v1/recognitions")]
+    public = [status(annuaire_url(org) + f"/directory/v1/entries/{box_ids[org]}") for org in ORGS]
+    reader = [status(annuaire_url(org) + "/directory/v1/entries?since=0", tuple(LECTEUR.split(":"))) for org in ORGS]
+    result("Lecture réservée des annuaires", set(closed) == {401} and set(public) == {200} and set(reader) == {200},
+           f"listes sans compte : {sorted(set(closed))}, entrée d'une box : {sorted(set(public))}, compte de lecture : "
+           f"{sorted(set(reader))} ; box, relais et annuaire partenaire lisent par lecture signée ou compte")
 
     console("A", "POST", f"/api/v1/directory/boxes/{box_ids['B']}/pair", {"name": "box-b"})
     wait(lambda: any(p.get("boxId") == box_ids["B"] for p in console("A", "GET", "/api/v1/peers"))

@@ -26,7 +26,8 @@ Le script efface puis remplit `travail/` : clés des responsables, bases H2, jou
 3. **Appairage entre organisations**, par l'annuaire, depuis la console de la box A.
 4. **Examens** de A vers B, puis de B vers A : C-STORE du PACS émetteur vers sa box, puis réception au PACS destinataire, instances comparées une à une (pixels) et accusé de réception.
 5. **Preuves de fraîcheur** : chaque responsable délègue une clé de fraîcheur à son annuaire (`fraicheur-deleguer`). Chaque box reçoit la preuve de son annuaire et celle du partenaire, relayée, et `fraicheur-verifier` les trouve conformes.
-6. **Refus**, chacun avec son motif :
+6. **Lecture réservée** : les deux annuaires tournent avec `IMAGUNITY_DIRECTORY_RESTRICTED_READ=true`. Leurs listes sont refusées sans compte ni signature (401), l'entrée d'une box reste publique, et le compte de lecture du relais passe. Tout le reste du banc le vérifie de bout en bout : les box lisent par lectures signées (d'abord leur seule entrée tant qu'elles ne sont pas enrôlées), les relais avec leur compte, et chaque annuaire lit celui du partenaire en signant avec sa clé de fraîcheur. Toutes ces lectures se font par différence.
+7. **Refus**, chacun avec son motif :
    - box locale hors du périmètre de l'accord ;
    - relais du partenaire non autorisé par l'accord ;
    - accord à sens unique : B révoque, le relais de B refuse les dépôts de A, et la box A le signale dans son journal en gardant le message ;

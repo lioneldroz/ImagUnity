@@ -9,23 +9,40 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
-/** Lecture des entrées publiées par le service d'annuaire ({@code GET /directory/v1/entries}). */
+/**
+ * Lecture du service d'annuaire. Lecture réservée : chaque lecture est signée par l'identité du lecteur
+ * ({@link #readAs}) ou faite avec un compte ({@link #account}). Lecture par différence : les entrées (et celles d'un
+ * partenaire) sont lues depuis le dernier curseur, et entièrement au premier passage, après
+ * {@link #resetCursors}, et au moins une fois par jour.
+ */
 public final class DirectoryClient {
 
-    /** Réponse du service : organisation et entrée courante de chaque box. */
-    record EntriesResponse(String organization, List<SignedDocument> entries) {
+    /** Délai au-delà duquel une lecture complète remplace la lecture par différence. */
+    static final Duration FULL_READ = Duration.ofHours(24);
+
+    /** Réponse du service : organisation, entrée courante de chaque box, et curseur s'il a été demandé. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    record EntriesResponse(String organization, List<SignedDocument> entries, Long cursor) {
     }
 
     /** Réponse de {@code GET /directory/v1/configurations}. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     record ConfigurationsResponse(String organization, List<SignedDocument> configurations) {
     }
 
     /** Réponse de {@code GET /directory/v1/recognitions}. */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     record RecognitionsResponse(String organization, List<SignedDocument> recognitions) {
     }
 
-    private final URI entries;
-    private final URI configurations;
+    private volatile SignedRead reader;
+    private volatile String account;
+    private volatile java.util.function.Supplier<java.time.Instant> now = java.time.Instant::now;
+    private volatile Long entriesCursor;
+    private volatile java.time.Instant entriesFull = java.time.Instant.MIN;
+    private final java.util.Map<String, Long> partnerCursors = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, java.time.Instant> partnerFull = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final URI reports;
     private final URI enrollments;
     private final String base;
@@ -34,13 +51,49 @@ public final class DirectoryClient {
 
     public DirectoryClient(URI directory, Duration timeout) {
         String base = directory.toString().replaceAll("/+$", "");
-        this.entries = URI.create(base + "/directory/v1/entries");
-        this.configurations = URI.create(base + "/directory/v1/configurations");
         this.reports = URI.create(base + "/directory/v1/configurations/reports");
         this.enrollments = URI.create(base + "/directory/v1/enrollment-requests");
         this.base = base;
         this.timeout = timeout;
         this.http = HttpClient.newBuilder().connectTimeout(timeout).build();
+    }
+
+    /** Lectures signées par ce lecteur (box enrôlée, ou service d'annuaire d'un partenaire). */
+    public DirectoryClient readAs(SignedRead reader) {
+        this.reader = reader;
+        return this;
+    }
+
+    /** Lectures faites avec ce compte ({@code utilisateur:mot de passe}) : relais, outil du responsable ; ignoré vide. */
+    public DirectoryClient account(String account) {
+        // Sans mot de passe (« lecteur: », variable d'environnement vide) : pas de compte, plutôt qu'un refus.
+        this.account = account == null || account.isBlank() || account.endsWith(":") ? null : account;
+        return this;
+    }
+
+    /** Horloge des lectures signées et des lectures complètes (essais). */
+    DirectoryClient clock(java.util.function.Supplier<java.time.Instant> now) {
+        this.now = now;
+        return this;
+    }
+
+    /** La prochaine lecture des entrées (et de celles des partenaires) sera complète. */
+    public void resetCursors() {
+        entriesCursor = null;
+        partnerCursors.clear();
+    }
+
+    /** Lecture authentifiée (signature ou compte) de {@code pathAndQuery}. */
+    private Reply get(String pathAndQuery, String what) {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + pathAndQuery)).timeout(timeout);
+        SignedRead r = reader;
+        if (r != null) {
+            r.headers(pathAndQuery, now.get()).forEach(request::header);
+        } else if (account != null) {
+            request.header("Authorization", "Basic " + java.util.Base64.getEncoder().encodeToString(account
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+        return send(request.build(), what);
     }
 
     /**
@@ -49,11 +102,30 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetch() {
-        Reply response = send(HttpRequest.newBuilder(entries).timeout(timeout).build(), "Lecture de l'annuaire");
+        Long cursor = entriesCursor;
+        boolean full = cursor == null || !now.get().isBefore(entriesFull.plus(FULL_READ));
+        Reply response = get("/directory/v1/entries?since=" + (full ? 0 : cursor), "Lecture de l'annuaire");
+        if ((response.statusCode() == 401 || response.statusCode() == 403) && reader != null
+                && !reader.reader().startsWith(SignedRead.ORGANIZATION)) {
+            // Box pas encore enrôlée (lecture réservée) : elle ne lit que sa propre entrée, publique.
+            Reply own = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/entries/" + reader.reader()))
+                    .timeout(timeout).build(), "Lecture de l'entrée de la box");
+            if (own.statusCode() == 404) {
+                return List.of();
+            }
+            if (own.statusCode() != 200) {
+                throw new DirectoryException("Annuaire : réponse HTTP " + own.statusCode());
+            }
+            return List.of(SignedDocument.fromJson(own.body()));
+        }
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode());
         }
         EntriesResponse body = Json.read(response.body(), EntriesResponse.class, "Réponse de l'annuaire");
+        entriesCursor = body.cursor();
+        if (full) {
+            entriesFull = now.get();
+        }
         return withoutNulls(body.entries());
     }
 
@@ -64,8 +136,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetchConfigurations() {
-        Reply response = send(HttpRequest.newBuilder(configurations).timeout(timeout).build(),
-                "Lecture des configurations");
+        Reply response = get("/directory/v1/configurations", "Lecture des configurations");
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
                     + " à la lecture des configurations");
@@ -83,8 +154,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public List<SignedDocument> fetchRecognitions() {
-        Reply response = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/recognitions")).timeout(timeout)
-                .build(), "Lecture des reconnaissances");
+        Reply response = get("/directory/v1/recognitions", "Lecture des reconnaissances");
         if (response.statusCode() == 404) {
             return List.of(); // service d'annuaire antérieur à la fédération
         }
@@ -107,14 +177,26 @@ public final class DirectoryClient {
         if (!partner.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Empreinte de partenaire mal formée");
         }
-        Reply response = send(HttpRequest.newBuilder(URI.create(base + "/directory/v1/partners/" + partner
-                + "/entries")).timeout(timeout).build(), "Lecture des entrées du partenaire");
+        Long cursor = partnerCursors.get(partner);
+        boolean full = cursor == null || !now.get().isBefore(partnerFull.getOrDefault(partner, java.time.Instant.MIN)
+                .plus(FULL_READ));
+        Reply response = get("/directory/v1/partners/" + partner + "/entries?since=" + (full ? 0 : cursor),
+                "Lecture des entrées du partenaire");
         if (response.statusCode() != 200) {
             throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
                     + " à la lecture des entrées du partenaire");
         }
-        return withoutNulls(Json.read(response.body(), EntriesResponse.class,
-                "Réponse de l'annuaire (entrées du partenaire)").entries());
+        EntriesResponse body = Json.read(response.body(), EntriesResponse.class,
+                "Réponse de l'annuaire (entrées du partenaire)");
+        if (body.cursor() == null) {
+            partnerCursors.remove(partner);
+        } else {
+            partnerCursors.put(partner, body.cursor());
+        }
+        if (full) {
+            partnerFull.put(partner, now.get());
+        }
+        return withoutNulls(body.entries());
     }
 
     /**
@@ -124,7 +206,7 @@ public final class DirectoryClient {
      * @throws DirectoryException si l'annuaire est injoignable ou répond mal
      */
     public Optional<Freshness> fetchFreshness() {
-        return freshness(base + "/directory/v1/freshness");
+        return freshness("/directory/v1/freshness");
     }
 
     /**
@@ -137,12 +219,11 @@ public final class DirectoryClient {
         if (!partner.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Empreinte de partenaire mal formée");
         }
-        return freshness(base + "/directory/v1/partners/" + partner + "/freshness");
+        return freshness("/directory/v1/partners/" + partner + "/freshness");
     }
 
-    private Optional<Freshness> freshness(String url) {
-        Reply response = send(HttpRequest.newBuilder(URI.create(url)).timeout(timeout).build(),
-                "Lecture de la preuve de fraîcheur");
+    private Optional<Freshness> freshness(String path) {
+        Reply response = get(path, "Lecture de la preuve de fraîcheur");
         if (response.statusCode() == 404) {
             return Optional.empty();
         }

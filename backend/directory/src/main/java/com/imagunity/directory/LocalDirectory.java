@@ -436,6 +436,37 @@ public final class LocalDirectory {
         return announced != null && announced > r.serial();
     }
 
+    /**
+     * Vrai si une preuve de fraîcheur annonce une entrée (locale ou d'un partenaire) plus récente que celle reçue, ou
+     * une box absente de la vue : la lecture par différence a manqué quelque chose, la prochaine sera complète.
+     */
+    public boolean incomplete() {
+        String local = localOwner();
+        FreshnessProof own = local == null ? null : freshness.get(local);
+        if (own != null && own.entries().entrySet().stream().anyMatch(e -> {
+            BoxEntry entry = entries.get(e.getKey());
+            return entry == null || entry.serial() < e.getValue();
+        })) {
+            return true;
+        }
+        for (Map.Entry<String, FreshnessProof> p : freshness.entrySet()) {
+            if (p.getKey().equals(local)) {
+                continue;
+            }
+            boolean missing = p.getValue().entries().entrySet().stream().anyMatch(e -> {
+                Foreign f = foreign.get(e.getKey());
+                if (f == null || !f.partner().equals(p.getKey())) {
+                    return !entries.containsKey(e.getKey()); // collision écartée : pas un manque
+                }
+                return f.entry().serial() < e.getValue();
+            });
+            if (missing && recognitions.containsKey(p.getKey())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String localOwner() {
         return localKey == null ? null : localKey.fingerprint();
     }

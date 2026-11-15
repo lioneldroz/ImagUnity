@@ -21,7 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
  * GET  /directory/v1/recognitions                 reconnaissance courante de chaque partenaire
  * POST /directory/v1/recognitions                 dépôt par le responsable : 201 publiée, 200 déjà publiée,
  *                                                 409 retour en arrière ou conflit, 422 invalide
- * GET  /directory/v1/partners/{empreinte}/entries entrées relayées d'un partenaire dont l'accord est actif (404 sinon)
+ * GET  /directory/v1/partners/{empreinte}/entries entrées relayées d'un partenaire dont l'accord est actif (404 sinon) ;
+ *                                                 {@code ?since=N} : lecture par différence, avec le curseur suivant
  * GET  /directory/v1/partners/{empreinte}/freshness sa preuve de fraîcheur relayée (404 sinon)
  * GET  /directory/v1/freshness                    preuve de fraîcheur de cet annuaire (404 sans clé de fraîcheur)
  * </pre>
@@ -34,8 +35,9 @@ class FederationController {
     record RecognitionsView(String organization, List<SignedDocument> recognitions) {
     }
 
-    /** Réponse de {@code GET /partners/{empreinte}/entries}. */
-    record EntriesView(String organization, List<SignedDocument> entries) {
+    /** Réponse de {@code GET /partners/{empreinte}/entries} ; curseur seulement si {@code since} est demandé. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    record EntriesView(String organization, List<SignedDocument> entries, Long cursor) {
     }
 
     private final FederationService federation;
@@ -78,12 +80,14 @@ class FederationController {
     }
 
     @GetMapping("/partners/{partner}/entries")
-    EntriesView partnerEntries(@PathVariable String partner) {
+    EntriesView partnerEntries(@PathVariable String partner,
+                               @org.springframework.web.bind.annotation.RequestParam(required = false) Long since) {
         if (!partner.matches("[0-9a-f]{64}")) {
             throw new NoSuchElementException("Empreinte de partenaire mal formée");
         }
-        FederationService.PartnerEntries entries = federation.partnerEntries(partner);
-        return new EntriesView(entries.organization(), entries.entries());
+        FederationService.PartnerEntries entries = federation.partnerEntries(partner,
+                since == null ? 0 : Math.max(0, since));
+        return new EntriesView(entries.organization(), entries.entries(), since == null ? null : entries.cursor());
     }
 
     @ExceptionHandler(NoSuchElementException.class)

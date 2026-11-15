@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <pre>
  * GET  /directory/v1/organization            organisation et clé publique du responsable (information ; les box
  *                                            épinglent la leur)
- * GET  /directory/v1/entries                 entrée courante de chaque box
+ * GET  /directory/v1/entries                 entrée courante de chaque box ; avec {@code ?since=N}, celles publiées
+ *                                            après le curseur N, et le curseur suivant (lecture par différence)
  * GET  /directory/v1/entries/{boxId}         entrée courante d'une box (404 si inconnue)
  * GET  /directory/v1/entries/{boxId}/history toutes ses entrées, par numéro croissant
  * POST /directory/v1/entries                 dépôt par le responsable : 201 publiée, 200 déjà publiée,
@@ -38,8 +39,9 @@ class DirectoryController {
     record OrganizationView(String organization, HybridPublicKey.Encoded signingKeys, String shortCode) {
     }
 
-    /** Réponse de {@code GET /entries}. */
-    record EntriesView(String organization, List<SignedDocument> entries) {
+    /** Réponse de {@code GET /entries} ; curseur seulement si {@code since} est demandé (anciens lecteurs stricts). */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    record EntriesView(String organization, List<SignedDocument> entries, Long cursor) {
     }
 
     private final EntryStore store;
@@ -60,8 +62,13 @@ class DirectoryController {
     }
 
     @GetMapping("/entries")
-    EntriesView entries() {
-        return new EntriesView(organizationKey.organization(), store.current());
+    EntriesView entries(@org.springframework.web.bind.annotation.RequestParam(required = false) Long since) {
+        if (since == null) {
+            return new EntriesView(organizationKey.organization(), store.current(), null);
+        }
+        // Curseur lu avant les entrées : une publication concurrente est relue la fois suivante, jamais perdue.
+        long cursor = store.cursor();
+        return new EntriesView(organizationKey.organization(), store.currentSince(Math.max(0, since)), cursor);
     }
 
     @GetMapping("/entries/{boxId}")

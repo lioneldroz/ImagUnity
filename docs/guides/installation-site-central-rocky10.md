@@ -228,6 +228,22 @@ admin fraicheur-verifier --cles organisation.json --annuaire https://<ANNUAIRE_H
 - `fraicheur-verifier` contrôle aussi que la preuve correspond bien aux entrées et reconnaissances publiées.
 - Une fois qu'une box a reçu une preuve de son annuaire, elle l'exige ensuite.
 
+## 10 ter. Lecture réservée de l'annuaire
+
+Par défaut, n'importe qui peut lire la liste des box de l'organisation (noms, clés publiques, adresses de transport). La **lecture réservée** la limite aux box actives, aux comptes (responsable, relais) et aux annuaires des organisations partenaires reconnues ([annuaire signé, § 5 quater](../reference/annuaire-signe.md#5-quater-lecture-par-différence-et-lecture-réservée)). L'entrée d'une box donnée, la preuve de fraîcheur et la clé de l'organisation restent publiques.
+
+1. Mettre à jour **toutes** les box et le relais : une ancienne box, qui ne signe pas ses lectures, cesserait de voir l'annuaire.
+2. Donner un mot de passe au compte de lecture du relais dans `.env` (`ANNUAIRE_MOT_DE_PASSE_LECTURE`, généré par `openssl rand -base64 24`).
+3. Pour la fédération, vérifier que chaque partenaire publie une preuve de fraîcheur (§ 10 bis chez lui) : son annuaire signe ses lectures avec cette clé.
+4. Passer `ANNUAIRE_LECTURE_RESERVEE=true`, puis :
+
+```bash
+docker compose up -d directory relay
+curl -s -o /dev/null -w '%{http_code}\n' https://<ANNUAIRE_HOTE>/directory/v1/entries   # 401 attendu
+```
+
+Les box et le relais lisent aussi l'annuaire **par différence** : seulement ce qui a changé depuis leur dernière lecture, avec une lecture complète au moins une fois par jour. Cela ne demande aucun réglage.
+
 ## 11. Sauvegardes
 
 À sauvegarder :

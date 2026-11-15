@@ -83,8 +83,18 @@ public record RelayProperties(
      * @param organizationKey  clé publique du responsable ({@code .pub.json})
      * @param organizationCode son empreinte courte, vérifiée hors bande
      * @param syncInterval     intervalle entre deux lectures de l'annuaire
+     * @param account          compte de lecture de l'annuaire ({@code utilisateur:mot de passe}), exigé quand
+     *                         l'annuaire réserve ses lectures
      */
     public record Directory(URI url, Path organizationKey, String organizationCode,
-                            @DefaultValue("5m") Duration syncInterval) {
+                            @DefaultValue("5m") Duration syncInterval, String account) {
+
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public Directory {
+        }
+
+        public Directory(URI url, Path organizationKey, String organizationCode, Duration syncInterval) {
+            this(url, organizationKey, organizationCode, syncInterval, null);
+        }
     }
 }

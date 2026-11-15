@@ -86,23 +86,35 @@ public class RecognitionStore {
         Optional<Long> stored = jdbc.sql("SELECT serial FROM partner_entry WHERE partner_fingerprint = ? AND box_id = ?")
                 .params(partner, boxId).query(Long.class).optional();
         if (stored.isEmpty()) {
-            jdbc.sql("INSERT INTO partner_entry (partner_fingerprint, box_id, serial, document, fetched_at) "
-                    + "VALUES (?, ?, ?, ?, ?)").params(partner, boxId, serial, document.toJson(), utc(fetchedAt))
+            jdbc.sql("INSERT INTO partner_entry (partner_fingerprint, box_id, serial, document, fetched_at, seq) "
+                    + "VALUES (?, ?, ?, ?, ?, nextval('directory_seq'))").params(partner, boxId, serial, document.toJson(), utc(fetchedAt))
                     .update();
             return true;
         }
         if (serial <= stored.get()) {
             return false;
         }
-        jdbc.sql("UPDATE partner_entry SET serial = ?, document = ?, fetched_at = ? WHERE partner_fingerprint = ? "
+        jdbc.sql("UPDATE partner_entry SET serial = ?, document = ?, fetched_at = ?, seq = nextval('directory_seq') "
+                + "WHERE partner_fingerprint = ? "
                 + "AND box_id = ?").params(serial, document.toJson(), utc(fetchedAt), partner, boxId).update();
         return true;
     }
 
+    /** Curseur courant des entrées relayées d'un partenaire (0 sans entrée). */
+    long partnerCursor(String partner) {
+        return jdbc.sql("SELECT COALESCE(MAX(seq), 0) FROM partner_entry WHERE partner_fingerprint = ?")
+                .param(partner).query(Long.class).single();
+    }
+
     /** Entrées relayées d'un partenaire. */
     List<SignedDocument> partnerEntries(String partner) {
-        return jdbc.sql("SELECT document FROM partner_entry WHERE partner_fingerprint = ? ORDER BY box_id")
-                .param(partner).query(String.class).list().stream().map(SignedDocument::fromJson).toList();
+        return partnerEntriesSince(partner, 0);
+    }
+
+    /** Entrées relayées d'un partenaire, reçues ou changées après le curseur {@code since}. */
+    List<SignedDocument> partnerEntriesSince(String partner, long since) {
+        return jdbc.sql("SELECT document FROM partner_entry WHERE partner_fingerprint = ? AND seq > ? ORDER BY box_id")
+                .params(partner, since).query(String.class).list().stream().map(SignedDocument::fromJson).toList();
     }
 
     private static OffsetDateTime utc(Instant instant) {

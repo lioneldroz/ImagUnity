@@ -420,6 +420,7 @@ La preuve correspond aux entrées et reconnaissances publiées
 - **Renouvelez chaque mois**, en relançant `fraicheur-deleguer` avec le même fichier de délégation (numéro suivant). Une délégation expirée arrête les échanges de toutes les box au bout de 48 h : c'est voulu, un annuaire figé ne doit pas être cru.
 - **Lancez `fraicheur-verifier` régulièrement.** Un écart (« Écart : box … publiée au n° 3, preuve au n° 2 ») signale un annuaire qui ne dit pas la même chose à tout le monde : prévenez l'exploitant, et renouvelez la délégation sur une machine saine.
 - Dans la console de chaque box, la ligne « Fraîcheur de l'annuaire » montre la date de la dernière preuve. Pour chaque organisation partenaire, la fraîcheur de son annuaire est aussi affichée.
+- Si votre site central réserve la lecture de l'annuaire (installation du site central, § 10 ter), la clé de fraîcheur sert aussi à signer les lectures de votre annuaire chez vos partenaires : sans elle, il ne lit plus leurs entrées.
 
 
 ---
