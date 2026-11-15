@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 /**
  * Lecture réservée (étape 4 de la fédération). Les listes de l'annuaire (entrées, historique, reconnaissances,
@@ -42,6 +43,7 @@ final class RestrictedReadFilter extends OncePerRequestFilter {
     private static final String API = "/directory/v1";
     private static final Pattern HISTORY = Pattern.compile(API + "/entries/[^/]+/history");
     private static final Pattern FINGERPRINT = Pattern.compile("[0-9a-f]{64}");
+    private static final UrlPathHelper PATHS = new UrlPathHelper();
 
     /** Qui peut lire ce chemin. */
     enum Access {
@@ -86,7 +88,10 @@ final class RestrictedReadFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
             return;
         }
-        Access access = access(request.getRequestURI());
+        // Le chemin classé est le chemin décodé, tel que le routage de Spring le voit : classer l'URI brute laisserait
+        // passer « /directory/v1/%65ntries » pour public alors qu'il mène à la liste des entrées. L'URI brute ne sert
+        // qu'à vérifier la signature (le lecteur signe le chemin qu'il envoie).
+        Access access = access(PATHS.getPathWithinApplication(request));
         if (access == Access.PUBLIC || account()) {
             chain.doFilter(request, response);
             return;

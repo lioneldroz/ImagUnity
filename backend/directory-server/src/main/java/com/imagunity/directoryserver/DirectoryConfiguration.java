@@ -36,7 +36,9 @@ class DirectoryConfiguration {
                                         jakarta.servlet.http.HttpServletResponse response,
                                         jakarta.servlet.FilterChain chain)
                 throws jakarta.servlet.ServletException, IOException {
-            if (request.getRequestURI().startsWith("/admin/api/") && !"GET".equals(request.getMethod())
+            // Chemin décodé, comme pour le routage : « /admin/%61pi/… » ne doit pas échapper à la vérification.
+            String path = new org.springframework.web.util.UrlPathHelper().getPathWithinApplication(request);
+            if (path.startsWith("/admin/api/") && !"GET".equals(request.getMethod())
                     && !"1".equals(request.getHeader(ADMIN_HEADER))) {
                 response.sendError(403, "En-tête " + ADMIN_HEADER + " manquant");
                 return;
