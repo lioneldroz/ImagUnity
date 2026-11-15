@@ -145,6 +145,18 @@ Pour éviter de faire circuler les demandes et de comparer les empreintes au té
 - **Refus** : `DELETE /directory/v1/enrollment-requests/{boxId}` (compte du responsable, réseau d'administration par Caddy) masque la demande ; les envois suivants de cette box sont refusés (409) pendant 30 jours, puis le refus est effacé.
 - **Renouvellement** (`renouveler`) : réémet avec le numéro suivant, depuis l'entrée publiée elle-même, les entrées actives qui expirent bientôt (mêmes clés, adresses et groupes).
 
+## 5 ter. Preuve de fraîcheur
+
+Une entrée signée dit ce qui était vrai au moment de sa signature, pas qu'elle est toujours la dernière. Un annuaire, un réseau ou un relais d'annuaire peut resservir une ancienne entrée et retenir une révocation (constat C2 du pré-audit). La preuve de fraîcheur le rend visible :
+
+- **Délégation** (`freshness-key`) : le responsable signe, pour 30 jours (90 au plus), l'autorisation d'une clé en ligne à dater l'état de son annuaire (`fraicheur-deleguer`). Numéro croissant à chaque renouvellement.
+- **Preuve** (`freshness`) : la clé déléguée signe `{organisation, date, plus haut numéro de chaque box, plus haut numéro de chaque reconnaissance}`. Le service la re-signe dès que l'état change, et au moins toutes les 10 minutes. Il la sert sur `GET /directory/v1/freshness`, et relaie celle de chaque partenaire sur `GET /directory/v1/partners/{empreinte}/freshness`.
+- **Vérification** (box et relais, `LocalDirectory`) : délégation signée par la clé épinglée du responsable (ou celle du partenaire, tirée de sa reconnaissance), de la même organisation, valable à la date de la preuve ; preuve signée par la clé déléguée, pas dans le futur (5 minutes d'avance tolérées), pas plus ancienne que la précédente. Elle est gardée dans le cache.
+- **Entrée en retard** : si la preuve annonce pour une box un numéro plus élevé que l'entrée reçue, cette box devient inutilisable jusqu'à réception de l'entrée annoncée. Même règle pour une reconnaissance annoncée plus récente que celle reçue. La preuve est lue **avant** les entrées : plus ancienne qu'elles, elle ne signale aucune entrée à tort.
+- **Annuaire figé** : une fois une preuve reçue d'une organisation, si la dernière a plus de 48 h (`IMAGUNITY_DIRECTORY_FRESHNESS_MAX_AGE`, `IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE` ; 0 : jamais), les échanges avec ses box s'arrêtent, avec le motif. Un annuaire qui n'a jamais publié de preuve n'arrête rien (compatibilité).
+- **Contrôle par le responsable** : `fraicheur-verifier` vérifie la preuve servie et la compare aux entrées et reconnaissances publiées.
+- **Limite** : la clé de fraîcheur est en ligne. Si le service d'annuaire lui-même est compromis, il peut signer des preuves qui omettent une révocation, au plus pendant la validité de la délégation. `fraicheur-verifier`, lancé régulièrement depuis le poste du responsable, le détecte. La clé déléguée ne peut signer ni entrée ni reconnaissance.
+
 ## 6. Intégration dans la box (étape C1)
 
 Activée par `IMAGUNITY_DIRECTORY_ENABLED=true`. Sans elle, la box fonctionne comme avant : tout partenaire appairé est accepté.

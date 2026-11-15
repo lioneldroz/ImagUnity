@@ -68,10 +68,15 @@ public final class RecognitionVerifier {
 
     /** Vrai si ce document est une reconnaissance (et non une entrée de box), sans le vérifier. */
     static boolean isRecognition(SignedDocument document) {
+        return Recognition.TYPE.equals(type(document));
+    }
+
+    /** Champ {@code type} d'un document signé, sans vérification ; vide s'il n'en a pas (entrée de box). */
+    static String type(SignedDocument document) {
         try {
-            return Recognition.TYPE.equals(Json.MAPPER.readTree(document.payload()).path("type").asString(""));
+            return Json.MAPPER.readTree(document.payload()).path("type").asString("");
         } catch (tools.jackson.core.JacksonException e) {
-            return false;
+            return "";
         }
     }
 }

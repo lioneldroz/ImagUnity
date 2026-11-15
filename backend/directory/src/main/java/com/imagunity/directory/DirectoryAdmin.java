@@ -118,6 +118,8 @@ public final class DirectoryAdmin {
                 case "reconnaitre" -> recognize(options);
                 case "reconnaissances" -> listRecognitions(options);
                 case "reconnaissance-revoquer" -> revokeRecognition(options);
+                case "fraicheur-deleguer" -> delegateFreshness(options);
+                case "fraicheur-verifier" -> checkFreshness(options);
                 default -> usage("Commande inconnue : " + args[0]);
             };
         } catch (MissingOptionException e) {
@@ -533,6 +535,90 @@ public final class DirectoryAdmin {
         return 0;
     }
 
+    // --- Fraîcheur des annuaires ---
+
+    /**
+     * Délègue la signature des preuves de fraîcheur à une nouvelle clé, à installer sur le service d'annuaire avec sa
+     * délégation. Numéro suivant si une délégation existe déjà dans le fichier de sortie.
+     */
+    private int delegateFreshness(Map<String, String> o) throws IOException {
+        Path keyFile = Path.of(require(o, "sortie-cle"));
+        Path delegationFile = Path.of(require(o, "sortie-delegation"));
+        long days = Long.parseLong(o.getOrDefault("validite-jours", "30"));
+        if (days < 1 || days > 90) {
+            throw new IllegalArgumentException("Validité de la délégation : de 1 à 90 jours");
+        }
+        long serial = 1;
+        if (Files.exists(delegationFile)) {
+            serial = Json.read(read(delegationFile).payload(), FreshnessDelegation.class, "Délégation de fraîcheur")
+                    .serial() + 1;
+        }
+        Organization organization = organization(o);
+        HybridKeyPair key = HybridKeyPair.generate();
+        SignedDocument delegation = organization.delegateFreshness(key.publicKey(), clock.instant(),
+                Duration.ofDays(days), serial);
+        Files.deleteIfExists(keyFile);
+        KeyFiles.writePrivate(keyFile, key, null);
+        KeyFiles.replace(delegationFile, delegation.toJson());
+        out.println("Clé de fraîcheur n° " + serial + " déléguée jusqu'au " + day(clock.instant().plus(Duration.ofDays(
+                days))) + " : " + keyFile + " et " + delegationFile);
+        out.println("À installer sur le service d'annuaire (IMAGUNITY_DIRECTORY_FRESHNESS_KEY et "
+                + "IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION), puis à renouveler avant la fin de la délégation.");
+        return 0;
+    }
+
+    /**
+     * Vérifie la preuve de fraîcheur publiée par l'annuaire : signatures, âge, et accord avec les entrées et
+     * reconnaissances publiées (un annuaire qui retiendrait une révocation se verrait ici).
+     */
+    private int checkFreshness(Map<String, String> o) throws IOException {
+        KeyFiles.OrganizationPublicKey own = KeyFiles.readOrganizationPublic(Path.of(require(o, "cles") + ".pub.json"));
+        DirectoryClient client = new DirectoryClient(URI.create(require(o, "annuaire")), Duration.ofSeconds(20));
+        Optional<Freshness> served = client.fetchFreshness();
+        if (served.isEmpty()) {
+            err.println("L'annuaire ne publie pas de preuve de fraîcheur (clé de fraîcheur non installée)");
+            return 1;
+        }
+        FreshnessProof proof = served.get().verify(own.organization(), own.key(), clock.instant());
+        FreshnessDelegation delegation = served.get().delegationContent();
+        Duration age = Duration.between(proof.issuedAt(), clock.instant());
+        out.println("Preuve de fraîcheur valide, signée il y a " + Math.max(0, age.toMinutes()) + " min par la clé "
+                + "déléguée n° " + delegation.serial() + " (jusqu'au " + day(delegation.validUntil()) + ") : "
+                + proof.entries().size() + " box, " + proof.recognitions().size() + " reconnaissance(s)");
+        int problems = 0;
+        if (Duration.between(clock.instant(), delegation.validUntil()).compareTo(Duration.ofDays(7)) < 0) {
+            out.println("Attention : délégation proche de sa fin, à renouveler (fraicheur-deleguer)");
+            problems++;
+        }
+        EntryVerifier verifier = new EntryVerifier(own.organization(), own.key(), SerialMemory.inMemory(), clock);
+        for (SignedDocument document : client.fetch()) {
+            BoxEntry e;
+            try {
+                e = verifier.verify(document).entry();
+            } catch (DirectoryException ex) {
+                continue;
+            }
+            Long announced = proof.entries().get(e.boxId());
+            if (announced == null || announced != e.serial()) {
+                out.println("Écart : box « " + e.displayName() + " » publiée au n° " + e.serial() + ", preuve au n° "
+                        + announced);
+                problems++;
+            }
+        }
+        for (Published p : recognitions(o)) {
+            Long announced = proof.recognitions().get(p.recognition().partner().fingerprint());
+            if (announced == null || announced != p.recognition().serial()) {
+                out.println("Écart : reconnaissance de « " + p.recognition().partner().organization() + " » publiée au n° "
+                        + p.recognition().serial() + ", preuve au n° " + announced);
+                problems++;
+            }
+        }
+        if (problems == 0) {
+            out.println("La preuve correspond aux entrées et reconnaissances publiées");
+        }
+        return problems == 0 ? 0 : 1;
+    }
+
     private static java.util.List<String> scopeOption(Map<String, String> o, String name) {
         return o.containsKey(name) ? java.util.Arrays.stream(o.get(name).split(",")).map(String::strip)
                 .filter(g -> !g.isEmpty()).toList() : java.util.List.of();
@@ -748,6 +834,9 @@ public final class DirectoryAdmin {
                   reconnaissances    --cles <clé organisation> --annuaire <url>
                   reconnaissance-revoquer --cles <clé organisation> --annuaire <url> --empreinte <empreinte du partenaire>
                                      --motif <texte> [--confirmer]
+                  fraicheur-deleguer --cles <clé organisation> --sortie-cle <fichier> --sortie-delegation <fichier>
+                                     [--validite-jours 30]
+                  fraicheur-verifier --cles <clé organisation> --annuaire <url>
                 Phrases de passe : IMAGUNITY_PHRASE_ORGANISATION, IMAGUNITY_PHRASE_BOX, ou saisie au terminal ;
                 --sans-phrase à la création d'une clé (déconseillé).""");
         return 2;

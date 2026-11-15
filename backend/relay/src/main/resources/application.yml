@@ -31,6 +31,8 @@ imagunity:
       # Empreinte courte du responsable, vérifiée hors bande : sinon le relais refuse de démarrer.
       organization-code: ${IMAGUNITY_RELAY_ORGANIZATION_CODE:}
       sync-interval: ${IMAGUNITY_RELAY_DIRECTORY_SYNC_INTERVAL:5m}
+      # Âge maximal de la preuve de fraîcheur de l'annuaire d'un partenaire : au-delà, ses box ne peuvent plus déposer.
+      freshness-max-age: ${IMAGUNITY_RELAY_DIRECTORY_FRESHNESS_MAX_AGE:48h}
     # Limites de débit, en requêtes par minute (0 : désactivée) : dépôts par box de l'organisation, dépôts de messages
     # par box d'une organisation partenaire, requêtes mal signées par adresse IP (refusées ensuite avant vérification).
     limits:

@@ -6,6 +6,7 @@ import {
   fetchDirectory,
   pairWithBox,
   type DirectoryBox,
+  type Freshness,
   type PartnerOrganization,
 } from '../api/directory'
 import { formatDate } from '../format'
@@ -66,6 +67,18 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
   )
 }
 
+function FreshnessState({ f }: { f: Freshness | null }) {
+  if (!f) return <span className="muted">non contrôlée</span>
+  if (!f.issuedAt) return <span className="muted">{f.error ?? 'pas encore de preuve'}</span>
+  return (
+    <span className={f.stale ? 'error' : undefined}>
+      preuve du {formatDate(f.issuedAt)}
+      {f.stale && ' : trop ancienne, échanges arrêtés'}
+      {f.error && <span className="error"> ({f.error})</span>}
+    </span>
+  )
+}
+
 function scope(groups: string[]): string {
   if (groups.length === 0) return 'aucun'
   return groups.includes('*') ? 'tous' : groups.join(', ')
@@ -108,6 +121,9 @@ function PartnersTable({ partners }: { partners: PartnerOrganization[] }) {
                     {formatDate(p.lastSync.at)} : {p.boxes} box utilisable(s)
                   </span>
                 )}
+                <div>
+                  fraîcheur : <FreshnessState f={p.freshness} />
+                </div>
               </td>
             </tr>
           ))}
@@ -144,6 +160,10 @@ export function DirectoryCard() {
             Télécharger la demande d’enrôlement
           </a>{' '}
           <span className="muted small">à remettre au responsable, qui vérifie l’empreinte avec vous</span>
+        </dd>
+        <dt>Fraîcheur de l’annuaire</dt>
+        <dd>
+          <FreshnessState f={d.freshness} />
         </dd>
         <dt>Synchronisation</dt>
         <dd>

@@ -63,11 +63,14 @@ class RelayConfiguration {
     }
 
     @Bean
-    LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, RelayDirectoryStore store, Clock clock) {
+    LocalDirectory localDirectory(KeyFiles.OrganizationPublicKey key, RelayDirectoryStore store, Clock clock,
+            @org.springframework.beans.factory.annotation.Value("${imagunity.relay.directory.freshness-max-age:48h}")
+            Duration freshnessMaxAge) {
         // Fédération : les box des organisations reconnues par le responsable peuvent déposer des messages dans les
         // files des box locales couvertes par l'accord (et rien d'autre).
         return new LocalDirectory(new EntryVerifier(key.organization(), key.key(), store, clock), store, clock)
-                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store);
+                .federate(new com.imagunity.directory.RecognitionVerifier(key.organization(), key.key(), store), store)
+                .checkFreshness(key.organization(), key.key(), freshnessMaxAge);
     }
 
     /**
@@ -76,12 +79,16 @@ class RelayConfiguration {
      */
     static void synchronize(LocalDirectory directory, DirectoryClient client) {
         try {
+            if (directory.freshnessChecked()) {
+                directory.synchronizeFreshness(client::fetchFreshness);
+            }
             LocalDirectory.SyncStatus status = directory.synchronize(client::fetch);
             LOG.log(Level.DEBUG, "Annuaire lu : {0} entrée(s) retenue(s)", status.accepted());
             if (directory.federated()) {
                 directory.synchronizeRecognitions(client::fetchRecognitions);
                 for (com.imagunity.directory.Recognition r : directory.activeRecognitions()) {
                     String partner = r.partner().fingerprint();
+                    directory.synchronizePartnerFreshness(partner, () -> client.fetchPartnerFreshness(partner));
                     directory.synchronizePartner(partner, () -> client.fetchPartnerEntries(partner));
                 }
             }

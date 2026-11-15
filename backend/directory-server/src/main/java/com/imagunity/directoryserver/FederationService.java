@@ -38,21 +38,33 @@ public class FederationService {
     private final String organization;
     private final Clock clock;
     private final Function<URI, List<SignedDocument>> partnerDirectory;
+    private final Function<URI, Optional<com.imagunity.directory.Freshness>> partnerFreshness;
 
     public FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey,
                              Clock clock) {
         this(store, organization, organizationKey, clock,
-                directory -> new DirectoryClient(directory, Duration.ofSeconds(20)).fetch());
+                directory -> new DirectoryClient(directory, Duration.ofSeconds(20)).fetch(),
+                directory -> new DirectoryClient(directory, Duration.ofSeconds(20)).fetchFreshness());
     }
 
-    /** @param partnerDirectory lecture des entrées publiées par l'annuaire d'un partenaire */
     FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey, Clock clock,
                       Function<URI, List<SignedDocument>> partnerDirectory) {
+        this(store, organization, organizationKey, clock, partnerDirectory, directory -> Optional.empty());
+    }
+
+    /**
+     * @param partnerDirectory lecture des entrées publiées par l'annuaire d'un partenaire
+     * @param partnerFreshness lecture de la preuve de fraîcheur publiée par l'annuaire d'un partenaire
+     */
+    FederationService(RecognitionStore store, String organization, HybridPublicKey organizationKey, Clock clock,
+                      Function<URI, List<SignedDocument>> partnerDirectory,
+                      Function<URI, Optional<com.imagunity.directory.Freshness>> partnerFreshness) {
         this.store = store;
         this.organization = organization;
         this.organizationKey = organizationKey;
         this.clock = clock;
         this.partnerDirectory = partnerDirectory;
+        this.partnerFreshness = partnerFreshness;
     }
 
     private final HybridPublicKey organizationKey;
@@ -126,6 +138,17 @@ public class FederationService {
         return new PartnerEntries(r.partner().organization(), store.partnerEntries(partner));
     }
 
+    /**
+     * Preuve de fraîcheur relayée d'un partenaire dont l'accord est actif.
+     *
+     * @throws NoSuchElementException si aucun accord actif ne le reconnaît, ou si aucune preuve n'a été relayée
+     */
+    public com.imagunity.directory.Freshness partnerFreshness(String partner) {
+        active(partner).orElseThrow(() -> new NoSuchElementException("Aucun accord actif avec cette organisation"));
+        return store.partnerFreshness(partner).orElseThrow(() -> new NoSuchElementException(
+                "Aucune preuve de fraîcheur relayée pour cette organisation"));
+    }
+
     /** Entrées relayées d'un partenaire. */
     public record PartnerEntries(String organization, List<SignedDocument> entries) {
     }
@@ -138,6 +161,16 @@ public class FederationService {
                 continue;
             }
             Recognition.Partner p = r.partner();
+            // Preuve de fraîcheur d'abord : plus ancienne que les entrées lues ensuite, elle n'en signale aucune à tort.
+            try {
+                partnerFreshness.apply(URI.create(p.directory())).ifPresent(f -> {
+                    com.imagunity.directory.FreshnessProof proof = f.verify(p.organization(), p.publicKey(),
+                            clock.instant());
+                    store.savePartnerFreshness(p.fingerprint(), f, proof.issuedAt(), clock.instant());
+                });
+            } catch (DirectoryException e) {
+                LOG.warn("Preuve de fraîcheur de « {} » écartée : {}", p.organization(), e.getMessage());
+            }
             List<SignedDocument> documents;
             try {
                 documents = partnerDirectory.apply(URI.create(p.directory()));

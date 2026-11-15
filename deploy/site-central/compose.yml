@@ -72,8 +72,12 @@ services:
       IMAGUNITY_DIRECTORY_ORGANIZATION_KEY: /config/organisation.pub.json
       IMAGUNITY_DIRECTORY_PUBLISHER_USER: ${ANNUAIRE_COMPTE:-responsable}
       IMAGUNITY_DIRECTORY_PUBLISHER_PASSWORD: ${ANNUAIRE_MOT_DE_PASSE:?mot de passe du compte de dépôt du responsable}
+      # Preuve de fraîcheur : clé déléguée par le responsable (fraicheur-deleguer), dans config/fraicheur/.
+      IMAGUNITY_DIRECTORY_FRESHNESS_KEY: ${ANNUAIRE_CLE_FRAICHEUR:-}
+      IMAGUNITY_DIRECTORY_FRESHNESS_DELEGATION: ${ANNUAIRE_DELEGATION_FRAICHEUR:-}
     volumes:
       - ./config/organisation.pub.json:/config/organisation.pub.json:ro
+      - ./config/fraicheur:/config/fraicheur:ro
     depends_on:
       directory-db: {condition: service_healthy}
     networks: [interne]

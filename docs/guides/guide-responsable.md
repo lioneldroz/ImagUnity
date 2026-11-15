@@ -391,7 +391,35 @@ Reconnaissance signée et publiée. L'échange ne marchera que lorsque « bourgo
 
 **Un identifiant de box n'appartient qu'à une organisation.** Si le partenaire publie une entrée sous l'identifiant d'une de vos box, ou de celle d'un autre partenaire, cette entrée est écartée, et la console des box le signale (« identifiant(s) de box revendiqué(s) par deux organisations »). Prévenez le responsable partenaire, et en cas de doute révoquez l'accord.
 
-À mettre en place avant toute fédération réelle : les limites de débit du relais et la preuve de fraîcheur des annuaires (étapes 2 et 3 de la [note de fédération](../reference/federation-organisations.md)).
+Avant toute fédération réelle, chaque organisation installe sa clé de fraîcheur (§ 2.10). Les limites de débit du relais sont actives par défaut.
+
+
+### 2.10 Déléguer la clé de fraîcheur (chaque mois)
+
+L'annuaire n'étant pas de confiance, une box ne peut pas savoir seule si l'entrée qu'on lui sert est la dernière : un annuaire pourrait resservir l'entrée d'une box d'avant sa révocation. La **preuve de fraîcheur** l'empêche. C'est un état daté du plus haut numéro de chaque entrée et reconnaissance, signé par une clé que vous **déléguez** au service d'annuaire pour 30 jours. Votre clé, elle, reste hors ligne.
+
+```bash
+admin fraicheur-deleguer --cles organisation.json --sortie-cle fraicheur.json --sortie-delegation delegation.json
+```
+
+```text
+Clé de fraîcheur n° 1 déléguée jusqu'au 2026-12-31 : fraicheur.json et delegation.json
+```
+
+Remettez les deux fichiers à l'exploitant du site central, qui les installe ([installation du site central, § 10 bis](installation-site-central-rocky10.md)). Puis vérifiez :
+
+```bash
+admin fraicheur-verifier --cles organisation.json --annuaire https://annuaire.exemple.org
+```
+
+```text
+Preuve de fraîcheur valide, signée il y a 3 min par la clé déléguée n° 1 (jusqu'au 2026-12-31) : 12 box, 1 reconnaissance(s)
+La preuve correspond aux entrées et reconnaissances publiées
+```
+
+- **Renouvelez chaque mois**, en relançant `fraicheur-deleguer` avec le même fichier de délégation (numéro suivant). Une délégation expirée arrête les échanges de toutes les box au bout de 48 h : c'est voulu, un annuaire figé ne doit pas être cru.
+- **Lancez `fraicheur-verifier` régulièrement.** Un écart (« Écart : box … publiée au n° 3, preuve au n° 2 ») signale un annuaire qui ne dit pas la même chose à tout le monde : prévenez l'exploitant, et renouvelez la délégation sur une machine saine.
+- Dans la console de chaque box, la ligne « Fraîcheur de l'annuaire » montre la date de la dernière preuve. Pour chaque organisation partenaire, la fraîcheur de son annuaire est aussi affichée.
 
 
 ---
@@ -656,6 +684,8 @@ Côté box, si elle n'apparaît pas dans les demandes en attente : vérifier qu'
 | `reconnaitre --cles <clé> --annuaire <url> --partenaire <clé publique> --annuaire-partenaire <url> --relais <url,…> [--groupes-locaux …] [--groupes-partenaire …] [--validite-jours 90]` | Reconnaît une organisation partenaire, ou réémet sa reconnaissance (§ 2.9) |
 | `reconnaissances --cles <clé> --annuaire <url>` | Liste les organisations partenaires et l'état des accords (§ 2.9) |
 | `reconnaissance-revoquer --cles <clé> --annuaire <url> --empreinte <empreinte> --motif <texte>` | Met fin à un accord (§ 2.9) |
+| `fraicheur-deleguer --cles <clé> --sortie-cle <fichier> --sortie-delegation <fichier> [--validite-jours 30]` | Délègue la clé de fraîcheur au service d'annuaire, ou la renouvelle (§ 2.10) |
+| `fraicheur-verifier --cles <clé> --annuaire <url>` | Vérifie la preuve de fraîcheur publiée et la compare aux entrées et reconnaissances (§ 2.10) |
 | `renouveler --cles <clé> --annuaire <url> [--avant-jours 15] [--validite-jours 90] [--confirmer]` | Renouvelle les entrées qui expirent bientôt (§ 2.6) |
 | `empreinte --cle-publique <fichier>` | Affiche l'empreinte d'une clé publique d'organisation |
 | `enroler --cles <clé> --demande <fichier> [--groupes …] [--validite-jours 90] [--serie 1] --sortie <fichier>` | Signe l'entrée d'une box, à la main (§ 2.5, § 2.7) |

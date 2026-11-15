@@ -149,6 +149,19 @@ public final class Organization {
     }
 
     /**
+     * Délègue la signature des preuves de fraîcheur à une clé en ligne, pour une durée courte.
+     *
+     * @param serial numéro de la délégation (le suivant à chaque renouvellement)
+     */
+    public SignedDocument delegateFreshness(HybridPublicKey freshnessKey, Instant now, Duration validity, long serial) {
+        if (freshnessKey.fingerprint().equals(publicKey().fingerprint())) {
+            throw new IllegalArgumentException("La clé de fraîcheur doit être distincte de la clé du responsable");
+        }
+        return SignedDocument.sign(Json.write(new FreshnessDelegation(Suite.ID, FreshnessDelegation.TYPE, id,
+                freshnessKey.encoded(), serial, now, now.plus(validity))), keys);
+    }
+
+    /**
      * Signe un document de configuration centralisée de cette organisation.
      *
      * @throws DirectoryException si le document vise une autre organisation ou est mal formé

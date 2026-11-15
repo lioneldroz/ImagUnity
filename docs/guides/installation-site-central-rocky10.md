@@ -206,6 +206,28 @@ sh deploy/site-central/publier-version.sh deploy/site-central/mises-a-jour/pilot
 
 L'interface `https://<annuaire>/admin/` n'est ouverte que depuis `RESEAU_ADMIN`, avec le compte `ANNUAIRE_COMPTE`. Elle montre les box, la version de configuration que chacune applique, et permet de préparer les règles de priorité et de routage. Ces règles se signent avec l'outil du responsable (`admin configuration-signer …`) avant d'être publiées : [configuration centralisée](../reference/configuration-centralisee.md).
 
+## 10 bis. Preuve de fraîcheur de l'annuaire
+
+L'annuaire publie une **preuve de fraîcheur** : un état daté du plus haut numéro de chaque entrée et reconnaissance, signé par une clé que le responsable lui **délègue** pour 30 jours. Les box et le relais s'en servent pour :
+- tenir pour inutilisable une box dont l'annuaire annonce une entrée plus récente que celle qu'ils ont reçue (une révocation retenue ne passe pas) ;
+- arrêter les échanges avec une organisation dont l'annuaire ne publie plus de preuve récente (48 h par défaut).
+
+Le responsable crée la clé déléguée sur son poste, puis la remet à l'exploitant :
+
+```bash
+admin fraicheur-deleguer --cles organisation.json --sortie-cle fraicheur.json --sortie-delegation delegation.json
+mkdir -p /opt/imagunity/deploy/site-central/config/fraicheur
+cp fraicheur.json delegation.json /opt/imagunity/deploy/site-central/config/fraicheur/
+chmod 600 /opt/imagunity/deploy/site-central/config/fraicheur/fraicheur.json
+docker compose up -d directory
+admin fraicheur-verifier --cles organisation.json --annuaire https://<ANNUAIRE_HOTE>
+```
+
+- `fraicheur.json` est une clé privée **en clair** : elle doit rester en ligne sur le service d'annuaire. Elle ne peut que dater l'état de l'annuaire, jamais signer une entrée.
+- **Renouveler la délégation avant sa fin**, par exemple chaque mois : relancer `fraicheur-deleguer` (numéro suivant), copier les deux fichiers, puis redémarrer le service d'annuaire. Le journal de l'annuaire prévient 7 jours avant la fin. Une délégation expirée arrête les échanges de toutes les box au bout de 48 h.
+- `fraicheur-verifier` contrôle aussi que la preuve correspond bien aux entrées et reconnaissances publiées.
+- Une fois qu'une box a reçu une preuve de son annuaire, elle l'exige ensuite.
+
 ## 11. Sauvegardes
 
 À sauvegarder :
