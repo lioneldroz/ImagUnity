@@ -357,6 +357,28 @@ class DirectoryConfiguration {
         return rules;
     }
 
+    /**
+     * Nœuds et routes DICOM de la configuration centralisée : entrée DICOM, choix des PACS de restitution, appairage
+     * automatique des box désignées. Sans configuration centralisée (ou sans bloc DICOM), la configuration locale.
+     */
+    @Bean
+    CentralDicom centralDicom(org.springframework.beans.factory.ObjectProvider<CentralRules> central,
+                              com.imagunity.domain.peer.PeerRepository peers, LocalDirectory directory,
+                              BoxIdentity identity, com.imagunity.orchestration.PairingService pairing,
+                              com.imagunity.transport.TransportPort transport, RestoreProperties restore, Clock clock,
+                              org.springframework.beans.factory.ObjectProvider<com.imagunity.dicom.DicomStoreScp> scp,
+                              org.springframework.beans.factory.ObjectProvider<com.imagunity.domain.exam.StudyRestorer>
+                                      restorer) {
+        CentralRules rules = central.getIfAvailable();
+        CentralDicom dicom = new CentralDicom(rules == null ? java.util.Optional::empty : rules::dicom, peers,
+                directory, identity.boxId(), pairing, transport.addressKind(), restore.boxAet(), clock);
+        scp.ifAvailable(s -> s.central(dicom::input));
+        if (restorer.getIfAvailable() instanceof com.imagunity.dicom.DicomRestorer r) {
+            r.router(dicom::router);
+        }
+        return dicom;
+    }
+
     /** Envoi automatique de la demande d'enrôlement, tant que la box n'est pas dans l'annuaire. */
     @Bean
     AutomaticEnrollment automaticEnrollment(LocalDirectory directory, DirectoryClient client, BoxIdentity identity,
@@ -375,7 +397,7 @@ class DirectoryConfiguration {
     SmartLifecycle directoryLifecycle(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                                       DirectoryProperties properties, ExecutorService orchestrationExecutor,
                                       org.springframework.beans.factory.ObjectProvider<CentralRules> central,
-                                      BoxIdentity identity, AutomaticEnrollment enrollment) {
+                                      BoxIdentity identity, AutomaticEnrollment enrollment, CentralDicom dicom) {
         return new SmartLifecycle() {
             private ScheduledExecutorService scheduler;
 
@@ -386,7 +408,7 @@ class DirectoryConfiguration {
                         Thread.ofPlatform().name("annuaire").daemon().factory());
                 CentralRules rules = central.getIfAvailable();
                 scheduler.scheduleWithFixedDelay(() -> synchronizeAll(directory, client, handshake,
-                        orchestrationExecutor, rules, identity, enrollment), 0, properties.syncInterval().toMillis(),
+                        orchestrationExecutor, rules, identity, enrollment, dicom), 0, properties.syncInterval().toMillis(),
                         TimeUnit.MILLISECONDS);
             }
 
@@ -416,6 +438,12 @@ class DirectoryConfiguration {
     static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                                java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity,
                                AutomaticEnrollment enrollment) {
+        synchronizeAll(directory, client, handshake, executor, rules, identity, enrollment, null);
+    }
+
+    static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
+                               java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity,
+                               AutomaticEnrollment enrollment, CentralDicom dicom) {
         try {
             synchronize(directory, client, handshake, executor);
         } catch (RuntimeException e) {
@@ -433,6 +461,13 @@ class DirectoryConfiguration {
                 rules.synchronizeWith(client, identity.keys());
             } catch (RuntimeException e) {
                 LOG.error("Lecture de la configuration centrale en échec, nouvel essai au prochain intervalle", e);
+            }
+        }
+        if (dicom != null) {
+            try {
+                dicom.pairMissing();
+            } catch (RuntimeException e) {
+                LOG.error("Appairage automatique en échec, nouvel essai au prochain intervalle", e);
             }
         }
     }

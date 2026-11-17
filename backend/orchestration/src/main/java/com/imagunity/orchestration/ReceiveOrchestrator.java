@@ -463,7 +463,9 @@ public final class ReceiveOrchestrator {
                 instances.add(new StudyRestorer.Instance(instance.seriesInstanceUid(),
                         instance.entry().sopInstanceUid(), instance.file()));
             }
-            restorer.restore(a.studyInstanceUid(), instances);
+            // Box émettrice : les routes entrantes centrales peuvent choisir les PACS selon elle.
+            java.util.UUID origin = peers.findByName(transfer.peerName()).map(Peer::boxId).orElse(null);
+            restorer.restore(origin, a.studyInstanceUid(), instances);
             progressed = transfer.partRestored(part.index(), instances.size(), m.studyTotals().instances(),
                     clock.instant());
         } catch (IOException | RuntimeException e) {

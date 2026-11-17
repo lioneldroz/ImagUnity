@@ -125,6 +125,24 @@ public final class DicomStoreScp implements AutoCloseable {
         this.centralRouting = rules;
     }
 
+    /** Entrée DICOM de la configuration centralisée, si elle en fixe une ; sinon la configuration locale. */
+    private volatile java.util.function.Supplier<Optional<CentralInput>> central = Optional::empty;
+
+    /**
+     * Sources, AET appelés et routes fixés par la configuration centralisée, relus à chaque association et instance :
+     * un changement s'applique sans redémarrage. Vide : configuration locale.
+     */
+    public void central(java.util.function.Supplier<Optional<CentralInput>> input) {
+        this.central = java.util.Objects.requireNonNull(input);
+    }
+
+    /** AET appelé accepté : par la configuration centrale si elle est présente, sinon par la configuration locale. */
+    private boolean knownCalledAet(String calledAet) {
+        Optional<CentralInput> c = central.get();
+        return c.isPresent() ? calledAet != null && c.get().calledKnown(calledAet.trim())
+                : config.isKnownCalledAet(calledAet);
+    }
+
     DicomStoreScp(DicomInputConfig config, StudyListener listener, Clock clock) {
         this.config = config;
         this.store = new IncomingStore(config.storageDir());
@@ -141,7 +159,7 @@ public final class DicomStoreScp implements AutoCloseable {
         for (IncomingStore.Recovered r : store.recover()) {
             String destination = r.destination() != null ? r.destination()
                     : config.destinationFor(r.calledAet()).orElse(null);
-            if (destination == null || !config.isKnownCalledAet(r.calledAet())) {
+            if (destination == null || !config.isKnownCalledAet(r.calledAet()) && !knownCalledAet(r.calledAet())) {
                 LOG.log(Level.WARNING, "Instances en attente pour la destination {0}, qui n''est plus configurée : ignorées",
                         r.calledAet());
                 continue;
@@ -289,13 +307,15 @@ public final class DicomStoreScp implements AutoCloseable {
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
                         AAssociateRJ.REASON_NO_REASON_GIVEN);
             }
-            if (!config.isCallingAetAllowed(rq.getCallingAET())) {
+            Optional<CentralInput> c = central.get();
+            if (c.isPresent() ? !c.get().callingAllowed(rq.getCallingAET() == null ? null : rq.getCallingAET().trim(),
+                    from) : !config.isCallingAetAllowed(rq.getCallingAET())) {
                 LOG.log(Level.WARNING, "Association refusée : émetteur {0} non autorisé (depuis {1})",
                         printable(rq.getCallingAET()), from.getHostAddress());
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
                         AAssociateRJ.REASON_CALLING_AET_NOT_RECOGNIZED);
             }
-            if (!config.isKnownCalledAet(rq.getCalledAET())) {
+            if (!knownCalledAet(rq.getCalledAET())) {
                 LOG.log(Level.WARNING, "Association refusée : destination {0} inconnue (émetteur {1})",
                         printable(rq.getCalledAET()), printable(rq.getCallingAET()));
                 throw new AAssociateRJ(AAssociateRJ.RESULT_REJECTED_PERMANENT, AAssociateRJ.SOURCE_SERVICE_USER,
@@ -316,7 +336,7 @@ public final class DicomStoreScp implements AutoCloseable {
         protected void store(Association as, PresentationContext pc, Attributes rq, PDVInputStream data,
                              Attributes rsp) throws IOException {
             String calledAet = as.getCalledAET().trim();
-            if (!config.isKnownCalledAet(calledAet)) {
+            if (!knownCalledAet(calledAet)) {
                 throw new DicomServiceException(Status.ProcessingFailure, "Destination inconnue");
             }
             String cuid = rq.getString(Tag.AffectedSOPClassUID);
@@ -378,7 +398,7 @@ public final class DicomStoreScp implements AutoCloseable {
 
     private Accepted storeStarted(String source, String calledAet, InputStream part10, String studyUid)
             throws Refused {
-        if (calledAet == null || !config.isKnownCalledAet(calledAet)) {
+        if (calledAet == null || !knownCalledAet(calledAet)) {
             throw new Refused(Status.ProcessingFailure, "Destination inconnue : " + calledAet, null, null);
         }
         try {
@@ -552,7 +572,7 @@ public final class DicomStoreScp implements AutoCloseable {
                 throw new DicomServiceException(Status.CannotUnderstand,
                         "SOP Class UID du jeu de données différent de celui de la commande");
             }
-            List<String> destinations = destinations(calledAet, dataset).stream().distinct().toList();
+            List<String> destinations = destinations(source, calledAet, dataset).stream().distinct().toList();
             List<ReceivedInstance> placed = place(calledAet, destinations, temp, studyUid, seriesUid, cuid, iuid,
                     tsuid);
             // Toutes les copies sont en place : l'instance est rattachée à l'étude de chaque partenaire. Avant, un échec
@@ -617,7 +637,16 @@ public final class DicomStoreScp implements AutoCloseable {
      *
      * @throws DicomServiceException si aucune règle ne correspond : l'instance est refusée, le PACS la garde en échec
      */
-    private List<String> destinations(String calledAet, Attributes dataset) throws DicomServiceException {
+    private List<String> destinations(String source, String calledAet, Attributes dataset)
+            throws DicomServiceException {
+        Optional<CentralInput> c = central.get();
+        if (c.isPresent()) {
+            try {
+                return c.get().destinations(source, calledAet, dataset);
+            } catch (IllegalArgumentException e) {
+                throw new DicomServiceException(Status.ProcessingFailure, e.getMessage());
+            }
+        }
         Optional<String> fixed = config.destinationFor(calledAet);
         if (fixed.isPresent()) {
             return List.of(fixed.get());

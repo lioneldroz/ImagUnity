@@ -66,6 +66,9 @@
     <label class="bloc">Routage par champ DICOM (JSON)
       <textarea id="routage" rows="7" spellcheck="false" placeholder='{ "rules": [ { "name": "chu-nord", "and": { "InstitutionName": "CHU NORD*" }, "to": ["box-b"] } ] }'></textarea>
     </label>
+    <label class="bloc">Nœuds et routes DICOM (JSON ; plus simple depuis l'interface du responsable, onglet « Configuration des box »)
+      <textarea id="dicom" rows="7" spellcheck="false" placeholder='{ "nodes": [ { "name": "pacs-nord", "aet": "PACS_NORD", "host": "10.2.0.15", "port": 104, "source": true, "destination": true } ], "outgoing": [ { "name": "vers-chu-b", "from": ["pacs-nord"], "to": ["&lt;identifiant de box&gt;"] } ], "incoming": [ { "name": "tout-au-pacs", "to": ["pacs-nord"] } ] }'></textarea>
+    </label>
     <div class="actions">
       <button type="button" id="preparer">Vérifier et préparer le document</button>
     </div>

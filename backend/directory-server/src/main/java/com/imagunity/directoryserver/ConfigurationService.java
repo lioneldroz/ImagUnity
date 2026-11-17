@@ -86,6 +86,7 @@ public class ConfigurationService {
     /** Vérifie les conditions DICOM et les partenaires, comme la box le fera. */
     static RuleSet check(CentralConfiguration configuration) {
         try {
+            dicom(configuration.dicom());
             return rules(configuration);
         } catch (IllegalArgumentException e) {
             throw new PublicationService.InvalidEntryException("Règle invalide : " + e.getMessage());
@@ -96,6 +97,19 @@ public class ConfigurationService {
         return RuleSet.compile(configuration.priority() == null ? null : configuration.priority().defaultPriority(),
                 configuration.priority() == null ? null : specs(configuration.priority().rules()),
                 configuration.routing() == null ? null : specs(configuration.routing().rules()));
+    }
+
+    /** Configuration DICOM vérifiée comme la box le fera (mots-clés des filtres, nœuds des routes). */
+    static void dicom(CentralConfiguration.Dicom dicom) {
+        if (dicom == null) {
+            return;
+        }
+        java.util.function.Function<List<CentralConfiguration.Route>, List<com.imagunity.rules.DicomRouting.RouteSpec>>
+                routes = list -> list.stream().map(r -> new com.imagunity.rules.DicomRouting.RouteSpec(r.name(),
+                r.from(), r.calledAet(), r.and(), r.or(), r.to())).toList();
+        com.imagunity.rules.DicomRouting.compile(dicom.aet(), dicom.nodes().stream().map(n ->
+                new com.imagunity.rules.DicomRouting.NodeSpec(n.name(), n.aet(), n.host(), n.port(), n.source(),
+                        n.destination())).toList(), routes.apply(dicom.outgoing()), routes.apply(dicom.incoming()));
     }
 
     static List<RuleSet.Spec> specs(List<CentralConfiguration.Rule> rules) {
@@ -155,7 +169,7 @@ public class ConfigurationService {
     /** Version publiée, décodée pour l'interface. */
     public record DocumentView(long sequence, java.time.Instant issuedAt, String author, String comment,
                                CentralConfiguration.Target target, CentralConfiguration.Priority priority,
-                               CentralConfiguration.Routing routing) {
+                               CentralConfiguration.Routing routing, CentralConfiguration.Dicom dicom) {
     }
 
     /**
@@ -185,7 +199,7 @@ public class ConfigurationService {
             CentralConfiguration c = CentralConfiguration.verify(document, organization, organizationKey,
                     Clock.offset(clock, java.time.Duration.ofDays(3650)));
             documents.addFirst(new DocumentView(c.sequence(), c.issuedAt(), c.author(), c.comment(), c.target(),
-                    c.priority(), c.routing()));
+                    c.priority(), c.routing(), c.dicom()));
         }
         List<String> groups = boxes.stream().filter(b -> "ACTIVE".equals(b.status()))
                 .flatMap(b -> b.groups().stream()).distinct().sorted().toList();
@@ -194,7 +208,13 @@ public class ConfigurationService {
 
     /** Brouillon demandé par l'interface. */
     public record DraftRequest(CentralConfiguration.Target target, String author, String comment,
-                               CentralConfiguration.Priority priority, CentralConfiguration.Routing routing) {
+                               CentralConfiguration.Priority priority, CentralConfiguration.Routing routing,
+                               CentralConfiguration.Dicom dicom) {
+
+        public DraftRequest(CentralConfiguration.Target target, String author, String comment,
+                            CentralConfiguration.Priority priority, CentralConfiguration.Routing routing) {
+            this(target, author, comment, priority, routing, null);
+        }
     }
 
     /** Prépare le document à signer : prochain numéro, date d'émission, règles vérifiées comme par la box. */
@@ -203,7 +223,7 @@ public class ConfigurationService {
         try {
             draft = CentralConfiguration.draft(organization, request.target(), store.highestSequence().orElse(0) + 1,
                     clock.instant(), blankToNull(request.author()), blankToNull(request.comment()), request.priority(),
-                    request.routing());
+                    request.routing(), request.dicom());
         } catch (DirectoryException | NullPointerException e) {
             throw new PublicationService.InvalidEntryException(e.getMessage() == null ? "Brouillon incomplet"
                     : e.getMessage());

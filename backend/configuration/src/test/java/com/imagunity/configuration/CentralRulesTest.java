@@ -324,4 +324,52 @@ class CentralRulesTest {
         reloaded.load();
         assertThat(reloaded.snapshot().sequence()).isZero();
     }
+
+    private SignedDocument dicomDocument(long sequence, String keyword) {
+        UUID b = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+        CentralConfiguration.Dicom dicom = new CentralConfiguration.Dicom("IMAGUNITY_NORD", List.of(
+                new CentralConfiguration.Node("pacs-nord", "PACS_NORD", "10.2.0.15", 104, true, true),
+                new CentralConfiguration.Node("ct-urg", "CT_URG", null, null, true, false)),
+                List.of(new CentralConfiguration.Route("ct-vers-b", List.of("ct-urg"), "IU_TO_B", Map.of(keyword, "CT"),
+                        null, List.of(b.toString()))),
+                List.of(new CentralConfiguration.Route("tout", List.of(b.toString()), null, null,
+                        Map.of("Modality", "MR"), List.of("pacs-nord"))));
+        return ORGANIZATION.signConfiguration(CentralConfiguration.draft("chu-exemple",
+                CentralConfiguration.Target.of(List.of(BOX)), sequence, clock.instant(), null, null, null, null, dicom));
+    }
+
+    @Test
+    void aDicomBlockIsCompiledAppliedAndShownWithoutTouchingTheRules() throws Exception {
+        CentralRules rules = rules();
+        assertThat(rules.dicom()).isEmpty();
+        assertThat(rules.synchronize(List.of(dicomDocument(1, "Modality")))).isTrue();
+        assertThat(rules.dicom()).hasValueSatisfying(d -> {
+            assertThat(d.aet()).isEqualTo("IMAGUNITY_NORD");
+            assertThat(d.outgoing()).hasSize(1);
+            assertThat(d.incoming()).hasSize(1);
+        });
+        assertThat(rules.priority()).as("bloc absent : règles locales").isEmpty();
+        assertThat(rules.routing()).isEmpty();
+        assertThat(rules.status().dicom()).containsExactly("AET de la box : IMAGUNITY_NORD",
+                "Nœud ct-urg (CT_URG) : source", "Nœud pacs-nord (PACS_NORD, 10.2.0.15:104) : source et destination",
+                "Route sortante ct-vers-b : CT_URG vers IU_TO_B [Modality=CT] → 1 box",
+                "Route entrante tout : 1 box [ou (Modality=MR)] → pacs-nord");
+
+        // Filtre au mot-clé inconnu : refusé, la version en vigueur reste.
+        assertThat(rules.synchronize(List.of(dicomDocument(2, "Modalite")))).isFalse();
+        assertThat(rules.snapshot().refused()).isEqualTo(2);
+        assertThat(rules.snapshot().refusal()).contains("Modalite");
+        assertThat(rules.snapshot().sequence()).isEqualTo(1);
+
+        CentralRules reloaded = rules();
+        reloaded.load();
+        assertThat(reloaded.dicom()).isPresent();
+        assertThat(CentralRules.dicom(null)).isNull();
+        assertThat(CentralRules.describe(com.imagunity.rules.DicomRouting.compile(null, List.of(new com.imagunity
+                .rules.DicomRouting.NodeSpec("pacs", "PACS", "h", null, false, true)), List.of(new com.imagunity
+                .rules.DicomRouting.RouteSpec("r", List.of(), null, Map.of(), Map.of(), List.of(UUID.randomUUID()
+                .toString()))), List.of(new com.imagunity.rules.DicomRouting.RouteSpec("e", List.of(), null, Map.of(),
+                Map.of(), List.of("pacs")))))).containsExactly("Nœud pacs (PACS, h) : destination",
+                "Route sortante r : toute source → 1 box", "Route entrante e : toute box → pacs");
+    }
 }

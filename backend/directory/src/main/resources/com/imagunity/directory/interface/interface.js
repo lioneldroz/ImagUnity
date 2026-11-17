@@ -94,7 +94,7 @@ function ongletCourant() {
 
 function ongletActif(nom) {
   document.querySelectorAll("[data-onglet]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.onglet === nom)));
-  ["demarrage", "demandes", "box", "codes", "partenaires", "aide"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
+  ["demarrage", "demandes", "box", "codes", "configuration", "partenaires", "aide"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
   try { sessionStorage.setItem("onglet", nom); } catch (e) { /* sans stockage : onglet non retenu */ }
 }
 
@@ -638,6 +638,237 @@ async function telechargerCle() {
   }
 }
 
+
+// --- Configuration des box : nœuds et routes DICOM ---
+
+let configs = null;
+let edition = null;
+let editionModifiee = false;
+
+const texteFiltre = (m) => Object.entries(m || {}).map(([k, v]) => k + "=" + v).join("; ");
+
+function lireFiltre(texte, quoi) {
+  const m = {};
+  for (const morceau of texte.split(";").map((x) => x.trim()).filter(Boolean)) {
+    const i = morceau.indexOf("=");
+    if (i < 1) throw new Error(quoi + " : « " + morceau + " » n'a pas la forme Champ=motif");
+    m[morceau.slice(0, i).trim()] = morceau.slice(i + 1).trim();
+  }
+  return m;
+}
+
+function copieDicom(d) {
+  return {
+    aet: (d && d.aet) || "",
+    nodes: ((d && d.nodes) || []).map((n) => ({ name: n.name, aet: n.aet, host: n.host || "", port: n.port || "",
+      source: !!n.source, destination: !!n.destination })),
+    outgoing: ((d && d.outgoing) || []).map((r) => ({ name: r.name, from: [...(r.from || [])], calledAet: r.calledAet || "",
+      and: texteFiltre(r.and), or: texteFiltre(r.or), to: [...(r.to || [])] })),
+    incoming: ((d && d.incoming) || []).map((r) => ({ name: r.name, from: [...(r.from || [])],
+      and: texteFiltre(r.and), or: texteFiltre(r.or), to: [...(r.to || [])] })),
+  };
+}
+
+function boxChoisie() {
+  return configs && configs.box.find((b) => b.boxId === $("config-box").value);
+}
+
+function modifie() {
+  editionModifiee = true;
+}
+
+function afficherConfigurations(c) {
+  configs = c;
+  const select = $("config-box");
+  const avant = select.value;
+  select.replaceChildren(...c.box.map((b) => {
+    const o = element("option", null, b.nom);
+    o.value = b.boxId;
+    return o;
+  }));
+  if (c.box.some((b) => b.boxId === avant)) select.value = avant;
+  $("config-copier").replaceChildren(element("option", null, "—"), ...c.box.map((b) => {
+    const o = element("option", null, b.nom);
+    o.value = b.boxId;
+    return o;
+  }));
+  $("config-copier").firstChild.value = "";
+  $("config-editeur").hidden = c.box.length === 0;
+  if (c.box.length === 0) {
+    $("config-etat").textContent = "Aucune box active dans l'annuaire.";
+    return;
+  }
+  afficherEtatBox();
+  if (!editionModifiee) chargerEdition();
+}
+
+function afficherEtatBox() {
+  const b = boxChoisie();
+  if (!b) return;
+  const morceaux = [b.numero ? "Version en vigueur : n° " + b.numero + " (" + b.cible + ")" : "Aucune configuration centrale : configuration locale"];
+  if (b.appliquee !== undefined && b.appliquee !== null) morceaux.push("appliquée par la box : n° " + b.appliquee);
+  if (b.refusee) morceaux.push("refus de la n° " + b.refusee + " : " + b.refus);
+  if (b.groupes && b.groupes.length) morceaux.push("groupes : " + b.groupes.join(", "));
+  $("config-etat").textContent = morceaux.join(" — ");
+  $("config-regles").textContent = (b.priorite || b.routage)
+    ? "Les règles " + [b.priorite ? "de priorité" : null, b.routage ? "de routage par champ" : null].filter(Boolean).join(" et ")
+      + " du document en vigueur sont reprises telles quelles dans le nouveau document."
+    : "";
+}
+
+function chargerEdition(depuis) {
+  const b = boxChoisie();
+  if (!b) return;
+  const source = depuis ? configs.box.find((x) => x.boxId === depuis) : b;
+  edition = copieDicom(source && source.dicom);
+  editionModifiee = !!depuis;
+  $("config-aet").value = edition.aet;
+  rendreNoeuds();
+  rendreRoutes();
+}
+
+function caseACocher(libelle, coche, action) {
+  const input = element("input");
+  input.type = "checkbox";
+  input.checked = coche;
+  input.addEventListener("change", () => { action(input.checked); modifie(); });
+  const label = element("label");
+  label.append(input, document.createTextNode(libelle));
+  return label;
+}
+
+function champTexte(valeur, action, options) {
+  const input = element("input");
+  input.type = (options && options.type) || "text";
+  input.value = valeur === null || valeur === undefined ? "" : valeur;
+  if (options && options.placeholder) input.placeholder = options.placeholder;
+  if (options && options.maxLength) input.maxLength = options.maxLength;
+  input.addEventListener("input", () => { action(input.value); modifie(); });
+  if (options && options.surChangement) input.addEventListener("change", options.surChangement);
+  return input;
+}
+
+function rendreNoeuds() {
+  const corps = $("config-noeuds");
+  corps.replaceChildren();
+  if (!edition.nodes.length) {
+    const td = element("td", "discret", "Aucun nœud : la configuration locale de la box s'applique tant qu'aucun n'est déclaré.");
+    td.colSpan = 7;
+    const tr = element("tr");
+    tr.append(td);
+    corps.append(tr);
+  }
+  edition.nodes.forEach((n, i) => {
+    const tr = element("tr");
+    const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
+    cellule(champTexte(n.name, (v) => { n.name = v; }, { placeholder: "pacs-nord", maxLength: 64, surChangement: rendreRoutes }));
+    cellule(champTexte(n.aet, (v) => { n.aet = v; }, { placeholder: "PACS_NORD", maxLength: 16 }));
+    cellule(champTexte(n.host, (v) => { n.host = v; }, { placeholder: "10.2.0.15", maxLength: 253 }));
+    cellule(champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104" }));
+    cellule(caseACocher("", n.source, (v) => { n.source = v; rendreRoutes(); }));
+    cellule(caseACocher("", n.destination, (v) => { n.destination = v; rendreRoutes(); }));
+    cellule(bouton("Retirer", "secondaire petit", () => { edition.nodes.splice(i, 1); modifie(); rendreNoeuds(); rendreRoutes(); }));
+    corps.append(tr);
+  });
+}
+
+function nomBox(id) {
+  const t = configs.destinations.find((d) => d.boxId === id);
+  return t ? t.nom + (t.organisation !== etat.organisation ? " (" + t.organisation + ")" : "") : id;
+}
+
+function listeChoix(titre, options, choisis, vide) {
+  const bloc = element("div");
+  bloc.append(element("div", "discret", titre));
+  const liste = element("div", "choix-liste");
+  if (!options.length) liste.append(element("span", "discret", vide));
+  options.forEach(([valeur, libelle]) => liste.append(caseACocher(libelle, choisis.includes(valeur), (c) => {
+    const i = choisis.indexOf(valeur);
+    if (c && i < 0) choisis.push(valeur);
+    if (!c && i >= 0) choisis.splice(i, 1);
+  })));
+  bloc.append(liste);
+  return bloc;
+}
+
+function rendreRoute(r, i, sortante) {
+  const liste = sortante ? edition.outgoing : edition.incoming;
+  const carte = element("div", "route");
+  const ligne = element("div", "route-ligne");
+  const libelle = (t, champ) => { const l = element("label", null, t); l.append(champ); return l; };
+  ligne.append(libelle("Nom de la route", champTexte(r.name, (v) => { r.name = v; }, { maxLength: 64 })));
+  if (sortante) {
+    ligne.append(libelle("AET appelé exigé (facultatif)", champTexte(r.calledAet, (v) => { r.calledAet = v; },
+      { maxLength: 16, placeholder: "toute destination de la box" })));
+  }
+  ligne.append(libelle("Filtre : tous ces champs (Champ=motif; …)", champTexte(r.and, (v) => { r.and = v; },
+    { placeholder: "Modality=CT; SeriesDescription=*THORAX*" })));
+  ligne.append(libelle("Filtre : un de ces champs", champTexte(r.or, (v) => { r.or = v; }, { placeholder: "facultatif" })));
+  carte.append(ligne);
+  const autre = $("config-box").value;
+  const boxes = configs.destinations.filter((d) => d.boxId !== autre).map((d) => [d.boxId, nomBox(d.boxId)]);
+  if (sortante) {
+    const sources = edition.nodes.filter((n) => n.source && n.name).map((n) => [n.name, n.name + " (" + n.aet + ")"]);
+    carte.append(listeChoix("Sources (aucune cochée : toutes)", sources, r.from, "Aucun nœud source déclaré"));
+    carte.append(listeChoix("Box destinataires", boxes, r.to, "Aucune autre box active"));
+  } else {
+    carte.append(listeChoix("Box émettrices (aucune cochée : toutes)", boxes, r.from, "Aucune autre box active"));
+    const destinations = edition.nodes.filter((n) => n.destination && n.name).map((n) => [n.name, n.name + " (" + n.aet + ")"]);
+    carte.append(listeChoix("PACS destinataires", destinations, r.to, "Aucun nœud destination déclaré"));
+  }
+  const actions = element("div", "actions");
+  actions.append(bouton("Monter", "secondaire petit", () => {
+    if (i > 0) { liste.splice(i - 1, 0, liste.splice(i, 1)[0]); modifie(); rendreRoutes(); }
+  }), bouton("Retirer la route", "secondaire petit", () => { liste.splice(i, 1); modifie(); rendreRoutes(); }));
+  carte.append(actions);
+  return carte;
+}
+
+function rendreRoutes() {
+  $("config-sortantes").replaceChildren(...(edition.outgoing.length ? edition.outgoing.map((r, i) => rendreRoute(r, i, true))
+    : [element("p", "discret", "Aucune route sortante.")]));
+  $("config-entrantes").replaceChildren(...(edition.incoming.length ? edition.incoming.map((r, i) => rendreRoute(r, i, false))
+    : [element("p", "discret", "Aucune route entrante : restitution au PACS de la configuration locale.")]));
+}
+
+function dicomAPublier() {
+  const vide = (t) => (t || "").trim() === "" ? null : t.trim();
+  return {
+    aet: vide($("config-aet").value),
+    nodes: edition.nodes.map((n) => ({ name: n.name.trim(), aet: n.aet.trim(), host: vide(n.host),
+      port: n.port === "" || n.port === null ? null : Number(n.port), source: n.source, destination: n.destination })),
+    outgoing: edition.outgoing.map((r) => ({ name: r.name.trim(), from: r.from, calledAet: vide(r.calledAet),
+      and: lireFiltre(r.and, "Route " + r.name), or: lireFiltre(r.or, "Route " + r.name), to: r.to })),
+    incoming: edition.incoming.map((r) => ({ name: r.name.trim(), from: r.from,
+      and: lireFiltre(r.and, "Route " + r.name), or: lireFiltre(r.or, "Route " + r.name), to: r.to })),
+  };
+}
+
+function publierConfiguration() {
+  const b = boxChoisie();
+  let dicom;
+  try {
+    dicom = dicomAPublier();
+  } catch (e) {
+    message(e.message, "erreur");
+    return;
+  }
+  const resume = dicom.nodes.length + " nœud(s), " + dicom.outgoing.length + " route(s) sortante(s), "
+    + dicom.incoming.length + " route(s) entrante(s)";
+  signer({
+    titre: "Signer la configuration de « " + b.nom + " »",
+    resume: "Document n° " + configs.prochainNumero + " pour cette box seule : " + resume
+      + ". Il remplace sa configuration DICOM locale dès sa prochaine lecture de l'annuaire.",
+    libelle: "Signer et publier",
+    action: async (phrase, garder) => {
+      const r = await api("POST", "/api/configuration", { boxId: b.boxId, dicom, motif: $("config-motif").value, phrase, garder });
+      editionModifiee = false;
+      $("config-motif").value = "";
+      return r;
+    },
+  });
+}
+
 /** Onglet dont la liste n'a pas pu être lue : le motif s'affiche à sa place. */
 function indisponible(onglet, texte) {
   const zone = $(onglet);
@@ -676,6 +907,11 @@ async function charger() {
       indisponible(["demandes", "box", "codes", "partenaires"][i], r.reason.message);
       return null;
     });
+    try {
+      afficherConfigurations(await api("GET", "/api/configurations"));
+    } catch (e) {
+      $("config-etat").textContent = "Configurations illisibles : " + e.message;
+    }
     if (demandes) afficherDemandes(demandes);
     if (boites) afficherBox(boites);
     if (codes) afficherCodes(codes);
@@ -695,6 +931,28 @@ document.addEventListener("DOMContentLoaded", () => {
   $("formulaire-compte").addEventListener("submit", seConnecter);
   $("deleguer").addEventListener("click", deleguer);
   $("telecharger-cle").addEventListener("click", telechargerCle);
+  $("config-box").addEventListener("change", () => { editionModifiee = false; afficherEtatBox(); chargerEdition(); });
+  $("config-aet").addEventListener("input", modifie);
+  $("ajouter-noeud").addEventListener("click", () => {
+    edition.nodes.push({ name: "", aet: "", host: "", port: 104, source: true, destination: false });
+    modifie(); rendreNoeuds(); rendreRoutes();
+  });
+  $("ajouter-sortante").addEventListener("click", () => {
+    edition.outgoing.push({ name: "route-" + (edition.outgoing.length + 1), from: [], calledAet: "", and: "", or: "", to: [] });
+    modifie(); rendreRoutes();
+  });
+  $("ajouter-entrante").addEventListener("click", () => {
+    edition.incoming.push({ name: "entree-" + (edition.incoming.length + 1), from: [], and: "", or: "", to: [] });
+    modifie(); rendreRoutes();
+  });
+  $("config-publier").addEventListener("click", publierConfiguration);
+  $("config-annuler").addEventListener("click", () => { editionModifiee = false; chargerEdition(); message("Modifications annulées", "ok"); });
+  $("config-copier").addEventListener("change", () => {
+    if (!$("config-copier").value) return;
+    chargerEdition($("config-copier").value);
+    $("config-copier").value = "";
+    message("Configuration reprise : vérifiez les adresses, propres à chaque site, avant de signer.", "ok");
+  });
   document.querySelectorAll("[data-copier]").forEach((b) => b.addEventListener("click", () => copier($(b.dataset.copier).textContent)));
   document.querySelectorAll("[data-aller]").forEach((b) => b.addEventListener("click", () => ongletActif(b.dataset.aller)));
   $("formulaire-signer").addEventListener("submit", soumettreSignature);
@@ -751,7 +1009,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(() => {
     const actif = document.activeElement;
     const saisie = document.querySelector("dialog[open], .verification input:checked")
-      || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire, #formulaire-organisation, #formulaire-compte"));
+      || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire, #formulaire-organisation, #formulaire-compte, #config-editeur"));
     if (!saisie) charger();
   }, 30000);
 });

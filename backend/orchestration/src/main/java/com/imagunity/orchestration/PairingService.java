@@ -79,6 +79,11 @@ public final class PairingService {
         LOG.log(Level.INFO, "Connexion demandée pour le partenaire {0}", name);
     }
 
+    /** Vrai si un appairage est en cours (pas encore abouti ni expiré) : un seul à la fois. */
+    public synchronized boolean busy() {
+        return pending != null && !pending.since().plus(pendingTimeout).isBefore(clock.instant());
+    }
+
     public List<Peer> peers() {
         return peers.findAll();
     }

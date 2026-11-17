@@ -44,7 +44,8 @@ Chaque composant ne lit que ses propres fichiers. Le banc les y **dépose** depu
 4. **Examens** de A vers B, puis de B vers A : C-STORE du PACS émetteur vers sa box, puis réception au PACS destinataire, instances comparées une à une (pixels) et accusé de réception.
 5. **Preuves de fraîcheur** : chaque responsable délègue une clé de fraîcheur à son annuaire (`fraicheur-deleguer`). Chaque box reçoit la preuve de son annuaire et celle du partenaire, relayée, et `fraicheur-verifier` les trouve conformes.
 6. **Lecture réservée** : les deux annuaires tournent avec `IMAGUNITY_DIRECTORY_RESTRICTED_READ=true`. Leurs listes sont refusées sans compte ni signature (401), l'entrée d'une box reste publique, et le compte de lecture du relais passe. Tout le reste du banc le vérifie de bout en bout : les box lisent par lectures signées (d'abord leur seule entrée tant qu'elles ne sont pas enrôlées), les relais avec leur compte, et chaque annuaire lit celui du partenaire en signant avec sa clé de fraîcheur. Toutes ces lectures se font par différence.
-7. **Refus**, chacun avec son motif :
+7. **Configuration DICOM centrale** : chaque responsable signe et publie la configuration de sa box (`configuration-signer`, `configuration-publier`), comme l'onglet « Configuration des box » de l'interface. A déclare son PACS comme nœud source et le route vers la box de B. B restitue les séries `*CRANE*` venues de A à un second PACS simulé, le reste à son PACS. Une étude de deux séries arrive série par série au bon PACS, accusé compris. Une source non déclarée est refusée dès l'association.
+8. **Refus**, chacun avec son motif :
    - box locale hors du périmètre de l'accord ;
    - relais du partenaire non autorisé par l'accord ;
    - accord à sens unique : B révoque, le relais de B refuse les dépôts de A, et la box A le signale dans son journal en gardant le message ;

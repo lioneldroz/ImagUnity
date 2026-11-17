@@ -29,4 +29,14 @@ public interface StudyRestorer {
      *                     aucune instance n'est envoyée si la validation échoue
      */
     void restore(String studyInstanceUid, List<Instance> instances) throws IOException;
+
+    /**
+     * Restitue une étude venue de la box {@code origin} : les routes entrantes de la configuration centralisée peuvent
+     * en dépendre (plusieurs PACS selon l'émetteur ou le contenu).
+     *
+     * @param origin box émettrice, ou {@code null} si elle n'est pas connue
+     */
+    default void restore(java.util.UUID origin, String studyInstanceUid, List<Instance> instances) throws IOException {
+        restore(studyInstanceUid, instances);
+    }
 }

@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
  * @param comment      motif du changement, facultatif
  * @param priority     règles de priorité des séries, ou {@code null} : configuration locale de la box
  * @param routing      règles de routage par champ DICOM, ou {@code null} : configuration locale de la box
+ * @param dicom        nœuds DICOM du site et routes source → destination, ou {@code null} : configuration locale
  */
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record CentralConfiguration(String type, String suite, String organization, Target target, long sequence,
@@ -42,7 +43,88 @@ public record CentralConfiguration(String type, String suite, String organizatio
                                    @JsonInclude(JsonInclude.Include.NON_NULL) String author,
                                    @JsonInclude(JsonInclude.Include.NON_NULL) String comment,
                                    @JsonInclude(JsonInclude.Include.NON_NULL) Priority priority,
-                                   @JsonInclude(JsonInclude.Include.NON_NULL) Routing routing) {
+                                   @JsonInclude(JsonInclude.Include.NON_NULL) Routing routing,
+                                   @JsonInclude(JsonInclude.Include.NON_NULL) Dicom dicom) {
+
+    /** Document sans bloc DICOM (antérieur aux nœuds et routes centralisés). */
+    public CentralConfiguration(String type, String suite, String organization, Target target, long sequence,
+                                Instant issuedAt, String author, String comment, Priority priority, Routing routing) {
+        this(type, suite, organization, target, sequence, issuedAt, author, comment, priority, routing, null);
+    }
+
+    /**
+     * Nœud DICOM du site de la box : PACS, modalité, station.
+     *
+     * @param name        nom du nœud dans la configuration (minuscules, chiffres, tirets)
+     * @param aet         son AET
+     * @param host        son adresse : obligatoire pour une destination ; pour une source, l'association doit en venir
+     * @param port        son port DICOM (destination)
+     * @param source      il peut envoyer à la box
+     * @param destination la box peut lui restituer des examens reçus
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record Node(String name, String aet, @JsonInclude(JsonInclude.Include.NON_NULL) String host,
+                       @JsonInclude(JsonInclude.Include.NON_NULL) Integer port, Boolean source, Boolean destination) {
+
+        /** Rôle absent : non. */
+        public Node {
+            source = Boolean.TRUE.equals(source);
+            destination = Boolean.TRUE.equals(destination);
+        }
+    }
+
+    /**
+     * Route d'une source vers des destinations, avec un filtre DICOM facultatif ({@code and}, {@code or}).
+     * <ul>
+     *   <li>sortante : {@code from} = noms de nœuds sources (vide : toutes), {@code calledAet} = AET appelé par la
+     *       source (facultatif), {@code to} = identifiants des box destinataires ;</li>
+     *   <li>entrante : {@code from} = identifiants des box émettrices (vide : toutes), {@code to} = noms de nœuds
+     *       destinations.</li>
+     * </ul>
+     * La première route qui correspond s'applique.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record Route(String name,
+                        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<String> from,
+                        @JsonInclude(JsonInclude.Include.NON_NULL) String calledAet,
+                        @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<String, String> and,
+                        @JsonInclude(JsonInclude.Include.NON_EMPTY) Map<String, String> or,
+                        List<String> to) {
+
+        public Route {
+            from = from == null ? List.of() : List.copyOf(from);
+            and = and == null ? Map.of() : Map.copyOf(and);
+            or = or == null ? Map.of() : Map.copyOf(or);
+            to = to == null ? List.of() : List.copyOf(to);
+            calledAet = calledAet == null || calledAet.isBlank() ? null : calledAet.strip();
+        }
+    }
+
+    /**
+     * Configuration DICOM d'une box : ses nœuds et ses routes. Remplace, quand elle est présente, les émetteurs
+     * autorisés, les destinations DICOM et le PACS de restitution de la configuration locale.
+     *
+     * @param aet      AET de la box (appelé par les sources, et sous lequel elle restitue) ; {@code null} : local
+     * @param nodes    nœuds du site
+     * @param outgoing routes sortantes : d'un nœud source vers des box
+     * @param incoming routes entrantes : d'une box émettrice vers des nœuds destinations
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public record Dicom(@JsonInclude(JsonInclude.Include.NON_NULL) String aet, List<Node> nodes, List<Route> outgoing,
+                        List<Route> incoming) {
+
+        public Dicom {
+            nodes = nodes == null ? List.of() : List.copyOf(nodes);
+            outgoing = outgoing == null ? List.of() : List.copyOf(outgoing);
+            incoming = incoming == null ? List.of() : List.copyOf(incoming);
+            aet = aet == null || aet.isBlank() ? null : aet.strip();
+        }
+
+        /** Nœud de ce nom, s'il existe. */
+        public java.util.Optional<Node> node(String name) {
+            return nodes.stream().filter(n -> n.name().equals(name)).findFirst();
+        }
+    }
 
     public static final String TYPE = "imagunity.configuration";
     /** Tolérance d'horloge pour un document émis « dans le futur ». */
@@ -171,8 +253,15 @@ public record CentralConfiguration(String type, String suite, String organizatio
     /** Nouveau document à signer. */
     public static CentralConfiguration draft(String organization, Target target, long sequence, Instant issuedAt,
                                              String author, String comment, Priority priority, Routing routing) {
+        return draft(organization, target, sequence, issuedAt, author, comment, priority, routing, null);
+    }
+
+    /** Nouveau document à signer, avec un bloc DICOM. */
+    public static CentralConfiguration draft(String organization, Target target, long sequence, Instant issuedAt,
+                                             String author, String comment, Priority priority, Routing routing,
+                                             Dicom dicom) {
         CentralConfiguration draft = new CentralConfiguration(TYPE, Suite.ID, organization, target, sequence,
-                issuedAt, author, comment, priority, routing);
+                issuedAt, author, comment, priority, routing, dicom);
         draft.checkShape();
         return draft;
     }
@@ -188,8 +277,11 @@ public record CentralConfiguration(String type, String suite, String organizatio
         if (sequence < 1 || sequence > MAX_SEQUENCE) {
             throw new DirectoryException("Configuration : numéro de version invalide " + sequence);
         }
-        if (priority == null && routing == null) {
-            throw new DirectoryException("Configuration vide : ni priorité ni routage");
+        if (priority == null && routing == null && dicom == null) {
+            throw new DirectoryException("Configuration vide : ni priorité, ni routage, ni configuration DICOM");
+        }
+        if (dicom != null) {
+            checkDicom(dicom);
         }
         if (priority != null) {
             if (priority.defaultPriority() != null && (priority.defaultPriority() < 1 || priority.defaultPriority() > 9)) {
@@ -199,6 +291,105 @@ public record CentralConfiguration(String type, String suite, String organizatio
         }
         if (routing != null) {
             checkRules(routing.rules(), "routage", false);
+        }
+    }
+
+    /** AET : 1 à 16 caractères sûrs (ils servent aussi de noms de dossiers dans la box). */
+    private static final Pattern AET = Pattern.compile("[A-Za-z0-9_\\-]{1,16}");
+    /** Nœuds et routes au plus, par document. */
+    static final int MAX_DICOM_ITEMS = 64;
+
+    private static void requireAet(String aet, String what) {
+        if (aet == null || !AET.matcher(aet).matches()) {
+            throw new DirectoryException(what + " : AET invalide « " + aet + " » (1 à 16 caractères parmi A-Z, a-z, "
+                    + "0-9, _ et -)");
+        }
+    }
+
+    private static void checkDicom(Dicom dicom) {
+        if (dicom.aet() != null) {
+            requireAet(dicom.aet(), "AET de la box");
+        }
+        if (dicom.nodes().size() > MAX_DICOM_ITEMS || dicom.outgoing().size() > MAX_DICOM_ITEMS
+                || dicom.incoming().size() > MAX_DICOM_ITEMS) {
+            throw new DirectoryException("Configuration DICOM : " + MAX_DICOM_ITEMS + " nœuds ou routes au plus");
+        }
+        java.util.Set<String> names = new java.util.HashSet<>();
+        java.util.Set<String> sourceAets = new java.util.HashSet<>();
+        for (Node node : dicom.nodes()) {
+            if (node.name() == null || !NAME.matcher(node.name()).matches()) {
+                throw new DirectoryException("Nœud DICOM : nom invalide « " + node.name() + " »");
+            }
+            if (!names.add(node.name())) {
+                throw new DirectoryException("Nœud DICOM en double : " + node.name());
+            }
+            requireAet(node.aet(), "Nœud " + node.name());
+            if (!node.source() && !node.destination()) {
+                throw new DirectoryException("Nœud " + node.name() + " : ni source ni destination");
+            }
+            if (node.host() != null && (node.host().isBlank() || node.host().length() > 253
+                    || !node.host().matches("[A-Za-z0-9.:\\-]+"))) {
+                throw new DirectoryException("Nœud " + node.name() + " : adresse invalide « " + node.host() + " »");
+            }
+            if (node.destination() && (node.host() == null || node.port() == null)) {
+                throw new DirectoryException("Nœud " + node.name() + " : une destination a une adresse et un port");
+            }
+            if (node.port() != null && (node.port() < 1 || node.port() > 65535)) {
+                throw new DirectoryException("Nœud " + node.name() + " : port hors de 1 à 65535");
+            }
+            if (node.source() && !sourceAets.add(node.aet())) {
+                throw new DirectoryException("Deux nœuds sources ont l'AET " + node.aet());
+            }
+        }
+        checkRoutes(dicom, dicom.outgoing(), true);
+        checkRoutes(dicom, dicom.incoming(), false);
+    }
+
+    private static void checkRoutes(Dicom dicom, List<Route> routes, boolean outgoing) {
+        String what = outgoing ? "Route sortante" : "Route entrante";
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (Route route : routes) {
+            if (route.name() == null || !NAME.matcher(route.name()).matches()) {
+                throw new DirectoryException(what + " : nom invalide « " + route.name() + " »");
+            }
+            if (!names.add(route.name())) {
+                throw new DirectoryException(what + " en double : " + route.name());
+            }
+            if (route.to().isEmpty()) {
+                throw new DirectoryException(what + " " + route.name() + " : aucune destination");
+            }
+            if (outgoing) {
+                for (String from : route.from()) {
+                    if (dicom.node(from).filter(Node::source).isEmpty()) {
+                        throw new DirectoryException(what + " " + route.name() + " : « " + from
+                                + " » n'est pas un nœud source");
+                    }
+                }
+                if (route.calledAet() != null) {
+                    requireAet(route.calledAet(), what + " " + route.name());
+                }
+                route.to().forEach(box -> requireBox(box, what + " " + route.name()));
+            } else {
+                route.from().forEach(box -> requireBox(box, what + " " + route.name()));
+                if (route.calledAet() != null) {
+                    throw new DirectoryException(what + " " + route.name() + " : « calledAet » réservé aux routes "
+                            + "sortantes");
+                }
+                for (String to : route.to()) {
+                    if (dicom.node(to).filter(Node::destination).isEmpty()) {
+                        throw new DirectoryException(what + " " + route.name() + " : « " + to
+                                + " » n'est pas un nœud destination");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void requireBox(String box, String what) {
+        try {
+            UUID.fromString(box);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new DirectoryException(what + " : identifiant de box invalide « " + box + " »");
         }
     }
 
@@ -275,6 +466,11 @@ public record CentralConfiguration(String type, String suite, String organizatio
         }
         if (routing != null) {
             text.append(", routage : ").append(routing.rules().size()).append(" règle(s)");
+        }
+        if (dicom != null) {
+            text.append(", DICOM : ").append(dicom.nodes().size()).append(" nœud(s), ")
+                    .append(dicom.outgoing().size()).append(" route(s) sortante(s), ").append(dicom.incoming().size())
+                    .append(" route(s) entrante(s)");
         }
         return text.toString();
     }
