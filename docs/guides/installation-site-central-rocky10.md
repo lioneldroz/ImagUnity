@@ -90,7 +90,8 @@ L'outil du responsable se lance depuis l'image de l'annuaire. On définit la com
 ```bash
 mkdir -p /root/imagunity-responsable && chmod 700 /root/imagunity-responsable && cd /root/imagunity-responsable
 admin() {
-  docker run --rm -i --network imagunity-central_interne -v "$PWD":/travail -w /travail -e LANG=C.UTF-8 \
+  docker run --rm -i --network imagunity-central_interne --user "$(id -u):$(id -g)" -v "$PWD":/travail \
+    -w /travail -e LANG=C.UTF-8 \
     -e IMAGUNITY_PHRASE_ORGANISATION -e IMAGUNITY_ANNUAIRE_COMPTE \
     --entrypoint java imagunity/directory:local \
     -cp /app/imagunity-directory.jar -Dloader.main=com.imagunity.directory.DirectoryAdmin \
@@ -218,7 +219,9 @@ Le responsable crée la clé déléguée sur son poste, puis la remet à l'explo
 admin fraicheur-deleguer --cles organisation.json --sortie-cle fraicheur.json --sortie-delegation delegation.json
 mkdir -p /opt/imagunity/deploy/site-central/config/fraicheur
 cp fraicheur.json delegation.json /opt/imagunity/deploy/site-central/config/fraicheur/
-chmod 600 /opt/imagunity/deploy/site-central/config/fraicheur/fraicheur.json
+# Le service d'annuaire tourne sous le compte 10001 : les deux fichiers lui appartiennent, lisibles de lui seul.
+chown 10001:10001 /opt/imagunity/deploy/site-central/config/fraicheur/*.json
+chmod 600 /opt/imagunity/deploy/site-central/config/fraicheur/*.json
 docker compose up -d directory
 admin fraicheur-verifier --cles organisation.json --annuaire https://<ANNUAIRE_HOTE>
 ```
@@ -302,6 +305,16 @@ cd deploy/site-central && docker compose build && docker compose up -d
 
 Quand une version change le protocole, l'ordre est imposé : **l'annuaire, puis le relais, puis les box** (notes de version). Avec `docker compose up -d directory`, puis `relay`, on contrôle cet ordre.
 
+**Passage au compte sans privilège** (une seule fois, à la mise à jour qui l'apporte : voir les notes de version). Le relais et l'annuaire tournent sous le compte 10001, et non plus en root. Ce qu'ils ont créé avant leur appartient encore à root : le volume des morceaux du relais, et les fichiers de `config/fraicheur/`. Après avoir chargé ou construit les nouvelles images, **avant** `docker compose up -d` :
+
+```bash
+cd /opt/imagunity/deploy/site-central
+sh migrer-compte-sans-privilege.sh     # en root ; sans danger s'il est relancé
+docker compose up -d
+```
+
+Sans cette étape, le relais ne peut plus écrire ses morceaux, et l'annuaire ne lit plus sa clé de fraîcheur : il refuse de démarrer (`AccessDeniedException` dans `docker compose logs directory`).
+
 ## 13. Exploitation et dépannage
 
 | Besoin | Commande |
@@ -317,4 +330,5 @@ Quand une version change le protocole, l'ordre est imposé : **l'annuaire, puis 
 | Caddy n'obtient pas de certificat | DNS qui ne pointe pas sur la machine, ou ports 80 et 443 fermés depuis Internet : voir `docker compose logs caddy` |
 | `403` sur `/admin/` depuis le poste d'administration | Son adresse n'est pas dans `RESEAU_ADMIN`. Après correction : `docker compose up -d caddy` |
 | Le relais refuse une box (`401`) longtemps après sa publication | Plus de 5 minutes : vérifier l'empreinte du responsable dans `.env` et dans la box, et `docker compose logs relay` |
+| Le relais ou l'annuaire refuse de démarrer avec `AccessDeniedException` (`/data/…` ou `/config/fraicheur/…`) | Fichiers créés en root, avant le passage au compte 10001 : `sh migrer-compte-sans-privilege.sh` (§ 12) |
 | Le relais ou l'annuaire refuse de démarrer (« Empreinte du responsable non confirmée ») | `EMPREINTE_RESPONSABLE` ne correspond pas à `config/organisation.pub.json` : le message donne l'empreinte de la clé installée, à comparer de vive voix avec le responsable |
