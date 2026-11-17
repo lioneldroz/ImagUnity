@@ -254,7 +254,10 @@ public final class IuTransport implements TransportPort {
                 box.start(sleeper);
                 LOG.log(Level.INFO, "Relève de la file IU-T sur {0}", relay);
                 return;
-            } catch (TransportException e) {
+            } catch (RuntimeException e) {
+                // TransportException, mais aussi réponse illisible du relais (JSON invalide derrière un proxy) ou
+                // erreur du registre local : sans nouvel essai, la file de ce relais ne serait plus relevée avant le
+                // redémarrage de la box.
                 LOG.log(Level.WARNING, "File IU-T sur {0} indisponible, nouvel essai : {1}", relay, e.getMessage());
                 try {
                     sleeper.sleep(pause);

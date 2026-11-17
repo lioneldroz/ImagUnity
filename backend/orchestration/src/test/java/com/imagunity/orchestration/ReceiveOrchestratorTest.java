@@ -582,6 +582,30 @@ class ReceiveOrchestratorTest {
     }
 
     @Test
+    void retriedPacketsArrivingBeforeTheRetryAnnouncementAreKept() throws IOException {
+        List<PackagePart> parts = packages(2, 60); // deux paquets
+        TransferAnnouncement a = announcement(parts);
+        announce(a);
+        download(offer(parts.get(0)), parts.get(0)); // paquet 1 restitué
+        restoreFailure = new IOException("PACS injoignable");
+        download(offer(parts.get(1)), parts.get(1)); // paquet 2 en échec : transfert en échec
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.FAILED);
+        assertThat(onlyTransfer().restoredParts()).containsExactly(1);
+
+        restoreFailure = null;
+        long again = offer(parts.get(0)); // relance : les paquets arrivent avant l'annonce
+        download(again, parts.get(0));
+        assertThat(inbound.files.get(again).state()).as("copie gardée pour la relance")
+                .isEqualTo(InboundFile.State.DOWNLOADED);
+        download(offer(parts.get(1)), parts.get(1));
+        announce(reissued(a));
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(messages.decodeAck(transport.messages.getLast().text()).orElseThrow().result())
+                .isEqualTo(TransferAck.Result.RESTORED);
+    }
+
+    @Test
     void announcementOfRestoredTransferOnlyResendsTheAck() throws IOException {
         List<PackagePart> parts = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE);
         TransferAnnouncement a = announcement(parts);

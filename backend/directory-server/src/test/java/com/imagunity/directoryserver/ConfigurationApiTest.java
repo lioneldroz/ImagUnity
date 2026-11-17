@@ -204,6 +204,8 @@ class ConfigurationApiTest {
                  "routing": {"rules": [{"name": "chu", "and": {"InstitutionName": "CHU*"}, "to": ["box-b"]}]}}""";
         assertThat(send("POST", "/admin/api/draft", draft, ACCOUNT, false).statusCode()).as("sans en-tête")
                 .isEqualTo(403);
+        assertThat(send("POST", "/admin/%61pi/draft", draft, ACCOUNT, false).statusCode())
+                .as("sans en-tête, chemin encodé").isEqualTo(403);
         HttpResponse<String> prepared = send("POST", "/admin/api/draft", draft, ACCOUNT, true);
         assertThat(prepared.statusCode()).isEqualTo(200);
         CentralConfiguration parsed = CentralConfiguration.fromJson(prepared.body());

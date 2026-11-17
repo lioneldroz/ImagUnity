@@ -220,6 +220,10 @@ public final class ReceiveOrchestrator {
     /**
      * Copie en double d'un paquet déjà restitué (le même paquet proposé deux fois, par exemple après un redémarrage de
      * l'émetteur) : supprimée dès son arrivée, sinon elle resterait sur le disque.
+     *
+     * <p>Les rangs déjà restitués ne comptent que pour un transfert en cours ({@code ANNOUNCED}). Pour un transfert
+     * {@code FAILED}, la copie reçue est celle d'une relance dont l'annonce n'est pas encore arrivée : cette annonce
+     * remettra les rangs restitués à zéro et aura besoin de la copie.
      */
     private void discardIfAlreadyRestored(InboundFile received) {
         Optional<InboundTransfer> transfer = inbound.findTransferByGroup(received.peerName(),
@@ -228,10 +232,11 @@ public final class ReceiveOrchestrator {
             return;
         }
         boolean restored = transfer.get().state() == InboundTransfer.State.RESTORED
-                || messages.decodeAnnouncement(transfer.get().announcement()).stream()
-                        .flatMap(a -> a.parts().stream())
-                        .anyMatch(p -> p.fileName().equals(received.fileName())
-                                && transfer.get().restoredParts().contains(p.index()));
+                || (transfer.get().state() == InboundTransfer.State.ANNOUNCED
+                        && messages.decodeAnnouncement(transfer.get().announcement()).stream()
+                                .flatMap(a -> a.parts().stream())
+                                .anyMatch(p -> p.fileName().equals(received.fileName())
+                                        && transfer.get().restoredParts().contains(p.index())));
         if (restored) {
             discardCopies(received.peerName(), received.fileName());
         }
@@ -289,7 +294,7 @@ public final class ReceiveOrchestrator {
         Optional<Peer> peer = peers.findByTransportPeerId(message.peer().value());
         if (peer.isEmpty()) {
             if (TransferMessages.looksLikeAnnouncement(message.text())) {
-                LOG.log(Level.WARNING, "Annonce d''un contact non appairé : ignorée");
+                LOG.log(Level.WARNING, "Annonce d'un contact non appairé : ignorée");
             }
             return;
         }
@@ -320,6 +325,8 @@ public final class ReceiveOrchestrator {
             if (known.state() != InboundTransfer.State.FAILED || !known.packageGroupId().equals(a.packageGroupId())) {
                 return; // annonce en double, ou relance incohérente
             }
+            // Relance d'un transfert en échec : le nouvel enregistrement repart sans paquet restitué, l'étude
+            // entière est donc restituée de nouveau au PACS.
             createdAt = known.createdAt();
             LOG.log(Level.INFO, "Transfert {0} relancé par {1}", a.transferId(), peer.get().name());
         }

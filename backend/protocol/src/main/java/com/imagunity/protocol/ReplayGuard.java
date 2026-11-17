@@ -47,7 +47,9 @@ public final class ReplayGuard {
         while (!order.isEmpty() && order.peekFirst().expiresAt() < now) {
             seen.remove(order.pollFirst().requestId());
         }
-        if (Math.abs(now - request.timestamp()) > windowSeconds) {
+        // Comparaison sans soustraction de l'horodatage reçu : « now - timestamp » déborderait pour un horodatage
+        // extrême (Math.abs(Long.MIN_VALUE) reste négatif) et la requête passerait pour fraîche.
+        if (request.timestamp() < now - windowSeconds || request.timestamp() > now + windowSeconds) {
             return Optional.of("horodatage hors de la fenêtre admise (horloge de la box à vérifier)");
         }
         if (seen.contains(request.requestId())) {

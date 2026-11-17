@@ -212,6 +212,32 @@ class SendOrchestratorTest {
     }
 
     @Test
+    void instancesRecordedForATransferStillReceivedAreSentNotDeleted() throws IOException {
+        // Arrêt de la box entre l'enregistrement des instances et le passage à PACKAGED.
+        ReceivedStudy study = study("box-b", 1, 1);
+        Transfer pending = Transfer.received(STUDY, "IU_TO_B", "box-b", 1001, clock.instant());
+        transfers.create(pending);
+        transfers.saveInstances(pending.id(), Set.of(study.instances().getFirst().sopInstanceUid()));
+
+        orchestrator.handleStudy(study);
+
+        assertThat(transfers.only().id()).isEqualTo(pending.id());
+        assertThat(transfers.only().state()).isEqualTo(TransferState.ANNOUNCED);
+        assertThat(transport.files).hasSize(1);
+    }
+
+    @Test
+    void longFailureReasonsAreBounded() throws IOException {
+        orchestrator.handleStudy(study("box-b", 1, 1));
+        long fileId = transport.files.getFirst().fileId();
+
+        orchestrator.onTransportEvent(new TransportEvent.FileFailed(fileId, "x".repeat(5000))); // texte du relais
+
+        assertThat(transfers.only().state()).isEqualTo(TransferState.FAILED);
+        assertThat(transfers.only().errorMessage()).hasSizeLessThanOrEqualTo(TransferAck.MAX_REASON);
+    }
+
+    @Test
     void studySignalledAgainAfterPackagingOnlyCleansUp() throws IOException {
         orchestrator.handleStudy(study("box-b", 1, 1));
         ReceivedStudy leftover = study("box-b", 1, 1); // fichiers revenus (suppression ratée, par exemple)

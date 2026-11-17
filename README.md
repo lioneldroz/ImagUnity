@@ -51,6 +51,7 @@ backend/     Java 25, Spring Boot 4, Maven multi-modules
   orchestration/   orchestrateur des transferts, appairage
   api/             API REST (+ SSE) pour la console
   app/             assemblage Spring Boot de la box, console comprise
+  scenarios/       tests de scénarios de bout en bout (box, relais, annuaire réels)
 frontend/    console React + TypeScript (Vite)
 deploy/      installation (site central, box systemd), livraison, banc d'essai (banc-essai/)
 docs/        guides, référence, historique, audit : voir l'index docs/README.md
@@ -76,6 +77,17 @@ java -jar app/target/imagunity-box.jar
 ```
 
 `./mvnw verify` mesure la couverture des tests (JaCoCo) et **échoue sous 95 % des lignes ou 75 % des branches**, module par module. Rapport par module : `<module>/target/site/jacoco/index.html`. Seuils modifiables en ligne de commande : `-Dcouverture.lignes.min=0.90 -Dcouverture.branches.min=0.70`.
+
+### Tests de scénarios
+
+`./mvnw verify` rejoue aussi des **scénarios de bout en bout** dans une seule JVM, avec deux vraies box, un vrai relais IU-T, le vrai service d'annuaire et deux PACS simulés :
+
+- transfert d'un examen de A vers B en C-STORE et en STOW-RS ;
+- routage par champ DICOM et refus à l'entrée DICOM ;
+- pannes de PACS, de box et de relais ;
+- révocation et expiration dans l'annuaire.
+
+Liste des scénarios et des autres tests : [backend/scenarios/README.md](backend/scenarios/README.md).
 
 ### Vulnérabilités des dépendances
 

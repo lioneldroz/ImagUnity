@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.imagunity</groupId>
+        <artifactId>imagunity-parent</artifactId>
+        <version>0.15.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>imagunity-scenarios</artifactId>
+    <name>ImagUnity — scénarios</name>
+    <description>
+        Tests de non-régression par scénarios : deux vraies box, un vrai relais IU-T, le vrai service d'annuaire et
+        deux PACS simulés, dans la même JVM (voir README.md). Module de tests seulement : rien n'est livré.
+    </description>
+
+    <properties>
+        <!-- Pas de code livré : pas de couverture à mesurer, rien à installer ni à publier. -->
+        <jacoco.skip>true</jacoco.skip>
+        <maven.install.skip>true</maven.install.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
+    <dependencies>
+        <!--
+            La box : ses dépendances, par son pom (le jar de la box est reconditionné par Spring Boot et ne peut pas
+            servir de dépendance) ; ses classes sont ajoutées au classpath des tests ci-dessous. Le relais, lui, publie
+            son jar exécutable à part (classifieur exec) : son jar ordinaire sert directement.
+        -->
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-app</artifactId>
+            <version>${project.version}</version>
+            <type>pom</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-relay</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Le service d'annuaire : même traitement que la box (son jar aussi est reconditionné). -->
+        <dependency>
+            <groupId>com.imagunity</groupId>
+            <artifactId>imagunity-directory-server</artifactId>
+            <version>${project.version}</version>
+            <type>pom</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.dcm4che</groupId>
+            <artifactId>dcm4che-net</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <additionalClasspathElements>
+                        <!-- Classes de la box (module app), compilées plus tôt dans le même build. -->
+                        <additionalClasspathElement>${project.basedir}/../app/target/classes</additionalClasspathElement>
+                        <additionalClasspathElement>${project.basedir}/../directory-server/target/classes</additionalClasspathElement>
+                    </additionalClasspathElements>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

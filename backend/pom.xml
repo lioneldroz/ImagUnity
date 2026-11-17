@@ -34,6 +34,7 @@
         <module>orchestration</module>
         <module>api</module>
         <module>app</module>
+        <module>scenarios</module>
     </modules>
 
     <properties>

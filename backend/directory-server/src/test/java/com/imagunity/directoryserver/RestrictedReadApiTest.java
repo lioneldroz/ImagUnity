@@ -109,6 +109,17 @@ class RestrictedReadApiTest {
     }
 
     @Test
+    void encodedPathsDoNotBypassTheRestriction() throws Exception {
+        assertThat(publish(enroll(HybridKeyPair.generate(), UUID.randomUUID(), "Box A"), "/directory/v1/entries"))
+                .isEqualTo(201);
+        // Lettres encodées : décodées par le routage, elles ne doivent pas tromper le filtre.
+        for (String path : List.of("/directory/v1/%65ntries", "/directory/v1/%72ecognitions",
+                "/directory/v1/%63onfigurations", "/directory/%761/entries")) {
+            assertThat(get(path).statusCode()).as(path).isNotEqualTo(200);
+        }
+    }
+
+    @Test
     void listsAreReservedToAccountsActiveBoxesAndRecognizedPartners() throws Exception {
         HybridKeyPair boxKeys = HybridKeyPair.generate();
         UUID box = UUID.randomUUID();

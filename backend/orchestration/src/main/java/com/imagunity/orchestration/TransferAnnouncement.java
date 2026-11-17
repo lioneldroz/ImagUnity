@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Message d'annonce envoyé au destinataire une fois tous les paquets déposés sur les relais.
+ * Message d'annonce envoyé au destinataire une fois tous les paquets confiés au transport (sans attendre la fin de
+ * leur dépôt sur les relais : le destinataire télécharge chaque paquet dès qu'il y est).
  *
  * <p>Il permet au destinataire de rattacher les fichiers reçus à un transfert, de vérifier
  * l'empreinte de chaque paquet de bout en bout, et de savoir quand il a tout reçu.

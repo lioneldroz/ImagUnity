@@ -40,8 +40,10 @@ import java.util.function.Function;
 public final class IuMailbox implements AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(IuMailbox.class.getName());
-    /** Durée de mémoire des messages remis (au moins la durée de séjour sur le relais). */
-    /** Mémoire des messages vus : plus longue que l'âge maximal admis d'un message ({@link SignedMessage#MAX_AGE}). */
+    /**
+     * Mémoire des messages vus (et remis) : plus longue que l'âge maximal admis d'un message
+     * ({@link SignedMessage#MAX_AGE}) et que leur durée de séjour sur le relais.
+     */
     static final Duration SEEN = Duration.ofDays(9);
     /**
      * Message d'une box absente de l'annuaire : gardé ce délai sur le relais (son entrée peut arriver avec la lecture

@@ -256,4 +256,23 @@ class QueueApiTest {
         assertThat(queues.deposit(current, RelayFixture.ACTIVE, envelope).messageId())
                 .as("les autres box déposent encore").isNotBlank();
     }
+
+    @Test
+    void aDepositIntoAQueueRenewedMeanwhileIsUnknownNotAServerError() {
+        QueueStore store = new QueueStore(dataSource);
+        java.time.Instant now = java.time.Instant.now();
+        String recvId = "r".repeat(43);
+        store.create(new QueueStore.Queue(recvId, "s".repeat(43), UUID.randomUUID(), "cle", now));
+        store.deposit(recvId, "m".repeat(22), UUID.randomUUID(), new byte[] {1}, now, now.plusSeconds(60));
+
+        // File renouvelée (ancien identifiant supprimé) entre la lecture de l'adresse et le dépôt : 404, pas 500.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.deposit("x".repeat(43), "n".repeat(22),
+                        UUID.randomUUID(), new byte[] {1}, now, now.plusSeconds(60)))
+                .isInstanceOfSatisfying(RelayException.class,
+                        e -> assertThat(e.status()).isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND));
+        // Autre violation, file toujours là (même identifiant de message) : non masquée.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.deposit(recvId, "m".repeat(22),
+                        UUID.randomUUID(), new byte[] {1}, now, now.plusSeconds(60)))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
 }

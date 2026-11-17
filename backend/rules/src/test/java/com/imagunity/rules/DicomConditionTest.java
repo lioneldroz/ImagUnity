@@ -70,6 +70,10 @@ class DicomConditionTest {
         assertThat(DicomCondition.of("r", fields("Modality", "!SR|KO"), null).matches(series("SR", null)))
                 .as("négation de plusieurs valeurs").isFalse();
         assertThat(DicomCondition.of("r", fields("Modality", "!SR|KO"), null).matches(series("CT", null))).isTrue();
+        assertThat(DicomCondition.of("r", fields("Modality", " !SR|KO "), null).matches(series("SR", null)))
+                .as("négation précédée d'espaces (variable d'environnement, YAML)").isFalse();
+        assertThat(DicomCondition.of("r", fields("Modality", " !SR|KO "), null).matches(series("CT", null)))
+                .isTrue();
         assertThat(DicomCondition.of("r", fields("SeriesDescription", ""), null).matches(series("CT", null)))
                 .as("champ absent").isTrue();
         assertThat(DicomCondition.of("r", fields("SeriesDescription", "!"), null).matches(series("CT", null)))

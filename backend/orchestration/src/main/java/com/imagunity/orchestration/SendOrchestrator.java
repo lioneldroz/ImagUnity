@@ -37,11 +37,17 @@ import java.util.stream.Stream;
  * Orchestrateur côté émetteur : fait avancer chaque transfert dans sa machine à états.
  *
  * <pre>
- * RECEIVED ──empaquetage──► PACKAGED ──dépôt de tous les paquets──► UPLOADED ──annonce──► ANNOUNCED
- *     │                                                                                   │
- *     │                                              accusé « restitué » du destinataire ─┴─► ACKNOWLEDGED
- *     └───────────────────────── échec, ou accusé « en échec » ──────────────────────────────► FAILED
+ * RECEIVED ──empaquetage──► PACKAGED ──paquets confiés au transport, annonce──────────────► ANNOUNCED
+ *     │                         │                                                           │
+ *     │                         └──dépôt fini avant l'annonce──► UPLOADED ──annonce─────────┤
+ *     │                                                                                     │
+ *     │                                accusé « restitué » du destinataire ─────────────────┴──► ACKNOWLEDGED
+ *     └───────────────────── échec, ou accusé « en échec » ──────────────────────────────────────► FAILED
  * </pre>
+ *
+ * <p>L'annonce part dès que tous les paquets sont confiés au transport, sans attendre la fin de leur dépôt : le
+ * destinataire restitue chaque paquet dès son arrivée. {@code UPLOADED} ne sert que si le dépôt se termine alors que
+ * l'annonce n'est pas encore partie (reprise après un redémarrage, par exemple).
  *
  * <p>L'accusé n'est retenu que s'il vient du partenaire destinataire du transfert, pour un transfert annoncé, et
  * si l'empreinte des paquets qu'il porte est celle des paquets déposés. Un accusé « restitué » vide le dossier
@@ -167,8 +173,11 @@ public final class SendOrchestrator {
         // Instances déjà empaquetées dans un transfert en cours : restes de réception (arrêt de la box juste après
         // l'empaquetage), à supprimer. Les autres, par exemple une série arrivée après l'empaquetage de l'étude,
         // partent dans un nouveau transfert : elles ne sont jamais supprimées sans avoir été envoyées.
+        // Un transfert encore RECEIVED n'est pas empaqueté, même si ses instances sont déjà enregistrées (arrêt entre
+        // l'enregistrement des instances et le passage à PACKAGED) : ses instances sont à empaqueter, pas à supprimer.
         Set<String> packaged = new java.util.HashSet<>();
-        active.forEach(t -> packaged.addAll(transfers.instances(t.id())));
+        active.stream().filter(t -> t.state() != TransferState.RECEIVED)
+                .forEach(t -> packaged.addAll(transfers.instances(t.id())));
         List<ReceivedInstance> leftovers = study.instances().stream()
                 .filter(i -> packaged.contains(i.sopInstanceUid())).toList();
         if (!leftovers.isEmpty()) {
@@ -454,11 +463,14 @@ public final class SendOrchestrator {
         } catch (NoSuchFileException e) {
             // déjà supprimé
         } catch (IOException e) {
-            LOG.log(Level.WARNING, "Dossier d''envoi non supprimé : " + dir, e);
+            LOG.log(Level.WARNING, "Dossier d'envoi non supprimé : " + dir, e);
         }
     }
 
-    private void fail(Transfer transfer, String reason) {
+    private void fail(Transfer transfer, String rawReason) {
+        // Motif venu souvent du relais ou d'une exception : sans caractère de contrôle, longueur bornée (la colonne
+        // error_message en limite la taille ; trop long, l'enregistrement échouerait et le transfert resterait bloqué).
+        String reason = sanitize(rawReason);
         transfers.update(transfer.failed(reason, clock.instant()));
         LOG.log(Level.WARNING, "Transfert {0} en échec : {1}", transfer.id(), reason);
     }
