@@ -301,4 +301,22 @@ class ChunkApiTest {
         assertThat(recent).exists();
         java.nio.file.Files.delete(recent);
     }
+
+    @Test
+    void aFailedRecipientInsertLeavesNoOrphanChunkCountingInTheQuota() {
+        ChunkStore store = new ChunkStore(dataSource);
+        UUID box = UUID.randomUUID();
+        Instant now = Instant.now();
+        ChunkStore.Chunk chunk = new ChunkStore.Chunk("orphelin", box, "cle", SIZE, "0".repeat(64), false, now,
+                now.plusSeconds(3600));
+        // Deux destinataires de même identifiant : la seconde insertion échoue (clé primaire).
+        List<ChunkStore.Recipient> recipients = List.of(new ChunkStore.Recipient("double", "orphelin", "cle", false),
+                new ChunkStore.Recipient("double", "orphelin", "cle", false));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.create(chunk, recipients))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(store.chunk("orphelin")).as("aucun morceau orphelin").isEmpty();
+        assertThat(store.recipients("orphelin")).isEmpty();
+        assertThat(store.bytesOf(box)).as("rien ne compte dans le quota").isZero();
+    }
 }
