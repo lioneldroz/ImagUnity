@@ -335,6 +335,9 @@ public final class DicomStoreScp implements AutoCloseable {
                 }
             } catch (IOException | RuntimeException e) {
                 Files.deleteIfExists(temp);
+                if (e instanceof DicomServiceException refused) {
+                    throw refused; // espace disque insuffisant en cours de réception : statut gardé
+                }
                 LOG.log(Level.ERROR, "Échec de la réception d'une instance", e);
                 throw new DicomServiceException(Status.ProcessingFailure, e);
             }
@@ -394,6 +397,9 @@ public final class DicomStoreScp implements AutoCloseable {
             }
         } catch (IOException | RuntimeException e) {
             deleteQuietly(temp);
+            if (e instanceof DicomServiceException refused) {
+                throw new Refused(refused.getStatus(), refused.getMessage(), null, null); // espace disque insuffisant
+            }
             throw new Refused(Status.CannotUnderstand, "Fichier DICOM illisible : " + e.getMessage(), null, null);
         }
         if (fmi == null) {
@@ -450,10 +456,32 @@ public final class DicomStoreScp implements AutoCloseable {
     public record Accepted(String sopClassUid, String sopInstanceUid, String studyUid, List<String> destinations) {
     }
 
-    /** Flux de sortie qui refuse plus de {@code limit} octets : une instance démesurée ne remplit pas le disque. */
-    private static final class LimitedOutput extends java.io.FilterOutputStream {
+    /** Espace disque utilisable du dossier de réception. */
+    @FunctionalInterface
+    interface SpaceProbe {
+        long usable() throws IOException;
+    }
+
+    /** Mesure de l'espace disque ; {@code null} : celle du système de fichiers du dossier de réception. */
+    private volatile SpaceProbe space;
+    /** Octets écrits entre deux contrôles de l'espace disque pendant une réception. */
+    private volatile long spaceCheckInterval = 64L * 1024 * 1024;
+
+    /** Remplace la mesure de l'espace disque et l'intervalle de contrôle (tests). */
+    void space(SpaceProbe probe, long checkInterval) {
+        this.space = java.util.Objects.requireNonNull(probe);
+        this.spaceCheckInterval = checkInterval;
+    }
+
+    /**
+     * Flux de sortie qui refuse plus de {@code limit} octets, et qui contrôle l'espace disque tous les
+     * {@link #spaceCheckInterval} octets : une instance démesurée, ou plusieurs grosses reçues en même temps, ne
+     * remplissent pas le disque (la base de la box, les envois et les réceptions y sont aussi).
+     */
+    private final class LimitedOutput extends java.io.FilterOutputStream {
         private final long limit;
         private long written;
+        private long nextCheck = spaceCheckInterval;
 
         LimitedOutput(OutputStream out, long limit) {
             super(out);
@@ -471,6 +499,10 @@ public final class DicomStoreScp implements AutoCloseable {
             if (written > limit) {
                 throw new IOException("Instance trop grande (plus de " + limit + " octets)");
             }
+            if (written >= nextCheck) {
+                requireFreeSpace();
+                nextCheck = written + spaceCheckInterval;
+            }
             out.write(bytes, offset, length);
         }
     }
@@ -485,7 +517,9 @@ public final class DicomStoreScp implements AutoCloseable {
     }
 
     private void requireFreeSpace() throws IOException {
-        if (Files.getFileStore(store.root()).getUsableSpace() < config.minFreeSpace()) {
+        SpaceProbe probe = space;
+        long usable = probe == null ? Files.getFileStore(store.root()).getUsableSpace() : probe.usable();
+        if (usable < config.minFreeSpace()) {
             LOG.log(Level.ERROR, "Espace disque insuffisant : instance refusée");
             throw new DicomServiceException(Status.OutOfResources, "Espace disque insuffisant");
         }
@@ -511,6 +545,12 @@ public final class DicomStoreScp implements AutoCloseable {
             if (!iuid.equals(dataset.getString(Tag.SOPInstanceUID))) {
                 throw new DicomServiceException(Status.CannotUnderstand,
                         "SOP Instance UID du jeu de données différent de celui de la commande");
+            }
+            // Contrôlé ici comme à la restitution : accepté à la source, il ferait échouer l'étude entière chez le
+            // destinataire, alors que le PACS d'origine aurait déjà oublié l'instance.
+            if (!cuid.equals(dataset.getString(Tag.SOPClassUID))) {
+                throw new DicomServiceException(Status.CannotUnderstand,
+                        "SOP Class UID du jeu de données différent de celui de la commande");
             }
             List<String> destinations = destinations(calledAet, dataset).stream().distinct().toList();
             List<ReceivedInstance> placed = place(calledAet, destinations, temp, studyUid, seriesUid, cuid, iuid,

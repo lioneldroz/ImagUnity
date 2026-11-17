@@ -215,6 +215,49 @@ class StowServiceTest {
     }
 
     @Test
+    void anInstanceWhoseSopClassDiffersFromItsMetadataIsRefusedAtTheSource() throws Exception {
+        Attributes dataset = image("2.25.88", "2.25.88.1.1", "CT");
+        Attributes staleMeta = dataset.createFileMetaInformation(UID.ExplicitVRLittleEndian);
+        staleMeta.setString(Tag.MediaStorageSOPClassUID, VR.UI, UID.SecondaryCaptureImageStorage);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (DicomOutputStream out = new DicomOutputStream(bytes, UID.ExplicitVRLittleEndian)) {
+            out.writeDataset(staleMeta, dataset);
+        }
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> scp.storePart10("p", "IU_TO_B",
+                        new ByteArrayInputStream(bytes.toByteArray()), null))
+                .isInstanceOfSatisfying(DicomStoreScp.Refused.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(Status.CannotUnderstand);
+                    assertThat(e.getMessage()).contains("SOP Class UID");
+                });
+        assertThat(studies.poll(1, TimeUnit.SECONDS)).as("rien ne part").isNull();
+    }
+
+    @Test
+    void aReceptionThatWouldFillTheDiskIsStoppedWhileWriting() throws Exception {
+        DicomStoreScp tight = new DicomStoreScp(new DicomInputConfig("127.0.0.1", freePort(), Set.of(),
+                Map.of("IU_TO_B", "box-b"), storage.resolve("serre"), Duration.ofMillis(400), 1000), studies::add);
+        java.util.concurrent.atomic.AtomicInteger probes = new java.util.concurrent.atomic.AtomicInteger();
+        // Assez d'espace au contrôle initial, plus assez pendant l'écriture (autres réceptions en parallèle).
+        tight.space(() -> probes.getAndIncrement() == 0 ? Long.MAX_VALUE : 0, 100);
+        TestPorts.start(tight);
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> tight.storePart10("p", "IU_TO_B",
+                            new ByteArrayInputStream(part10(image("2.25.89", "2.25.89.1.1", "CT"))), null))
+                    .isInstanceOfSatisfying(DicomStoreScp.Refused.class, e -> {
+                        assertThat(e.getStatus()).as("à réessayer").isEqualTo(Status.OutOfResources);
+                        assertThat(e.getMessage()).contains("Espace disque");
+                    });
+            assertThat(probes.get()).as("contrôlé aussi pendant l'écriture").isGreaterThan(1);
+            try (var files = Files.walk(storage.resolve("serre"))) {
+                assertThat(files.filter(Files::isRegularFile)).as("rien ne reste sur le disque").isEmpty();
+            }
+        } finally {
+            tight.stop();
+        }
+    }
+
+    @Test
     void partialFailuresAreReportedPerInstance() throws Exception {
         Attributes otherStudy = image("2.25.99", "2.25.99.1.1", "CT");
         byte[] notDicom = "pas un fichier DICOM".getBytes(StandardCharsets.UTF_8);
