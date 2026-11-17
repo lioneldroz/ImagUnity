@@ -35,6 +35,10 @@ class DicomInputConfiguration {
         return new StowService(scp);
     }
 
+    /**
+     * Entrée DICOM, démarrée après le serveur web et arrêtée avant lui (phase par défaut, la dernière) : pendant ces
+     * instants, {@link DicomStoreScp} refuse les dépôts STOW-RS qui arrivent par le serveur web (à réessayer).
+     */
     @Bean
     SmartLifecycle dicomInputLifecycle(DicomStoreScp scp) {
         return new SmartLifecycle() {
