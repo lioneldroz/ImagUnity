@@ -125,13 +125,14 @@ public final class LocalDirectory {
     /** Recharge les entrées et reconnaissances du cache, revérifiées. */
     public synchronized void load() {
         List<SignedDocument> others = new ArrayList<>();
-        Map<String, SignedDocument> delegations = new java.util.HashMap<>();
-        Map<String, SignedDocument> proofs = new java.util.HashMap<>();
+        List<SignedDocument> delegations = new ArrayList<>();
+        List<SignedDocument> proofs = new ArrayList<>();
         for (SignedDocument document : cache.entries()) {
             String type = RecognitionVerifier.type(document);
             if (FreshnessDelegation.TYPE.equals(type) || FreshnessProof.TYPE.equals(type)) {
-                // Rangées par organisation : la délégation et sa preuve sont gardées sous des clés dérivées.
-                (FreshnessDelegation.TYPE.equals(type) ? delegations : proofs).put(organizationOf(document), document);
+                // Appariées plus bas par signature, pas par le nom d'organisation qu'elles portent : ce nom n'est qu'une
+                // étiquette (deux partenaires peuvent porter le même, ou celui de cette organisation).
+                (FreshnessDelegation.TYPE.equals(type) ? delegations : proofs).add(document);
                 continue;
             }
             if (RecognitionVerifier.isRecognition(document)) {
@@ -152,16 +153,25 @@ public final class LocalDirectory {
                 others.add(document);
             }
         }
-        proofs.forEach((organization, proof) -> {
-            SignedDocument delegation = delegations.get(organization);
-            if (delegation != null) {
+        for (SignedDocument proof : proofs) {
+            // Délégation de cette preuve : celle dont la clé déléguée l'a signée. acceptFreshness vérifie ensuite que la
+            // délégation est signée par l'organisation ou un partenaire reconnu, et range la preuve sous son empreinte.
+            // Toutes les candidates sont essayées : une délégation falsifiée peut déléguer la même clé qu'une vraie.
+            String refusal = "sans sa délégation";
+            for (SignedDocument delegation : delegations.stream().filter(d -> signedByDelegatedKey(d, proof))
+                    .toList()) {
                 try {
                     acceptFreshness(new Freshness(delegation, proof), false);
+                    refusal = null;
+                    break;
                 } catch (DirectoryException e) {
-                    LOG.log(Level.WARNING, "Preuve de fraîcheur en cache écartée : {0}", e.getMessage());
+                    refusal = e.getMessage();
                 }
             }
-        });
+            if (refusal != null) {
+                LOG.log(Level.WARNING, "Preuve de fraîcheur en cache écartée : {0}", refusal);
+            }
+        }
         for (SignedDocument document : others) {
             Optional<Recognition> signer = recognitions.values().stream()
                     .filter(r -> document.isSignedBy(r.partner().publicKey())).findFirst();
@@ -290,11 +300,13 @@ public final class LocalDirectory {
     }
 
     /** Identifiant d'organisation porté par un document signé, sans vérification. */
-    private static String organizationOf(SignedDocument document) {
+    /** Vrai si la preuve est signée par la clé que cette délégation délègue. */
+    private static boolean signedByDelegatedKey(SignedDocument delegation, SignedDocument proof) {
         try {
-            return Json.MAPPER.readTree(document.payload()).path("organization").asString("");
-        } catch (tools.jackson.core.JacksonException e) {
-            return "";
+            return proof.isSignedBy(Json.read(delegation.payload(), FreshnessDelegation.class,
+                    "Délégation de fraîcheur").publicKey());
+        } catch (DirectoryException | IllegalArgumentException e) {
+            return false; // délégation illisible : écartée
         }
     }
 

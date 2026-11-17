@@ -259,6 +259,41 @@ class FreshnessTest {
     }
 
     @Test
+    void partnersWithTheSameNameKeepTheirOwnProofsAcrossRestarts() {
+        // Deux organisations partenaires distinctes (clés différentes) qui portent le même nom : le nom n'est qu'une
+        // étiquette, chaque preuve reste rattachée à l'empreinte de son organisation.
+        HybridKeyPair homonymKeys = HybridKeyPair.generate();
+        Organization homonym = new Organization(B.id(), homonymKeys);
+        HybridKeyPair freshKeyHomonym = HybridKeyPair.generate();
+        String fpB = B.publicKey().fingerprint();
+        String fpHomonym = homonym.publicKey().fingerprint();
+        LocalDirectory first = directory(Duration.ofHours(48));
+        first.synchronizeRecognitions(() -> List.of(
+                A.recognize(new Recognition.Partner(B.id(), B.publicKey().encoded(), "https://annuaire.b.example",
+                        List.of(RELAY_B)), new Recognition.Scope(List.of("*"), List.of("*")), clock.now,
+                        Duration.ofDays(90)),
+                A.recognize(new Recognition.Partner(homonym.id(), homonym.publicKey().encoded(),
+                        "https://annuaire.homonyme.example", List.of(RELAY_B)),
+                        new Recognition.Scope(List.of("*"), List.of("*")), clock.now, Duration.ofDays(90))));
+        assertThat(first.synchronizePartnerFreshness(fpB, () -> Optional.of(proofB(Map.of()))).accepted())
+                .isEqualTo(1);
+        assertThat(first.synchronizePartnerFreshness(fpHomonym, () -> Optional.of(new Freshness(
+                homonym.delegateFreshness(freshKeyHomonym.publicKey(), clock.now.minusSeconds(60), DAYS_30, 1),
+                FreshnessProof.sign(freshKeyHomonym, homonym.id(), clock.now.minusSeconds(30), Map.of(),
+                        Map.of())))).accepted()).isEqualTo(1);
+
+        LocalDirectory restarted = new LocalDirectory(new EntryVerifier(A.id(), A.publicKey(), SerialMemory.inMemory(),
+                clock), cache, clock).federate(new RecognitionVerifier(A.id(), A.publicKey(), SerialMemory.inMemory()),
+                SerialMemory.inMemory()).checkFreshness(A.id(), A.publicKey(), Duration.ofHours(48));
+        restarted.load();
+
+        assertThat(restarted.freshness(fpB)).as("preuve de bourgogne-fc").hasValueSatisfying(p ->
+                assertThat(p.issuedAt()).isEqualTo(clock.now));
+        assertThat(restarted.freshness(fpHomonym)).as("preuve de l'homonyme").hasValueSatisfying(p ->
+                assertThat(p.issuedAt()).isEqualTo(clock.now.minusSeconds(30)));
+    }
+
+    @Test
     void theClientReadsFreshnessProofs() throws Exception {
         Freshness f = proofA(Map.of(), Map.of());
         int[] status = {200};
