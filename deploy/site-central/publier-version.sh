@@ -27,7 +27,9 @@ lanceur() {
     if command -v java >/dev/null 2>&1; then
         LANG=C.UTF-8 java -jar "$SOURCE/imagunity-release.jar" "$@"
     else
-        docker run --rm --network none -e LANG=C.UTF-8 -v "$SOURCE":/version:ro \
+        # Sous le compte de l'appelant : l'image tourne sans privilège, et une livraison posée par root dans un
+        # dossier fermé ne lui serait pas lisible. Rien n'est écrit, et le conteneur n'a pas de réseau.
+        docker run --rm --network none --user "$(id -u):$(id -g)" -e LANG=C.UTF-8 -v "$SOURCE":/version:ro \
             -v "$CLE":/cle/editeur.pub.json:ro --entrypoint java "$IMAGE_JAVA" \
             -jar /version/imagunity-release.jar "$@"
     fi

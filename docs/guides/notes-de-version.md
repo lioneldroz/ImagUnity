@@ -17,6 +17,11 @@
 
 - **Preuves de fraîcheur après un redémarrage de la box** : relues depuis le cache, elles étaient rangées par nom d'organisation, une simple étiquette. Deux partenaires portant le même nom s'écrasaient l'un l'autre : l'un perdait sa preuve jusqu'à la lecture suivante de son annuaire, voire se voyait associer la délégation de l'autre. Chaque preuve est désormais rattachée à sa délégation par signature, puis à l'empreinte de son organisation. Rien à faire : le cache existant est relu tel quel.
 
+- **Relais et annuaire sans privilège** : leurs images tournent désormais sous un compte dédié (uid et gid 10001), et non plus en root. Ces deux services sont joignables d'Internet : une faille dans Spring ou Tomcat ne donne plus root dans le conteneur.
+  - **À la mise à jour, une fois, avant `docker compose up -d`** : `sh migrer-compte-sans-privilege.sh` dans `deploy/site-central`, en root. Le script rend au compte 10001 le volume des morceaux du relais et les fichiers `config/fraicheur/*.json`. Sinon, le relais ne peut plus écrire ses morceaux, et l'annuaire refuse de démarrer faute de pouvoir lire sa clé de fraîcheur ([installation du site central, § 12](installation-site-central-rocky10.md#12-mettre-à-jour-le-site-central)).
+  - **Ensuite**, à chaque renouvellement de la délégation de fraîcheur : `chown 10001:10001` sur les deux fichiers copiés (§ 10 bis, mis à jour). La commande `admin` du guide tourne sous le compte de l'appelant (`--user`), pour écrire dans le dossier du responsable.
+  - Le banc d'essai k3s utilisait déjà ce compte.
+
 Corrections de la seconde relecture du code (novembre 2026) :
 
 - **Version de la box altérée sur le disque** : écartée au démarrage, elle n'était plus jamais téléchargée de nouveau (déjà « exécutée »), et la box restait arrêtée jusqu'à la version suivante de l'éditeur, le retour à la version livrée étant refusé. La mise à jour de la nuit la télécharge désormais de nouveau et redémarre la box ; une box sur sa version livrée ne la retélécharge pas.

@@ -104,7 +104,7 @@ gunzip -c site-central/images.tar.gz | docker load
 docker compose up -d --no-build directory && docker compose up -d --no-build relay
 ```
 
-L'annuaire passe avant le relais, et le site central avant les box, quand les notes de version le demandent.
+L'annuaire passe avant le relais, et le site central avant les box, quand les notes de version le demandent. À la mise à jour qui fait passer le relais et l'annuaire au compte sans privilège, lancer d'abord `sh migrer-compte-sans-privilege.sh` ([installation du site central, § 12](installation-site-central-rocky10.md#12-mettre-à-jour-le-site-central)).
 
 ## 7. Ce qui a été vérifié
 
