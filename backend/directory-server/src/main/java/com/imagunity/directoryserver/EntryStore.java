@@ -23,7 +23,12 @@ public class EntryStore {
         this.jdbc = JdbcClient.create(dataSource);
     }
 
+    /**
+     * Enregistre une entrée publiée. Dans la transaction de la publication, le verrou des publications est pris avant
+     * de tirer le numéro d'ordre : les numéros deviennent visibles dans l'ordre (voir {@code V9__verrou_publication}).
+     */
     void save(BoxEntry entry, SignedDocument document, Instant publishedAt) {
+        jdbc.sql("SELECT id FROM publication_lock WHERE id = 1 FOR UPDATE").query(Integer.class).single();
         jdbc.sql("INSERT INTO box_entry (box_id, serial, display_name, revoked, valid_until, document, published_at, "
                         + "seq) VALUES (?, ?, ?, ?, ?, ?, ?, nextval('directory_seq'))")
                 .params(entry.boxId(), entry.serial(), entry.displayName(), entry.revoked(), utc(entry.validUntil()),

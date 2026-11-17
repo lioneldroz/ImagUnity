@@ -30,6 +30,10 @@ Corrections de la seconde relecture du code (novembre 2026) :
 - **Téléchargement jamais lancé** : un arrêt de la box entre l'enregistrement d'un paquet proposé et le lancement de son téléchargement le laissait bloqué. L'offre rejouée au redémarrage relance désormais ce téléchargement.
 - **Paquet restitué resté sur le disque** (arrêt juste après la restitution) : il est désormais supprimé à l'examen suivant du transfert.
 
+- **Enrôlement d'une box révoquée ou d'un identifiant déjà pris** : un code neuf, ou une demande sans code après comparaison de l'empreinte, permettait encore de signer une entrée pour l'identifiant d'une box révoquée (révocation annulée) ou d'une box déjà publiée, avec d'autres clés (reprise de son identité, de ses appairages et des règles qui la désignent). Ces demandes sont désormais refusées par l'outil et l'interface du responsable (statuts « Box révoquée » et « Identifiant déjà pris par d'autres clés »).
+- **Échanges avec les box d'un partenaire, notre annuaire figé** : seul l'annuaire du partenaire était contrôlé. Or l'accord avec ce partenaire est publié par notre annuaire, qui, figé, pourrait en cacher la révocation. Les échanges s'arrêtent désormais aussi quand notre propre preuve de fraîcheur est trop ancienne.
+- **Lecture par différence et publications simultanées** : une entrée publiée en même temps qu'une autre (une révocation, par exemple) pouvait être sautée par un lecteur jusqu'à sa lecture complète suivante (jusqu'à 24 h). Les publications d'entrées sont désormais sérialisées. Migration de la base de l'annuaire (`V9`), appliquée seule.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.

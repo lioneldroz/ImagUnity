@@ -166,6 +166,8 @@ const STATUTS = {
   "preuve-invalide": ["Preuve du code invalide", "refus"],
   "code-utilise": ["Code déjà utilisé", "refus"],
   "code-expire": ["Code expiré", "refus"],
+  "box-revoquee": ["Box révoquée", "refus"],
+  "identifiant-pris": ["Identifiant déjà pris par d'autres clés", "refus"],
   "illisible": ["Demande illisible ou mal signée", "refus"],
 };
 

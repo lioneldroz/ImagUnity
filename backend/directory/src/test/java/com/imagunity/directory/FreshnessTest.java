@@ -228,6 +228,29 @@ class FreshnessTest {
     }
 
     @Test
+    void exchangesWithAPartnerStopWhenOurOwnDirectoryIsFrozen() {
+        LocalDirectory directory = directory(Duration.ofHours(48));
+        UUID self = UUID.randomUUID();
+        UUID nord = UUID.randomUUID();
+        String fpB = B.publicKey().fingerprint();
+        directory.synchronize(() -> List.of(entry(A, self, RELAY_A, 1)));
+        directory.synchronizeRecognitions(() -> List.of(A.recognize(new Recognition.Partner(B.id(),
+                B.publicKey().encoded(), "https://annuaire.b.example", List.of(RELAY_B)),
+                new Recognition.Scope(List.of("*"), List.of("*")), clock.now, Duration.ofDays(90))));
+        directory.synchronizePartner(fpB, () -> List.of(entry(B, nord, RELAY_B, 1)));
+        directory.synchronizeFreshness(() -> Optional.of(proofA(Map.of(self, 1L), Map.of(fpB, 1L))));
+        directory.synchronizePartnerFreshness(fpB, () -> Optional.of(proofB(Map.of(nord, 1L))));
+        assertThat(directory.exchangeRefusal(self, nord)).isEmpty();
+
+        // Notre annuaire figé (il ne publie plus de preuve récente, et pourrait cacher la révocation de l'accord),
+        // celui du partenaire toujours frais : les échanges avec ses box s'arrêtent aussi.
+        clock.now = clock.now.plus(Duration.ofHours(49));
+        directory.synchronizePartnerFreshness(fpB, () -> Optional.of(proofB(Map.of(nord, 1L))));
+        assertThat(directory.exchangeRefusal(self, nord)).hasValueSatisfying(m -> assertThat(m)
+                .contains("de l'organisation").contains("sans preuve de fraîcheur récente"));
+    }
+
+    @Test
     void proofsAreKeptInTheCacheAcrossRestarts() {
         LocalDirectory first = directory(Duration.ofHours(48));
         UUID self = UUID.randomUUID();
