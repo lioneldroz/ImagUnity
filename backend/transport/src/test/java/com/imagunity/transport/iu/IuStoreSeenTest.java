@@ -28,4 +28,25 @@ class IuStoreSeenTest {
         store.forgetSeenBefore(Instant.parse("2026-11-05T00:00:00Z"));
         assertThat(new IuStore(dir).seenMessages()).containsOnlyKeys("recent");
     }
+
+    @Test
+    void aDamagedStateFileIsSetAsideInsteadOfBlockingTheWholeDirectory() throws Exception {
+        IuStore store = new IuStore(dir);
+        java.util.UUID to = java.util.UUID.randomUUID();
+        Instant now = Instant.parse("2026-11-13T10:00:00Z");
+        store.addPending(to, new byte[] {1}, now);
+        store.addPending(to, new byte[] {2}, now);
+        Path damaged;
+        try (var files = Files.list(dir.resolve("sortants"))) {
+            damaged = files.sorted().toList().getFirst();
+        }
+        Files.writeString(damaged, ""); // coupure de courant : fichier vide sous son nom définitif
+
+        assertThat(store.pending()).as("l'autre message reste déposable").singleElement()
+                .satisfies(p -> assertThat(p.envelope()).isEqualTo(com.imagunity.protocol.Codec.base64Url(
+                        new byte[] {2})));
+        assertThat(damaged).doesNotExist();
+        assertThat(damaged.resolveSibling(damaged.getFileName() + ".illisible")).exists();
+        assertThat(store.pending()).hasSize(1);
+    }
 }

@@ -35,6 +35,8 @@ import java.util.stream.Stream;
  */
 final class IuStore {
 
+    private static final System.Logger LOG = System.getLogger(IuStore.class.getName());
+
     /** Un contact : box de l'annuaire, et l'identifiant local qui la désigne auprès de l'orchestrateur. */
     record Contact(long peerId, UUID boxId) {
     }
@@ -304,12 +306,29 @@ final class IuStore {
     // --- Fichiers ---
 
     private <T> List<T> list(String sub, Class<T> type) {
+        List<Path> paths;
         try (Stream<Path> files = Files.list(dir.resolve(sub))) {
-            return files.filter(p -> p.getFileName().toString().endsWith(".json")).sorted()
-                    .map(p -> Codec.json().readValue(readString(p), type)).toList();
+            paths = files.filter(p -> p.getFileName().toString().endsWith(".json")).sorted().toList();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        List<T> all = new ArrayList<>();
+        for (Path p : paths) {
+            try {
+                all.add(Codec.json().readValue(readString(p), type));
+            } catch (RuntimeException e) {
+                // Fichier abîmé (coupure de courant, disque) : mis de côté, sans quoi il ferait échouer chaque
+                // lecture du dossier, donc tous les dépôts, envois ou réceptions, et pas seulement le sien.
+                LOG.log(System.Logger.Level.ERROR, "État IU-T illisible, mis de côté : " + p, e);
+                try {
+                    Files.move(p, p.resolveSibling(p.getFileName() + ".illisible"),
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException moveFailed) {
+                    LOG.log(System.Logger.Level.WARNING, "Fichier illisible non déplacé : " + p, moveFailed);
+                }
+            }
+        }
+        return all;
     }
 
     private static Optional<String> read(Path file) {
@@ -330,7 +349,17 @@ final class IuStore {
     private static void write(Path file, String content) {
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         try {
-            Files.writeString(tmp, content, StandardCharsets.UTF_8);
+            // Écrit et forcé sur le disque avant d'être mis en place : sans cela, une coupure de courant peut laisser,
+            // sous le nom définitif, un fichier vide (écriture retardée du système de fichiers).
+            try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(tmp,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                    java.nio.file.StandardOpenOption.WRITE)) {
+                java.nio.ByteBuffer bytes = java.nio.ByteBuffer.wrap(content.getBytes(StandardCharsets.UTF_8));
+                while (bytes.hasRemaining()) {
+                    channel.write(bytes);
+                }
+                channel.force(true);
+            }
             restrict(tmp);
             try {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);

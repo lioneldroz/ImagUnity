@@ -4,7 +4,6 @@ import com.imagunity.directory.HybridKemKeyPair;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.HybridPublicKey;
 import com.imagunity.protocol.Codec;
-import com.imagunity.protocol.ProtocolException;
 import com.imagunity.protocol.SignedMessage;
 import java.io.IOException;
 import java.lang.System.Logger.Level;
@@ -174,7 +173,9 @@ public final class IuMailbox implements AutoCloseable {
                 held.remove(message.messageId());
                 client.ack(relay, queue.recvId(), queue.privateKey(), message.messageId());
                 continue;
-            } catch (ProtocolException e) {
+            } catch (RuntimeException e) { // ProtocolException, ou toute autre erreur à l'ouverture
+                // Message mal formé, quelle qu'en soit la cause : écarté et acquitté. Laissé sur le relais, il
+                // reviendrait en tête de chaque relève et bloquerait tous les messages suivants.
                 LOG.log(Level.WARNING, "Message écarté : {0}", e.getMessage());
                 client.ack(relay, queue.recvId(), queue.privateKey(), message.messageId());
                 continue;
