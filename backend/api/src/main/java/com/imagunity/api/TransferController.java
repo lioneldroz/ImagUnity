@@ -93,7 +93,9 @@ public class TransferController {
     @PostMapping("/transfers/{id}/retry")
     public TransferViews.Outbound retry(@PathVariable UUID id) throws InterruptedException, TimeoutException {
         try {
-            Transfer retried = sender.retry(id).get(RETRY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            // Un transfert annoncé dont l'accusé est en retard se relance aussi (accusé ou annonce perdu).
+            Transfer retried = sender.retry(id, clock.instant().minus(properties.ackOverdue()))
+                    .get(RETRY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
             return view(retried, clock.instant());
         } catch (ExecutionException e) {
             if (e.getCause() instanceof RuntimeException cause) {

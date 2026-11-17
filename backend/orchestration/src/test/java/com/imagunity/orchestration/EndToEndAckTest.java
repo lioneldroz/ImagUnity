@@ -49,6 +49,7 @@ class EndToEndAckTest {
     private int deliveredMessagesB;
     private SendOrchestrator sendOrchestratorA;
     private int offeredFiles;
+    private boolean lostAcks;
 
     @BeforeEach
     void setUp() {
@@ -114,6 +115,9 @@ class EndToEndAckTest {
                 moved = true;
             }
             for (; deliveredMessagesA < transportB.messages.size(); deliveredMessagesA++) {
+                if (lostAcks) {
+                    continue; // A s'arrête avant d'avoir traité l'accusé : il est perdu
+                }
                 transportA.emit(new TransportEvent.MessageReceived(B_SEEN_BY_A,
                         transportB.messages.get(deliveredMessagesA).text()));
                 moved = true;
@@ -168,5 +172,29 @@ class EndToEndAckTest {
         assertThat(transfersA.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
         assertThat(pacsB).hasSize(4);
         assertThat(dir.resolve("a/outbox").resolve(failed.id().toString())).doesNotExist();
+    }
+
+    @Test
+    void aTransferWhoseAckWasLostCanBeRetriedOnceTheAckIsOverdue() throws IOException {
+        lostAcks = true;
+        submit(study());
+        relay();
+        Transfer announced = transfersA.only();
+        assertThat(announced.state()).as("restitué chez B, accusé perdu").isEqualTo(TransferState.ANNOUNCED);
+        assertThat(pacsB).hasSize(4);
+
+        // Accusé pas encore en retard : relance refusée.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> sendOrchestratorA.doRetry(announced.id(),
+                announced.updatedAt())).isInstanceOf(RetryRefusedException.class).hasMessageContaining("en retard");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> sendOrchestratorA.doRetry(announced.id()))
+                .isInstanceOf(RetryRefusedException.class);
+
+        // En retard : la relance renvoie paquets et annonce ; B, qui a déjà restitué l'étude, renvoie son accusé.
+        lostAcks = false;
+        sendOrchestratorA.retry(announced.id(), announced.updatedAt().plusSeconds(1)).join();
+        relay();
+
+        assertThat(transfersA.only().state()).isEqualTo(TransferState.ACKNOWLEDGED);
+        assertThat(pacsB).as("rien de restitué deux fois").hasSize(4);
     }
 }

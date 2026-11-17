@@ -210,15 +210,42 @@ class ReceiveOrchestratorTest {
     }
 
     @Test
-    void duplicateOfferIsIgnored() throws IOException {
+    void aReplayedOfferResumesTheDownloadAndIsIgnoredOnceReceived() throws IOException {
         PackagePart part = packages(1, PackagingConfig.DEFAULT_MAX_PART_SIZE).getFirst();
         String name = part.file().getFileName().toString();
 
         orchestrator.onTransportEvent(new TransportEvent.FileOffered(SENDER, 1, name, part.size()));
+        Path target = transport.downloads.get(1L);
         transport.downloads.clear();
+        // Offre rejouée au redémarrage (arrêt avant le lancement du téléchargement) : relancé, même emplacement.
         orchestrator.onTransportEvent(new TransportEvent.FileOffered(SENDER, 1, name, part.size()));
+        assertThat(transport.downloads).containsExactly(java.util.Map.entry(1L, target));
+        assertThat(inbound.files).hasSize(1);
 
-        assertThat(transport.downloads).isEmpty();
+        transport.downloads.clear();
+        Files.copy(part.file(), target);
+        orchestrator.onTransportEvent(new TransportEvent.FileReceived(SENDER, 1, target));
+        orchestrator.onTransportEvent(new TransportEvent.FileOffered(SENDER, 1, name, part.size()));
+        assertThat(transport.downloads).as("déjà reçu : rien à relancer").isEmpty();
+    }
+
+    @Test
+    void aRestoredPacketLeftOnDiskIsRemovedAtTheNextExamination() throws IOException {
+        List<PackagePart> parts = packages(2, 60); // deux paquets
+        TransferAnnouncement a = announcement(parts);
+        announce(a);
+        long first = offer(parts.get(0));
+        download(first, parts.get(0)); // paquet 1 restitué
+        // Arrêt juste après la restitution : la copie du paquet 1 est restée « reçue » sur le disque.
+        InboundFile consumed = inbound.files.get(first);
+        Files.copy(parts.get(0).file(), consumed.file(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        inbound.saveFile(consumed.with(InboundFile.State.DOWNLOADED, clock.instant()));
+
+        download(offer(parts.get(1)), parts.get(1));
+
+        assertThat(onlyTransfer().state()).isEqualTo(InboundTransfer.State.RESTORED);
+        assertThat(inbound.files.get(first).state()).isEqualTo(InboundFile.State.CONSUMED);
+        assertThat(consumed.file()).as("copie supprimée").doesNotExist();
     }
 
     @Test

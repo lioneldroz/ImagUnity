@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -144,10 +145,20 @@ public final class SendOrchestrator {
      *         inconnu, {@link RetryRefusedException} s'il ne peut pas être relancé
      */
     public CompletableFuture<Transfer> retry(UUID id) {
+        return retry(id, null);
+    }
+
+    /**
+     * Comme {@link #retry(UUID)}, en admettant aussi un transfert annoncé dont l'accusé n'est pas arrivé : annoncé
+     * avant {@code announcedBefore} ({@code null} : non admis). L'annonce ou l'accusé a pu se perdre (box arrêtée
+     * avant de les traiter) ; sans relance possible, le transfert resterait annoncé pour toujours. La relance renvoie
+     * paquets et annonce : le destinataire qui a déjà restitué l'étude renvoie seulement son accusé.
+     */
+    public CompletableFuture<Transfer> retry(UUID id, Instant announcedBefore) {
         CompletableFuture<Transfer> result = new CompletableFuture<>();
         executor.execute(() -> {
             try {
-                result.complete(doRetry(id));
+                result.complete(doRetry(id, announcedBefore));
             } catch (RuntimeException e) {
                 result.completeExceptionally(e);
             }
@@ -316,11 +327,18 @@ public final class SendOrchestrator {
     }
 
     Transfer doRetry(UUID id) {
+        return doRetry(id, null);
+    }
+
+    Transfer doRetry(UUID id, Instant announcedBefore) {
         Transfer transfer = transfers.find(id)
                 .orElseThrow(() -> new NoSuchElementException("Transfert inconnu : " + id));
-        if (transfer.state() != TransferState.FAILED) {
-            throw new RetryRefusedException("Seul un transfert en échec peut être relancé (état : "
-                    + transfer.state() + ")");
+        boolean unacknowledged = transfer.state() == TransferState.ANNOUNCED && announcedBefore != null
+                && transfer.updatedAt().isBefore(announcedBefore);
+        if (transfer.state() != TransferState.FAILED && !unacknowledged) {
+            throw new RetryRefusedException(transfer.state() == TransferState.ANNOUNCED
+                    ? "Transfert annoncé : il ne se relance qu'une fois son accusé en retard"
+                    : "Seul un transfert en échec peut être relancé (état : " + transfer.state() + ")");
         }
         List<TransferPart> parts = transfers.parts(id);
         if (transfer.packageGroupId() == null || parts.isEmpty()) {
@@ -331,6 +349,10 @@ public final class SendOrchestrator {
                 throw new RetryRefusedException("Paquet " + part.index() + "/" + part.count()
                         + " absent du dossier d'envoi : renvoyer l'étude depuis le PACS");
             }
+        }
+        if (unacknowledged) {
+            transfer = transfer.failed("Accusé du destinataire jamais reçu : relancé", clock.instant());
+            transfers.update(transfer);
         }
         parts.forEach(p -> transfers.updatePart(p.reset()));
         Transfer packaged = transfer.moveTo(TransferState.PACKAGED, clock.instant());

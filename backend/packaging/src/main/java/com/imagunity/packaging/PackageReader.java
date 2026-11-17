@@ -84,6 +84,11 @@ public final class PackageReader {
                     if (type != TarConstants.LF_NORMAL && type != TarConstants.LF_OLDNORM) {
                         throw new PackageIntegrityException("Entrée non admise (dossier, lien ou fichier spécial)");
                     }
+                    // Fichier creux (en-têtes PAX GNU.sparse) : type « fichier ordinaire », mais la lecture rend sa
+                    // taille réelle, sans rapport avec la taille déclarée que compte la limite (bombe de décompression).
+                    if (entry.isSparse() || entry.getRealSize() != entry.getSize()) {
+                        throw new PackageIntegrityException("Entrée creuse (sparse) non admise");
+                    }
                     String name = entry.getName();
                     if (name.equals(PackageManifest.ENTRY_NAME)) {
                         manifest = readManifest(tar, entry);
@@ -107,7 +112,7 @@ public final class PackageReader {
                     try (OutputStream os = Files.newOutputStream(out, StandardOpenOption.CREATE_NEW)) {
                         // Enregistré avant l'écriture : supprimé en cas d'échec, même partiel.
                         extracted.put(name, new Extracted(m.group(1), m.group(2), out, -1, null));
-                        size = new DigestInputStream(tar, digest).transferTo(os);
+                        size = copyAtMost(new DigestInputStream(tar, digest), os, entry.getSize());
                     }
                     extracted.put(name, new Extracted(m.group(1), m.group(2), out, size, StudyPackager.hex(digest)));
                 }
@@ -135,12 +140,30 @@ public final class PackageReader {
         return new UnpackedPackage(manifest, instances, StudyPackager.hex(fileDigest));
     }
 
+    /**
+     * Copie au plus {@code max} octets ; au-delà, refus. La taille déclarée par l'archive borne ainsi vraiment ce qui
+     * est écrit, quelle que soit la façon dont le lecteur tar la calcule.
+     */
+    private static long copyAtMost(InputStream in, OutputStream out, long max) throws IOException {
+        byte[] buffer = new byte[64 * 1024];
+        long copied = 0;
+        int n;
+        while ((n = in.read(buffer)) != -1) {
+            copied += n;
+            if (copied > max) {
+                throw new PackageIntegrityException("Entrée plus longue que sa taille déclarée");
+            }
+            out.write(buffer, 0, n);
+        }
+        return copied;
+    }
+
     private PackageManifest readManifest(InputStream tar, TarArchiveEntry entry) throws IOException {
         if (entry.getSize() > MAX_MANIFEST_SIZE) {
             throw new PackageIntegrityException("Manifeste trop volumineux");
         }
         ByteArrayOutputStream json = new ByteArrayOutputStream((int) entry.getSize());
-        tar.transferTo(json);
+        copyAtMost(tar, json, MAX_MANIFEST_SIZE);
         try {
             return mapper.readValue(json.toByteArray(), PackageManifest.class);
         } catch (JacksonException e) {

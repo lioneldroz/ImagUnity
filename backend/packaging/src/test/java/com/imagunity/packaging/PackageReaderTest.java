@@ -298,4 +298,44 @@ class PackageReaderTest {
     void rejectsNonPositiveLimit() {
         assertThatThrownBy(() -> new PackageReader(0)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    /** Archive dont l'instance est un fichier creux (en-têtes PAX GNU.sparse) de {@code realSize} octets. */
+    private Path sparseArchive(String name, long realSize) throws IOException {
+        Path file = dir.resolve("creux-" + System.nanoTime() + ".tar.zst");
+        try (OutputStream os = Files.newOutputStream(file);
+             ZstdOutputStream zstd = new ZstdOutputStream(os);
+             TarArchiveOutputStream tar = new TarArchiveOutputStream(zstd, "UTF-8")) {
+            byte[] pax = (paxRecord("GNU.sparse.size", Long.toString(realSize))
+                    + paxRecord("GNU.sparse.numblocks", "1")
+                    + paxRecord("GNU.sparse.map", (realSize - 1) + ",1")).getBytes(StandardCharsets.UTF_8);
+            TarArchiveEntry header = new TarArchiveEntry("PaxHeaders/x", TarConstants.LF_PAX_EXTENDED_HEADER_LC);
+            header.setSize(pax.length);
+            tar.putArchiveEntry(header);
+            tar.write(pax);
+            tar.closeArchiveEntry();
+            TarArchiveEntry entry = new TarArchiveEntry(name);
+            entry.setSize(1);
+            tar.putArchiveEntry(entry);
+            tar.write(new byte[] {42});
+            tar.closeArchiveEntry();
+        }
+        return file;
+    }
+
+    private static String paxRecord(String key, String value) {
+        String body = " " + key + "=" + value + "\n";
+        int length = body.length() + 1;
+        while (String.valueOf(length).length() + body.length() != length) {
+            length++;
+        }
+        return length + body;
+    }
+
+    @Test
+    void aSparseEntryCannotInflatePastTheLimit() throws IOException {
+        // Un octet déclaré, 64 Mo restitués à la lecture : refusé avant d'écrire quoi que ce soit.
+        Path bomb = sparseArchive("instances/" + SERIES + "/" + SOP + ".dcm", 64L << 20);
+
+        assertRejected(bomb, "creuse");
+    }
 }

@@ -25,6 +25,11 @@ Corrections de la seconde relecture du code (novembre 2026) :
 - **Message de quelques octets bloquant la file de réception** : une box autorisée à déposer sur le relais pouvait sceller un message de moins de 4 octets pour une autre box. Son ouverture levait une erreur imprévue, le message n'était pas acquitté, et il revenait en tête à chaque relève : plus aucun message de ce relais n'était reçu jusqu'à son expiration. Il est désormais refusé et écarté, comme tout message mal formé.
 - **État du transport après une coupure de courant** : les fichiers d'état sont forcés sur le disque avant d'être mis en place, et un fichier abîmé est mis de côté (`.illisible`) au lieu d'empêcher tous les dépôts, envois et réceptions. Les morceaux reçus sont sur le disque avant d'être acquittés au relais.
 
+- **Bombe de décompression par fichier creux** : une entrée tar « creuse » (en-têtes PAX GNU.sparse) déclarait quelques octets mais en restituait autant que voulu, ce qui contournait la limite du volume décompressé et pouvait remplir le disque de la box destinataire. Elle est refusée, et chaque entrée est désormais bornée à sa taille déclarée.
+- **Annonce ou accusé perdu** (box arrêtée avant de l'avoir traité) : le transfert restait annoncé pour toujours, et la console refusait de le relancer. Un transfert dont l'accusé est en retard (`ack-overdue`, 30 min par défaut) se relance maintenant depuis la console. Paquets et annonce partent de nouveau ; si le destinataire a déjà restitué l'étude, il renvoie seulement son accusé.
+- **Téléchargement jamais lancé** : un arrêt de la box entre l'enregistrement d'un paquet proposé et le lancement de son téléchargement le laissait bloqué. L'offre rejouée au redémarrage relance désormais ce téléchargement.
+- **Paquet restitué resté sur le disque** (arrêt juste après la restitution) : il est désormais supprimé à l'examen suivant du transfert.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.

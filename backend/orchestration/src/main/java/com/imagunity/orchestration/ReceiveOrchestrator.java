@@ -184,7 +184,17 @@ public final class ReceiveOrchestrator {
                     offered.size());
             return;
         }
-        if (inbound.findFile(offered.fileId()).isPresent()) {
+        Optional<InboundFile> known = inbound.findFile(offered.fileId());
+        if (known.isPresent()) {
+            if (known.get().state() == InboundFile.State.DOWNLOADING) {
+                // Offre rejouée au redémarrage : le fichier a pu être noté sans que son téléchargement soit lancé
+                // (arrêt entre les deux). Le transport ne relance pas deux fois un téléchargement en cours.
+                try {
+                    transport.receiveFile(offered.fileId(), known.get().file());
+                } catch (TransportException e) {
+                    fileFailed(known.get(), "Téléchargement impossible : " + e.getMessage());
+                }
+            }
             return;
         }
         if (inbound.findTransferByGroup(peer.get().name(), groupOf(offered.fileName()))
@@ -391,6 +401,8 @@ public final class ReceiveOrchestrator {
                 .sorted(Comparator.comparingInt(TransferAnnouncement.Part::index)).toList();
         for (TransferAnnouncement.Part part : parts) {
             if (transfer.restoredParts().contains(part.index())) {
+                // Copie restée sur le disque si la box s'est arrêtée juste après la restitution du paquet.
+                discardCopies(peerName, part.fileName());
                 continue;
             }
             Optional<InboundFile> file = inbound.findFiles(peerName, part.fileName()).stream()
