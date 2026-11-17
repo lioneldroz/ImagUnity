@@ -182,7 +182,7 @@ Enrôler cette box ? Tapez « oui » pour confirmer : oui
 Pour chaque demande, l'outil :
 
 1. retrouve le code dans `codes.json` et **vérifie la preuve** : une demande sans code de ce responsable, ou dont la preuve ne correspond pas, est laissée de côté ;
-2. refuse un code **déjà utilisé** par une autre box, ou **expiré** ;
+2. refuse un code **expiré**, ou **déjà utilisé**. Un code déjà utilisé ne sert plus qu'à la box qu'il a enrôlée, avec les mêmes clés, et tant qu'elle n'est pas révoquée : il ne réenrôle ni une autre box, ni d'autres clés, ni une box révoquée ;
 3. affiche la box et demande « oui » (`--confirmer` pour ne pas demander) ;
 4. signe l'entrée avec **le nom et les groupes du code**, la publie, et marque le code comme utilisé.
 
@@ -662,6 +662,9 @@ Messages de `enroler-attente` (les mêmes cas apparaissent en étiquette dans l'
 | « sans code d'enrôlement de ce responsable » | La box n'a pas de code, ou un code tiré par quelqu'un d'autre, ou `--codes` ne désigne pas le bon fichier | Lui donner un code (§ 2.2), ou la valider dans l'interface locale ou à la main, après comparaison de l'empreinte (§ 2.4, § 2.5) |
 | « preuve du code invalide : demande refusée » | La demande ne correspond pas au code : demande fabriquée par un tiers, ou code mal recopié | Vérifier avec l'installateur le code recopié dans `box.env` ; en cas de doute, ne pas enrôler cette box |
 | « code déjà utilisé par la box … » | Le code a déjà servi à enrôler une autre box | Tirer un nouveau code pour cette box |
+| « code déjà utilisé par cette box avec d'autres clés » | La box enrôlée avec ce code présente d'autres clés : réinstallée, ou quelqu'un d'autre détient le code | Refuser. Si l'établissement confirme une réinstallation, tirer un nouveau code |
+| « code déjà utilisé par cette box, révoquée depuis… » | Un code ne réintègre pas une box révoquée, même avec ses clés d'origine (box volée) | Refuser. Pour réintégrer l'établissement, repartir d'une nouvelle box et d'un nouveau code (§ 2.8) |
+| « code déjà utilisé par cette box, avant que ses clés soient retenues » | Code utilisé avec une version précédente de l'outil, qui ne gardait pas l'empreinte des clés | Tirer un nouveau code si la box doit être réenrôlée |
 | « code expiré le … » | Le code a dépassé sa durée de validité | Tirer un nouveau code et le faire recopier |
 | « Demande illisible ou mal signée » | La demande ne prouve pas la possession des clés qu'elle présente | Aucune : elle ne peut pas être enrôlée |
 | « Lecture des demandes refusée (HTTP 401) » | Mauvais compte de l'annuaire | Vérifier `IMAGUNITY_ANNUAIRE_COMPTE` |

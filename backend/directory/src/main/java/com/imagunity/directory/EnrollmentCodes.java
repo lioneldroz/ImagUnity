@@ -30,17 +30,29 @@ record EnrollmentCodes(List<Entry> codes) {
      * @param expiresAt date au-delà de laquelle il n'est plus accepté
      * @param usedAt    date d'enrôlement de la box, ou {@code null}
      * @param boxId     box enrôlée avec ce code, ou {@code null}
+     * @param boxKey    empreinte de la clé de signature de la box enrôlée avec ce code, ou {@code null} (code pas
+     *                  encore utilisé, ou utilisé avant que l'empreinte soit retenue)
      */
     record Entry(String code, String name, List<String> groups, Instant createdAt, Instant expiresAt,
                  @JsonInclude(JsonInclude.Include.NON_NULL) Instant usedAt,
-                 @JsonInclude(JsonInclude.Include.NON_NULL) UUID boxId) {
+                 @JsonInclude(JsonInclude.Include.NON_NULL) UUID boxId,
+                 @JsonInclude(JsonInclude.Include.NON_NULL) String boxKey) {
 
         Entry {
             groups = groups == null ? List.of() : List.copyOf(groups);
         }
 
-        Entry used(UUID box, Instant at) {
-            return new Entry(code, name, groups, createdAt, expiresAt, at, box);
+        /** Code pas encore utilisé. */
+        Entry(String code, String name, List<String> groups, Instant createdAt, Instant expiresAt) {
+            this(code, name, groups, createdAt, expiresAt, null, null, null);
+        }
+
+        /**
+         * Code utilisé par cette box, avec la clé de signature d'empreinte {@code key} : seule la même box, avec les
+         * mêmes clés, pourra encore s'en prévaloir (nouvelle demande après l'enrôlement).
+         */
+        Entry used(UUID box, String key, Instant at) {
+            return new Entry(code, name, groups, createdAt, expiresAt, at, box, key);
         }
     }
 
@@ -95,7 +107,7 @@ record EnrollmentCodes(List<Entry> codes) {
             throw new IllegalArgumentException("Validité du code : de 1 à 365 jours");
         }
         return new Entry(EnrollmentCode.generate(), n, BoxEntry.groups(groups), now, now.plus(java.time.Duration
-                .ofDays(days)), null, null);
+                .ofDays(days)));
     }
 
     EnrollmentCodes replace(Entry before, Entry after) {

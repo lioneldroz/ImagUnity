@@ -135,6 +135,19 @@ class AutomaticEnrollmentAdminTest {
         return box;
     }
 
+    /** Demande d'une box donnée, avec des clés données. */
+    private void boxSubmits(UUID box, HybridKeyPair keys, String code) {
+        SignedDocument request = EnrollmentRequest.create(keys, HybridKemKeyPair.generate().publicKey(), box,
+                "Box", Map.of(), now);
+        pending.add("{\"boxId\":\"" + box + "\",\"submission\":" + EnrollmentSubmission.of(request, code).toJson()
+                + "}");
+    }
+
+    private int enrollPending() {
+        return run("enroler-attente", "--cles", p("org.json"), "--codes", p("codes.json"), "--annuaire", url,
+                "--confirmer");
+    }
+
     private BoxEntry entry(UUID box) {
         return Json.read(published.get(box).payload(), BoxEntry.class, "entrée");
     }
@@ -288,5 +301,67 @@ class AutomaticEnrollmentAdminTest {
                 "--confirmer")).isZero();
         assertThat(entry(box).serial()).isEqualTo(4);
         assertThat(entry(box).displayName()).isEqualTo("Box réintégrée");
+    }
+
+    @Test
+    void aUsedCodeServesOnlyTheSameBoxWithTheSameKeysAndNeverUndoesARevocation() throws IOException {
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"))).isZero();
+        Organization organization = new Organization("chu-exemple",
+                KeyFiles.readPrivate(dir.resolve("org.json"), "phrase du responsable".toCharArray()));
+        String code = createCode("Box Nord");
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        boxSubmits(box, keys, code);
+        assertThat(enrollPending()).isZero();
+        assertThat(entry(box).serial()).isEqualTo(1);
+        assertThat(Files.readString(dir.resolve("codes.json"))).as("empreinte des clés retenue")
+                .contains(keys.publicKey().fingerprint());
+
+        // Même box, mêmes clés : la demande renvoyée reste recevable (numéro suivant).
+        pending.clear();
+        boxSubmits(box, keys, code);
+        assertThat(enrollPending()).isZero();
+        assertThat(entry(box).serial()).isEqualTo(2);
+
+        // Même box, autres clés : qui détient le code ne fait pas enrôler ses propres clés.
+        pending.clear();
+        boxSubmits(box, HybridKeyPair.generate(), code);
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("code déjà utilisé par cette box avec d'autres clés");
+        assertThat(entry(box).serial()).isEqualTo(2);
+        assertThat(entry(box).signingKey().fingerprint()).isEqualTo(keys.publicKey().fingerprint());
+
+        // Box révoquée : le code ne la réintègre pas, même avec ses clés d'origine (box volée).
+        published.put(box, organization.revoke(published.get(box), now, "box volée"));
+        pending.clear();
+        boxSubmits(box, keys, code);
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("révoquée depuis").contains("0 box enrôlée(s)");
+        assertThat(entry(box).revoked()).as("révocation intacte").isTrue();
+
+        // Entrée publiée non vérifiable (signée par un autre responsable) : réutilisation refusée.
+        Organization other = new Organization("chu-exemple", HybridKeyPair.generate());
+        published.put(box, other.enroll(EnrollmentRequest.create(keys, null, box, "Box", Map.of(), now), now,
+                Duration.ofDays(90), 9));
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("pas vérifiable").contains("0 box enrôlée(s)");
+    }
+
+    @Test
+    void aCodeUsedBeforeKeysWereRecordedIsNotReusable() throws IOException {
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"))).isZero();
+        String code = createCode("Box Sud");
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        boxSubmits(box, keys, code);
+        assertThat(enrollPending()).isZero();
+        // Fichier des codes d'une version précédente : code utilisé, sans l'empreinte des clés.
+        Path codes = dir.resolve("codes.json");
+        Files.writeString(codes, Files.readString(codes).replaceAll(",?\\s*\"boxKey\"\\s*:\\s*\"[^\"]*\"", ""));
+        assertThat(Files.readString(codes)).doesNotContain("boxKey").contains(box.toString());
+
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("avant que ses clés soient retenues").contains("0 box enrôlée(s)");
+        assertThat(entry(box).serial()).isEqualTo(1);
     }
 }
