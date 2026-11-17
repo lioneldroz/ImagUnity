@@ -176,6 +176,20 @@ class TransferControllerTest {
     }
 
     @Test
+    void anAnnouncedTransferWhoseAckIsOverdueCanBeRetried() throws Exception {
+        peers.save(new Peer("box-b", 5, "box-b", now));
+        Transfer t = transfer("2.25.1", TransferState.ANNOUNCED, now.minus(Duration.ofHours(2)));
+        Path file = Files.writeString(dir.resolve("g-1-of-1.tar.zst"), "paquet");
+        transfers.saveParts(t.id(), List.of(new TransferPart(t.id(), 1, 1, file, 6, "a".repeat(64), 3L, true)));
+
+        TransferViews.Outbound retried = controller.retry(t.id());
+
+        assertThat(retried.state()).as("paquets et annonce renvoyés").isEqualTo(TransferState.ANNOUNCED);
+        assertThat(retried.ackOverdue()).isFalse();
+        assertThat(transport.sent).containsExactly(file);
+    }
+
+    @Test
     void retryRefusalIsAConflict() {
         Transfer t = transfer("2.25.1", TransferState.ANNOUNCED, now);
 

@@ -592,7 +592,8 @@ class SendOrchestratorTest {
 
         Transfer announced = announcedTransfer();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> orchestrator.doRetry(announced.id()))
-                .isInstanceOf(RetryRefusedException.class).hasMessageContaining("ANNOUNCED");
+                .isInstanceOf(RetryRefusedException.class).hasMessageContaining("annoncé")
+                .hasMessageContaining("accusé en retard");
 
         Transfer early = Transfer.received("2.25.11", "IU_TO_B", "box-b", 1, clock.instant());
         transfers.create(early);

@@ -122,7 +122,8 @@ export function OutboundTable() {
                 <td>{t.partCount || '—'}</td>
                 <td>{formatDate(t.updatedAt)}</td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  {t.state === 'FAILED' && <RetryButton transfer={t} />}
+                  {/* Accusé en retard : l'accusé ou l'annonce a pu se perdre, la relance renvoie tout. */}
+                  {(t.state === 'FAILED' || t.ackOverdue) && <RetryButton transfer={t} />}
                 </td>
               </tr>
               {t.errorMessage && (
