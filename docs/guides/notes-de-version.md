@@ -17,6 +17,32 @@
 
 - **Preuves de fraîcheur après un redémarrage de la box** : relues depuis le cache, elles étaient rangées par nom d'organisation, une simple étiquette. Deux partenaires portant le même nom s'écrasaient l'un l'autre : l'un perdait sa preuve jusqu'à la lecture suivante de son annuaire, voire se voyait associer la délégation de l'autre. Chaque preuve est désormais rattachée à sa délégation par signature, puis à l'empreinte de son organisation. Rien à faire : le cache existant est relu tel quel.
 
+Corrections de la seconde relecture du code (novembre 2026) :
+
+- **Version de la box altérée sur le disque** : écartée au démarrage, elle n'était plus jamais téléchargée de nouveau (déjà « exécutée »), et la box restait arrêtée jusqu'à la version suivante de l'éditeur, le retour à la version livrée étant refusé. La mise à jour de la nuit la télécharge désormais de nouveau et redémarre la box ; une box sur sa version livrée ne la retélécharge pas.
+- **Configuration centralisée qui ne se revérifie pas au démarrage** (horloge en retard après une coupure, règle devenue invalide après une mise à jour du logiciel) : elle était abandonnée pour de bon au profit des règles locales, et effacée du disque à la lecture suivante. Elle est désormais gardée, et son numéro s'applique de nouveau dès qu'il se vérifie ; un document plus ancien reste refusé.
+
+- **Message de quelques octets bloquant la file de réception** : une box autorisée à déposer sur le relais pouvait sceller un message de moins de 4 octets pour une autre box. Son ouverture levait une erreur imprévue, le message n'était pas acquitté, et il revenait en tête à chaque relève : plus aucun message de ce relais n'était reçu jusqu'à son expiration. Il est désormais refusé et écarté, comme tout message mal formé.
+- **État du transport après une coupure de courant** : les fichiers d'état sont forcés sur le disque avant d'être mis en place, et un fichier abîmé est mis de côté (`.illisible`) au lieu d'empêcher tous les dépôts, envois et réceptions. Les morceaux reçus sont sur le disque avant d'être acquittés au relais.
+
+- **Bombe de décompression par fichier creux** : une entrée tar « creuse » (en-têtes PAX GNU.sparse) déclarait quelques octets mais en restituait autant que voulu, ce qui contournait la limite du volume décompressé et pouvait remplir le disque de la box destinataire. Elle est refusée, et chaque entrée est désormais bornée à sa taille déclarée.
+- **Annonce ou accusé perdu** (box arrêtée avant de l'avoir traité) : le transfert restait annoncé pour toujours, et la console refusait de le relancer. Un transfert dont l'accusé est en retard (`ack-overdue`, 30 min par défaut) se relance maintenant depuis la console. Paquets et annonce partent de nouveau ; si le destinataire a déjà restitué l'étude, il renvoie seulement son accusé.
+- **Téléchargement jamais lancé** : un arrêt de la box entre l'enregistrement d'un paquet proposé et le lancement de son téléchargement le laissait bloqué. L'offre rejouée au redémarrage relance désormais ce téléchargement.
+- **Paquet restitué resté sur le disque** (arrêt juste après la restitution) : il est désormais supprimé à l'examen suivant du transfert.
+
+- **Enrôlement d'une box révoquée ou d'un identifiant déjà pris** : un code neuf, ou une demande sans code après comparaison de l'empreinte, permettait encore de signer une entrée pour l'identifiant d'une box révoquée (révocation annulée) ou d'une box déjà publiée, avec d'autres clés (reprise de son identité, de ses appairages et des règles qui la désignent). Ces demandes sont désormais refusées par l'outil et l'interface du responsable (statuts « Box révoquée » et « Identifiant déjà pris par d'autres clés »).
+- **Échanges avec les box d'un partenaire, notre annuaire figé** : seul l'annuaire du partenaire était contrôlé. Or l'accord avec ce partenaire est publié par notre annuaire, qui, figé, pourrait en cacher la révocation. Les échanges s'arrêtent désormais aussi quand notre propre preuve de fraîcheur est trop ancienne.
+- **Lecture par différence et publications simultanées** : une entrée publiée en même temps qu'une autre (une révocation, par exemple) pouvait être sautée par un lecteur jusqu'à sa lecture complète suivante (jusqu'à 24 h). Les publications d'entrées sont désormais sérialisées. Migration de la base de l'annuaire (`V9`), appliquée seule.
+
+- **SOP Class UID incohérent** (commande C-STORE ou méta-informations STOW-RS différentes du jeu de données) : l'instance était acceptée à la source, puis faisait échouer l'étude entière chez le destinataire, à chaque relance, alors que le PACS d'origine l'avait déjà oubliée. Elle est désormais refusée dès sa réception, et le PACS la garde en échec.
+- **Disque plein pendant une réception** : l'espace libre n'était contrôlé qu'avant l'écriture, or une instance peut atteindre 4 Go et plusieurs arrivent en même temps. Il est désormais contrôlé aussi pendant l'écriture (tous les 64 Mo), et une réception qui ferait passer sous la réserve est interrompue avec un statut à réessayer.
+- **Arrêt de la box retardé par la console** : une console ouverte qui se reconnectait pendant l'arrêt obtenait un flux de 30 minutes que rien ne fermait. Il est désormais fermé aussitôt.
+
+- **Site central** :
+  - `sauvegarder.sh` écrit chaque fichier sous un nom provisoire puis le renomme une fois complet. Une sauvegarde interrompue ne laisse plus un fichier tronqué pris pour le plus récent.
+  - Le `Caddyfile` réserve au réseau d'administration la lecture des comptes rendus des box (`GET /directory/v1/configurations/reports/…`), comme les autres accès du responsable. Recopier le nouveau `Caddyfile`, puis recharger Caddy.
+- **Box sous systemd** : `installer.sh` ne modifie plus les droits du dossier `/etc/polkit-1/rules.d` quand il existe déjà.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.

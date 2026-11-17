@@ -101,4 +101,19 @@ class ConsoleEventsTest {
         assertThat(events.isRunning()).isFalse();
         assertThat(events.subscribers()).isZero();
     }
+
+    @Test
+    void aConsoleReconnectingDuringShutdownGetsAClosedStream() {
+        events.start();
+        events.stop();
+
+        events.subscribe(); // la console se reconnecte pendant l'arrêt de la box
+
+        assertThat(events.subscribers()).as("flux fermé aussitôt, pas gardé").isZero();
+        assertThat(created).singleElement().satisfies(e -> assertThat(e.sent).as("rien envoyé").isEmpty());
+
+        events.start(); // redémarrage du contexte
+        events.subscribe();
+        assertThat(events.subscribers()).isEqualTo(1);
+    }
 }

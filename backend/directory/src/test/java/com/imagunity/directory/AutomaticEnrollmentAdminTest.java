@@ -292,8 +292,11 @@ class AutomaticEnrollmentAdminTest {
         Organization organization = new Organization("chu-exemple",
                 KeyFiles.readPrivate(dir.resolve("org.json"), "phrase du responsable".toCharArray()));
         String code = createCode("Box réintégrée");
-        UUID box = boxSubmits("Box réintégrée", code);
-        SignedDocument old = organization.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), null, box, "Ancienne",
+        // Entrée ancienne, expirée, de la même box (mêmes clés : une box garde son identité).
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        boxSubmits(box, keys, code);
+        SignedDocument old = organization.enroll(EnrollmentRequest.create(keys, null, box, "Ancienne",
                 Map.of(), now.minus(Duration.ofDays(200))), now.minus(Duration.ofDays(200)), Duration.ofDays(90), 3);
         published.put(box, old);
 
@@ -327,7 +330,7 @@ class AutomaticEnrollmentAdminTest {
         pending.clear();
         boxSubmits(box, HybridKeyPair.generate(), code);
         assertThat(enrollPending()).isZero();
-        assertThat(output()).contains("code déjà utilisé par cette box avec d'autres clés");
+        assertThat(output()).contains("déjà publié dans l'annuaire avec d'autres clés");
         assertThat(entry(box).serial()).isEqualTo(2);
         assertThat(entry(box).signingKey().fingerprint()).isEqualTo(keys.publicKey().fingerprint());
 
@@ -336,7 +339,7 @@ class AutomaticEnrollmentAdminTest {
         pending.clear();
         boxSubmits(box, keys, code);
         assertThat(enrollPending()).isZero();
-        assertThat(output()).contains("révoquée depuis").contains("0 box enrôlée(s)");
+        assertThat(output()).contains("box révoquée dans l'annuaire").contains("0 box enrôlée(s)");
         assertThat(entry(box).revoked()).as("révocation intacte").isTrue();
 
         // Entrée publiée non vérifiable (signée par un autre responsable) : réutilisation refusée.
@@ -363,5 +366,34 @@ class AutomaticEnrollmentAdminTest {
         assertThat(enrollPending()).isZero();
         assertThat(output()).contains("avant que ses clés soient retenues").contains("0 box enrôlée(s)");
         assertThat(entry(box).serial()).isEqualTo(1);
+    }
+
+    @Test
+    void neitherAFreshCodeNorAFingerprintCheckTakesARevokedOrPublishedBoxIdentity() throws IOException {
+        assertThat(run("organisation-creer", "--organisation", "chu-exemple", "--cles", p("org.json"))).isZero();
+        Organization organization = new Organization("chu-exemple",
+                KeyFiles.readPrivate(dir.resolve("org.json"), "phrase du responsable".toCharArray()));
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        SignedDocument entry = organization.enroll(EnrollmentRequest.create(keys, HybridKemKeyPair.generate()
+                .publicKey(), box, "Box volée", Map.of(), now), now, Duration.ofDays(90), 1);
+        published.put(box, organization.revoke(entry, now, "box volée"));
+
+        // Code neuf, tiré pour une autre box : il ne réintègre pas la box révoquée, même avec ses clés d'origine.
+        boxSubmits(box, keys, createCode("Nouvelle box"));
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("box révoquée dans l'annuaire").contains("0 box enrôlée(s)");
+        assertThat(entry(box).revoked()).isTrue();
+
+        // Identifiant d'une box en service, autres clés, code neuf : pas de reprise d'identité.
+        UUID active = UUID.randomUUID();
+        published.put(active, organization.enroll(EnrollmentRequest.create(HybridKeyPair.generate(),
+                HybridKemKeyPair.generate().publicKey(), active, "Box en service", Map.of(), now), now,
+                Duration.ofDays(90), 4));
+        pending.clear();
+        boxSubmits(active, HybridKeyPair.generate(), createCode("Autre box"));
+        assertThat(enrollPending()).isZero();
+        assertThat(output()).contains("avec d'autres clés").contains("0 box enrôlée(s)");
+        assertThat(entry(active).serial()).isEqualTo(4);
     }
 }

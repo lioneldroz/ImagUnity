@@ -56,7 +56,9 @@ chmod 0600 /etc/imagunity/phrase-box
 install -d -m 0755 /etc/systemd/system
 install -m 0644 -o root -g root "$ICI"/systemd/*.service "$ICI"/systemd/*.timer /etc/systemd/system/
 install -m 0644 -o root -g root "$ICI/systemd/imagunity-box-tpm.conf" /opt/imagunity/
-install -d -m 0755 /etc/polkit-1/rules.d
+# Créé seulement s'il manque : déjà là (paquet polkit), il garde ses droits (root:polkitd 0750 sur Rocky Linux) ;
+# « install -d -m » les remplacerait et rendrait les règles polkit lisibles de tous.
+[ -d /etc/polkit-1/rules.d ] || install -d -m 0755 /etc/polkit-1/rules.d
 install -m 0644 -o root -g root "$ICI/polkit/50-imagunity-maj.rules" /etc/polkit-1/rules.d/
 # Rechargement de systemd, s'il gère la machine (pas dans un conteneur d'essai).
 if [ -d /run/systemd/system ]; then

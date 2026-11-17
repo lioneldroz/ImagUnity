@@ -36,6 +36,13 @@
 			not remote_ip {$RESEAU_ADMIN}
 		}
 		respond @demandes_hors_admin 403
+		# Comptes rendus des box : déposés depuis les sites (POST), lus seulement par le responsable.
+		@rapports_hors_admin {
+			method GET
+			path /directory/v1/configurations/reports/*
+			not remote_ip {$RESEAU_ADMIN}
+		}
+		respond @rapports_hors_admin 403
 		reverse_proxy directory:8090
 	}
 	handle /admin* {

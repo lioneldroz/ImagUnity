@@ -183,6 +183,43 @@ class DirectoryServerTest {
     }
 
     @Test
+    void entryNumbersBecomeVisibleInTheOrderTheyAreDrawn() throws Exception {
+        var transactions = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource));
+        EntryStore store = new EntryStore(dataSource);
+        var verifier = new com.imagunity.directory.EntryVerifier("chu-exemple", ORG_KEYS.publicKey(),
+                com.imagunity.directory.SerialMemory.inMemory(), java.time.Clock.systemUTC());
+        SignedDocument slow = enrolled(UUID.randomUUID(), "Lente", 1);
+        SignedDocument fast = enrolled(UUID.randomUUID(), "Rapide", 1);
+        var drawn = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+
+        // Première publication : numéro tiré, transaction pas encore validée.
+        var first = java.util.concurrent.CompletableFuture.runAsync(() -> transactions.executeWithoutResult(s -> {
+            store.save(verifier.verify(slow).entry(), slow, NOW);
+            drawn.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        assertThat(drawn.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        var second = java.util.concurrent.CompletableFuture.runAsync(() -> transactions.executeWithoutResult(s ->
+                store.save(verifier.verify(fast).entry(), fast, NOW)));
+        Thread.sleep(300);
+        assertThat(second).as("la seconde attend la fin de la première").isNotDone();
+        release.countDown();
+        first.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        second.get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        var jdbc = org.springframework.jdbc.core.simple.JdbcClient.create(dataSource);
+        long slowSeq = jdbc.sql("SELECT seq FROM box_entry WHERE display_name = 'Lente'").query(Long.class).single();
+        long fastSeq = jdbc.sql("SELECT seq FROM box_entry WHERE display_name = 'Rapide'").query(Long.class).single();
+        assertThat(slowSeq).as("numéros dans l'ordre des validations").isLessThan(fastSeq);
+    }
+
+    @Test
     void onlyThePublisherCanPublish() throws Exception {
         String entry = enrolled(UUID.randomUUID(), "B", 1).toJson();
 

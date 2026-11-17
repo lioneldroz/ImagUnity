@@ -313,6 +313,54 @@ class ReleaseToolTest {
         assertThat(image).exists();
     }
 
+    @Test
+    void theRunningVersionIsDownloadedAgainWhenItWasRemovedAsCorrupted() throws IOException {
+        publisher();
+        Path image = bundled("0.1.0", 1);
+        Path site = Files.createDirectories(dir.resolve("site"));
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            Path file = site.resolve(exchange.getRequestURI().getPath().replaceFirst("^/box/", ""));
+            byte[] body = Files.isRegularFile(file) ? Files.readAllBytes(file) : new byte[0];
+            exchange.sendResponseHeaders(Files.isRegularFile(file) ? 200 : 404, body.length == 0 ? -1 : body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            environment.put("IMAGUNITY_UPDATE_URL", "http://127.0.0.1:" + server.getAddress().getPort() + "/box/");
+            // Serveur qui publie la version livrée avec l'image : rien à télécharger.
+            sign(image, "0.1.0", 1, site.resolve("latest.json").toString());
+            Files.copy(image, site.resolve(image.getFileName()));
+            assertThat(run("telecharger")).isZero();
+            assertThat(errors()).contains("pas de version plus récente");
+            assertThat(dir.resolve("data/mises-a-jour/versions")).as("version livrée non retéléchargée")
+                    .doesNotExist();
+
+            Path jar = Files.writeString(site.resolve("imagunity-box-0.2.0.jar"), "logiciel 0.2.0");
+            sign(jar, "0.2.0", 2, site.resolve("latest.json").toString());
+            assertThat(run("choisir")).isZero();
+            assertThat(output()).endsWith("\t0.2.0\t2\n");
+
+            // Jar installé altéré (disque, manipulation) : écarté au démarrage, qui refuse le retour à la n° 1.
+            Files.writeString(dir.resolve("data/mises-a-jour/versions/2/imagunity-box-0.2.0.jar"), "altéré");
+            environment.remove("IMAGUNITY_UPDATE_URL"); // démarrage sans réseau, comme sous systemd
+            assertThat(run("choisir")).isEqualTo(1);
+            assertThat(errors()).contains("Retour en arrière refusé");
+
+            // La mise à jour de la nuit télécharge de nouveau la n° 2 et demande le redémarrage.
+            environment.put("IMAGUNITY_UPDATE_URL", "http://127.0.0.1:" + server.getAddress().getPort() + "/box/");
+            assertThat(run("telecharger")).isZero();
+            assertThat(output()).isEqualTo("nouvelle\t2\n");
+            assertThat(run("choisir")).isZero();
+            assertThat(output()).endsWith("\t0.2.0\t2\n");
+            assertThat(run("telecharger")).isZero();
+            assertThat(output()).isEqualTo("a-jour\t2\n");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     /** Jar minimal portant (ou non) une version dans son manifeste, comme le jar de la box. */
     static Path jarWithVersion(Path file, String version) throws IOException {
         java.util.jar.Manifest manifest = new java.util.jar.Manifest();

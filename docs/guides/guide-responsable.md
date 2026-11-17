@@ -238,6 +238,8 @@ L'onglet liste les demandes en attente dans l'annuaire, revérifiées par l'outi
 | **Code d'enrôlement vérifié** | La demande porte la preuve d'un de vos codes, encore valable. Nom et groupes viennent du code. | Valider, Refuser |
 | **Sans code : empreinte à vérifier** | La box n'a pas de code de ce responsable | Valider après comparaison de l'empreinte, Refuser |
 | **Preuve du code invalide**, **Code déjà utilisé**, **Code expiré** | Comme pour `enroler-attente` (§ 4.2) | Refuser, ou tirer un nouveau code |
+| **Box révoquée** | L'identifiant est celui d'une box révoquée : ni un code ni la comparaison de l'empreinte ne la réintègrent | Refuser ; pour réintégrer l'établissement, nouvelle box et nouveau code (§ 2.8) |
+| **Identifiant déjà pris par d'autres clés** | Une entrée est déjà publiée pour cet identifiant avec d'autres clés, ou elle n'est pas vérifiable | Refuser : une box réinstallée reçoit une nouvelle identité |
 | **Demande illisible ou mal signée** | La demande ne prouve pas la possession des clés qu'elle présente | Refuser |
 
 **Valider** demande la phrase de passe de la clé de l'organisation, signe l'entrée sur ce poste, la publie, et marque le code comme utilisé :
@@ -664,6 +666,8 @@ Messages de `enroler-attente` (les mêmes cas apparaissent en étiquette dans l'
 | « code déjà utilisé par la box … » | Le code a déjà servi à enrôler une autre box | Tirer un nouveau code pour cette box |
 | « code déjà utilisé par cette box avec d'autres clés » | La box enrôlée avec ce code présente d'autres clés : réinstallée, ou quelqu'un d'autre détient le code | Refuser. Si l'établissement confirme une réinstallation, tirer un nouveau code |
 | « code déjà utilisé par cette box, révoquée depuis… » | Un code ne réintègre pas une box révoquée, même avec ses clés d'origine (box volée) | Refuser. Pour réintégrer l'établissement, repartir d'une nouvelle box et d'un nouveau code (§ 2.8) |
+| « box révoquée dans l'annuaire » | La demande porte l'identifiant d'une box révoquée, avec ou sans code | Refuser ; nouvelle box et nouveau code pour réintégrer l'établissement |
+| « identifiant déjà publié dans l'annuaire avec d'autres clés » | Quelqu'un présente l'identifiant d'une box déjà enrôlée, avec ses propres clés | Refuser |
 | « code déjà utilisé par cette box, avant que ses clés soient retenues » | Code utilisé avec une version précédente de l'outil, qui ne gardait pas l'empreinte des clés | Tirer un nouveau code si la box doit être réenrôlée |
 | « code expiré le … » | Le code a dépassé sa durée de validité | Tirer un nouveau code et le faire recopier |
 | « Demande illisible ou mal signée » | La demande ne prouve pas la possession des clés qu'elle présente | Aucune : elle ne peut pas être enrôlée |

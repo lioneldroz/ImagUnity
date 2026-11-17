@@ -59,6 +59,13 @@ public final class MessageEnvelope {
             throw new ProtocolException("Message trop long : " + content.length + " octets (" + MAX_CONTENT
                     + " au plus)");
         }
+        byte[] padded = new byte[tier(content.length + 4)];
+        ByteBuffer.wrap(padded).putInt(content.length).put(content);
+        return sealPadded(padded, recipient);
+    }
+
+    /** Chiffre un contenu déjà mis en forme (longueur, contenu, bourrage) ; les tests y passent des formes invalides. */
+    static byte[] sealPadded(byte[] padded, HybridKemPublicKey recipient) {
         try {
             KEM.Encapsulated x25519 = KEM.getInstance("DHKEM").newEncapsulator(recipient.x25519()).encapsulate();
             KEM.Encapsulated mlKem = KEM.getInstance("ML-KEM").newEncapsulator(recipient.mlKem768()).encapsulate();
@@ -67,8 +74,6 @@ public final class MessageEnvelope {
                     Base64.getEncoder().encodeToString(mlKem.encapsulation()));
             byte[] prefix = prefix(Codec.utf8(Codec.toJson(header)));
             SecretKey key = derive(mlKem.key(), x25519.key(), Codec.sha256(prefix));
-            byte[] padded = new byte[tier(content.length + 4)];
-            ByteBuffer.wrap(padded).putInt(content.length).put(content);
             byte[] sealed = gcm(Cipher.ENCRYPT_MODE, key, Codec.sha256(prefix), padded);
             return ByteBuffer.allocate(prefix.length + sealed.length).put(prefix).put(sealed).array();
         } catch (GeneralSecurityException e) {
@@ -112,6 +117,11 @@ public final class MessageEnvelope {
             SecretKey key = derive(decapsulate("ML-KEM", keys.mlKem768(), header.mlKem768()),
                     decapsulate("DHKEM", keys.x25519(), header.x25519()), Codec.sha256(prefix));
             byte[] padded = gcm(Cipher.DECRYPT_MODE, key, Codec.sha256(prefix), sealed);
+            // Moins de 4 octets : pas de longueur à lire. Le chiffrement authentifié ne prouve pas l'expéditeur (sa
+            // clé éphémère n'est pas une signature) : n'importe qui peut sceller ce contenu pour cette box.
+            if (padded.length < 4) {
+                throw new ProtocolException("Longueur de message invalide");
+            }
             int length = ByteBuffer.wrap(padded).getInt();
             if (length < 0 || length > padded.length - 4) {
                 throw new ProtocolException("Longueur de message invalide");
