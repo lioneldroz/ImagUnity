@@ -33,6 +33,11 @@ public class ConsoleEvents implements SmartLifecycle {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private final Executor sender;
     private volatile boolean running;
+    /**
+     * Vrai après {@link #stop()} : la console qui se reconnecte pendant l'arrêt de la box reçoit un flux aussitôt
+     * fermé. Sans cela, ce flux resterait ouvert 30 minutes et retarderait d'autant l'arrêt du serveur web.
+     */
+    private boolean stopped;
 
     public ConsoleEvents() {
         this(Executors.newSingleThreadExecutor(Thread.ofPlatform().name("console-sse").daemon().factory()));
@@ -45,7 +50,13 @@ public class ConsoleEvents implements SmartLifecycle {
     /** Ouvre un flux pour une console. */
     public SseEmitter subscribe() {
         SseEmitter emitter = newEmitter();
-        emitters.add(emitter);
+        synchronized (this) { // même verrou que stop() : aucun flux ne s'inscrit entre la purge et l'arrêt
+            if (stopped) {
+                emitter.complete();
+                return emitter;
+            }
+            emitters.add(emitter);
+        }
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
         emitter.onError(e -> emitters.remove(emitter));
@@ -66,18 +77,20 @@ public class ConsoleEvents implements SmartLifecycle {
     }
 
     @Override
-    public void start() {
+    public synchronized void start() {
+        stopped = false;
         running = true;
     }
 
     /** Ferme les flux ouverts : appelé avant l'arrêt du serveur web (phase la plus haute). */
     @Override
-    public void stop() {
+    public synchronized void stop() {
         running = false;
-        for (SseEmitter emitter : emitters) {
+        stopped = true;
+        for (SseEmitter emitter : List.copyOf(emitters)) {
+            emitters.remove(emitter);
             emitter.complete();
         }
-        emitters.clear();
     }
 
     @Override
