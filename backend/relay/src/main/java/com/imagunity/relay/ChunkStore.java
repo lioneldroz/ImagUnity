@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** Métadonnées des morceaux et de leurs destinataires (le contenu est sur disque, {@link ChunkFiles}). */
 public final class ChunkStore {
@@ -42,12 +44,22 @@ public final class ChunkStore {
     }
 
     private final JdbcClient jdbc;
+    private final TransactionTemplate transactions;
 
     public ChunkStore(DataSource dataSource) {
         this.jdbc = JdbcClient.create(dataSource);
+        this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     }
 
+    /**
+     * Enregistre un morceau et ses destinataires d'un seul tenant : si une insertion échoue, rien ne reste (sinon un
+     * morceau orphelin, dont la box ne connaît pas l'identifiant, compterait dans son quota jusqu'à la purge).
+     */
     public void create(Chunk chunk, List<Recipient> recipients) {
+        transactions.executeWithoutResult(status -> insert(chunk, recipients));
+    }
+
+    private void insert(Chunk chunk, List<Recipient> recipients) {
         jdbc.sql("INSERT INTO chunk (sender_id, box_id, sender_key, size, digest, uploaded, created_at, expires_at) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
                 .params(chunk.senderId(), chunk.boxId(), chunk.senderKey(), chunk.size(), chunk.digest(),
@@ -84,8 +96,10 @@ public final class ChunkStore {
     }
 
     public void delete(String senderId) {
-        jdbc.sql("DELETE FROM chunk_recipient WHERE sender_id = ?").param(senderId).update();
-        jdbc.sql("DELETE FROM chunk WHERE sender_id = ?").param(senderId).update();
+        transactions.executeWithoutResult(status -> {
+            jdbc.sql("DELETE FROM chunk_recipient WHERE sender_id = ?").param(senderId).update();
+            jdbc.sql("DELETE FROM chunk WHERE sender_id = ?").param(senderId).update();
+        });
     }
 
     /** Volume déposé par une box et encore présent. */
