@@ -15,6 +15,8 @@
 - **Dépôt STOW-RS pendant le démarrage ou l'arrêt de la box** : le serveur web répond avant que l'entrée DICOM soit ouverte, et encore après sa fermeture. Un dépôt arrivé à ce moment était refusé comme « fichier DICOM illisible » au démarrage, ou accepté après l'arrêt de l'entrée. Il est désormais refusé avec un code à réessayer (HTTP 503), et l'arrêt attend la fin des dépôts en cours (10 s au plus).
 - **Routage vers plusieurs partenaires** : si la copie d'une instance pour l'un des partenaires échouait, le PACS recevait un échec mais l'instance partait quand même vers les premiers. Désormais, l'instance n'est rattachée à aucune étude tant que toutes les copies ne sont pas en place, et les copies déjà faites sont retirées ; le PACS la renvoie.
 
+- **Preuves de fraîcheur après un redémarrage de la box** : relues depuis le cache, elles étaient rangées par nom d'organisation, une simple étiquette. Deux partenaires portant le même nom s'écrasaient l'un l'autre : l'un perdait sa preuve jusqu'à la lecture suivante de son annuaire, voire se voyait associer la délégation de l'autre. Chaque preuve est désormais rattachée à sa délégation par signature, puis à l'empreinte de son organisation. Rien à faire : le cache existant est relu tel quel.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.
