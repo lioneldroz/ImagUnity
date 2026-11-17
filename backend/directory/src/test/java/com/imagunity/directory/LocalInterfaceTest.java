@@ -342,7 +342,7 @@ class LocalInterfaceTest {
         HybridKeyPair other = HybridKeyPair.generate();
         boxSubmits(box, other, code);
         JsonNode reused = request(box);
-        assertThat(reused.get("statut").asString()).isEqualTo("code-utilise");
+        assertThat(reused.get("statut").asString()).isEqualTo("identifiant-pris");
         assertThat(reused.get("detail").asString()).contains("avec d'autres clés");
         assertThat(call("POST", "/api/valider", validation(box, reused.get("empreinte").asString(), PHRASE, false))
                 .statusCode()).isEqualTo(409);
@@ -355,10 +355,31 @@ class LocalInterfaceTest {
         pending.clear();
         boxSubmits(box, keys, code);
         JsonNode revoked = request(box);
-        assertThat(revoked.get("statut").asString()).isEqualTo("code-utilise");
-        assertThat(revoked.get("detail").asString()).contains("révoquée depuis");
+        assertThat(revoked.get("statut").asString()).isEqualTo("box-revoquee");
+        assertThat(revoked.get("detail").asString()).contains("révoquée");
         assertThat(call("POST", "/api/valider", validation(box, fingerprint, PHRASE, false)).statusCode())
                 .isEqualTo(409);
+        assertThat(entry(box).revoked()).isTrue();
+    }
+
+    @Test
+    void aRevokedBoxIsNotReenrolledWithoutCodeEither() throws Exception {
+        prepare(false, "inutilisé");
+        open(null);
+        Organization organization = new Organization("chu-exemple",
+                KeyFiles.readPrivate(dir.resolve("org.json"), PHRASE.toCharArray()));
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        published.put(box, organization.revoke(organization.enroll(EnrollmentRequest.create(keys,
+                HybridKemKeyPair.generate().publicKey(), box, "Box", Map.of(), clock.now), clock.now,
+                Duration.ofDays(90), 1), clock.now, "box volée"));
+
+        boxSubmits(box, keys, null);
+        JsonNode d = request(box);
+        assertThat(d.get("statut").asString()).isEqualTo("box-revoquee");
+        assertThat(call("POST", "/api/valider", "{\"boxId\":\"" + box + "\",\"empreinte\":\"" + d.get("empreinte")
+                .asString() + "\",\"phrase\":\"" + PHRASE + "\",\"empreinteVerifiee\":true}").statusCode())
+                .as("même après comparaison de l'empreinte").isEqualTo(409);
         assertThat(entry(box).revoked()).isTrue();
     }
 

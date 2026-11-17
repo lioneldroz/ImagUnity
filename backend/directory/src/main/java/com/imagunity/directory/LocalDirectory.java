@@ -653,6 +653,12 @@ public final class LocalDirectory {
         if (mine == null || !r.scope().allowsLocal(mine.groups())) {
             return Optional.of("Cette box n'est pas dans les groupes autorisés à échanger avec " + name);
         }
+        // L'accord (révocation, périmètre, relais) est publié par notre annuaire : figé, il pourrait cacher la
+        // révocation de l'accord, même si l'annuaire du partenaire, lui, reste frais.
+        Optional<String> own = stale(localOwner(), "de l'organisation");
+        if (own.isPresent()) {
+            return own;
+        }
         return stale(f.partner(), "de " + name);
     }
 

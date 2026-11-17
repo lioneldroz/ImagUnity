@@ -26,6 +26,10 @@ record PendingRequest(UUID boxId, EnrollmentSubmission submission, EnrollmentReq
         PREUVE_INVALIDE("preuve-invalide"),
         CODE_UTILISE("code-utilise"),
         CODE_EXPIRE("code-expire"),
+        /** Box révoquée dans l'annuaire : ni un code ni une comparaison d'empreinte ne la réintègrent. */
+        BOX_REVOQUEE("box-revoquee"),
+        /** Identifiant déjà publié avec d'autres clés (ou entrée invérifiable) : ce serait le prendre à cette box. */
+        IDENTIFIANT_PRIS("identifiant-pris"),
         ILLISIBLE("illisible");
 
         final String label;
@@ -48,10 +52,10 @@ record PendingRequest(UUID boxId, EnrollmentSubmission submission, EnrollmentReq
     /**
      * Examine un élément de la liste {@code GET /directory/v1/enrollment-requests}.
      *
-     * <p>Un code est à usage unique. Seule la box qui l'a utilisé peut encore s'en prévaloir (elle renvoie sa demande
-     * tant qu'elle ne se voit pas active), et seulement avec les mêmes clés de signature et si elle n'est pas révoquée :
-     * sinon, quiconque détient le code pourrait faire réenrôler, avec ses propres clés, une box révoquée ou volée.
-     * L'entrée publiée n'est lue ({@code published}) que dans ce cas.
+     * <p>L'entrée déjà publiée pour cet identifiant ({@code published}) est toujours lue : une box révoquée n'est pas
+     * réenrôlée, et un identifiant publié avec d'autres clés n'est pas repris, avec ou sans code. Un code est à usage
+     * unique : seule la box qui l'a utilisé, avec les mêmes clés, peut encore s'en prévaloir (elle renvoie sa demande
+     * tant qu'elle ne se voit pas active).
      *
      * @return vide si l'élément, illisible, ne désigne même pas une box
      */
@@ -73,6 +77,13 @@ record PendingRequest(UUID boxId, EnrollmentSubmission submission, EnrollmentReq
                     : Optional.of(new PendingRequest(listed, null, null, Status.ILLISIBLE, null, e.getMessage()));
         }
         Optional<EnrollmentCodes.Entry> found = codes.byId(submission.code());
+        // Identité de la box d'abord, avec ou sans code : signer une entrée pour un identifiant déjà publié avec
+        // d'autres clés, ou pour une box révoquée, la donnerait au demandeur (numéro suivant, non révoquée), avec les
+        // appairages et les règles qui la désignent.
+        Optional<PendingRequest> identity = identityRefusal(submission, request, found.orElse(null), published);
+        if (identity.isPresent()) {
+            return identity;
+        }
         if (found.isEmpty()) {
             return Optional.of(new PendingRequest(request.boxId(), submission, request, Status.SANS_CODE, null,
                     "sans code d'enrôlement de ce responsable : à traiter à la main, après comparaison de "
@@ -94,10 +105,6 @@ record PendingRequest(UUID boxId, EnrollmentSubmission submission, EnrollmentReq
                             + "tirer un nouveau code (code-creer) et le donner à l'installateur"
                     : "code déjà utilisé par cette box avec d'autres clés : refuser, sauf réinstallation confirmée "
                             + "par l'établissement (tirer alors un nouveau code)";
-        } else if (code.usedAt() != null && revokedOrUnverifiable(request.boxId(), published)) {
-            status = Status.CODE_UTILISE;
-            detail = "code déjà utilisé par cette box, révoquée depuis (ou dont l'entrée publiée n'est pas "
-                    + "vérifiable) : un code ne réintègre pas une box révoquée (nouvelle box, nouveau code)";
         } else if (!now.isBefore(code.expiresAt())) {
             status = Status.CODE_EXPIRE;
             detail = "code expiré le " + code.expiresAt().atZone(java.time.ZoneOffset.UTC).toLocalDate()
@@ -109,12 +116,32 @@ record PendingRequest(UUID boxId, EnrollmentSubmission submission, EnrollmentReq
         return Optional.of(new PendingRequest(request.boxId(), submission, request, status, code, detail));
     }
 
-    private static boolean revokedOrUnverifiable(UUID boxId, PublishedEntries published) throws java.io.IOException {
+    /** Refus tenant à l'entrée déjà publiée pour cet identifiant de box ; vide si la box peut être (ré)enrôlée. */
+    private static Optional<PendingRequest> identityRefusal(EnrollmentSubmission submission, EnrollmentRequest request,
+                                                            EnrollmentCodes.Entry code, PublishedEntries published)
+            throws java.io.IOException {
+        Optional<BoxEntry> current;
         try {
-            return published.of(boxId).map(BoxEntry::revoked).orElse(false);
+            current = published.of(request.boxId());
         } catch (DirectoryException | IllegalArgumentException e) {
-            return true; // entrée altérée ou d'un autre responsable : la réutilisation n'est pas prouvée sûre
+            return Optional.of(new PendingRequest(request.boxId(), submission, request, Status.IDENTIFIANT_PRIS, code,
+                    "entrée publiée de cette box pas vérifiable (signée par un autre responsable, ou altérée) : "
+                            + "refuser"));
         }
+        if (current.isEmpty()) {
+            return Optional.empty();
+        }
+        if (current.get().revoked()) {
+            return Optional.of(new PendingRequest(request.boxId(), submission, request, Status.BOX_REVOQUEE, code,
+                    "box révoquée dans l'annuaire : elle n'est pas réenrôlée (pour réintégrer l'établissement, "
+                            + "nouvelle box et nouveau code)"));
+        }
+        if (!current.get().signingKey().fingerprint().equals(keyFingerprint(request))) {
+            return Optional.of(new PendingRequest(request.boxId(), submission, request, Status.IDENTIFIANT_PRIS, code,
+                    "identifiant déjà publié dans l'annuaire avec d'autres clés : refuser (une box réinstallée "
+                            + "reçoit une nouvelle identité)"));
+        }
+        return Optional.empty();
     }
 
     /** Empreinte complète de la clé de signature de la demande (retenue dans le fichier des codes). */
