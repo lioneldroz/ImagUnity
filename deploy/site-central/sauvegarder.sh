@@ -14,10 +14,17 @@ mkdir -p "$DEST"
 CIBLE=$(cd "$DEST" && pwd)
 cd "$ICI"
 umask 077
-docker compose exec -T directory-db pg_dump -U annuaire -Fc annuaire > "$CIBLE/annuaire-$DATE.dump"
-docker compose exec -T relay-db pg_dump -U relais -Fc relais > "$CIBLE/relais-$DATE.dump"
-tar -czf "$CIBLE/config-$DATE.tar.gz" .env config Caddyfile
-docker compose exec -T caddy tar -czf - -C /data . > "$CIBLE/caddy-$DATE.tar.gz"
+# Chaque fichier est écrit sous un nom provisoire, puis renommé une fois complet : une sauvegarde interrompue
+# (conteneur arrêté, disque plein) ne laisse pas, sous un nom normal, un fichier tronqué pris pour le plus récent.
+trap 'rm -f "$CIBLE"/*-"$DATE".*.partiel' EXIT
+docker compose exec -T directory-db pg_dump -U annuaire -Fc annuaire > "$CIBLE/annuaire-$DATE.dump.partiel"
+mv "$CIBLE/annuaire-$DATE.dump.partiel" "$CIBLE/annuaire-$DATE.dump"
+docker compose exec -T relay-db pg_dump -U relais -Fc relais > "$CIBLE/relais-$DATE.dump.partiel"
+mv "$CIBLE/relais-$DATE.dump.partiel" "$CIBLE/relais-$DATE.dump"
+tar -czf "$CIBLE/config-$DATE.tar.gz.partiel" .env config Caddyfile
+mv "$CIBLE/config-$DATE.tar.gz.partiel" "$CIBLE/config-$DATE.tar.gz"
+docker compose exec -T caddy tar -czf - -C /data . > "$CIBLE/caddy-$DATE.tar.gz.partiel"
+mv "$CIBLE/caddy-$DATE.tar.gz.partiel" "$CIBLE/caddy-$DATE.tar.gz"
 # Garder 30 jours.
 find "$CIBLE" -maxdepth 1 -type f -mtime +30 \( -name '*.dump' -o -name 'config-*.tar.gz' -o -name 'caddy-*.tar.gz' \) \
     -delete
