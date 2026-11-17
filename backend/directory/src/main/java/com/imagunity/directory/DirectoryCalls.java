@@ -81,6 +81,29 @@ final class DirectoryCalls {
         }
     }
 
+    /**
+     * Entrée publiée de cette box, vérifiée avec la clé de l'organisation ; vide si elle n'en a pas.
+     *
+     * @throws DirectoryException si l'entrée n'est pas signée par cette organisation, ou si l'annuaire refuse la lecture
+     */
+    java.util.Optional<BoxEntry> publishedEntry(UUID boxId, String organization, HybridPublicKey organizationKey)
+            throws IOException {
+        HttpResponse<String> current = get("/directory/v1/entries/" + boxId, false);
+        if (current.statusCode() == 404) {
+            return java.util.Optional.empty();
+        }
+        if (current.statusCode() != 200) {
+            throw new DirectoryException("Lecture de l'entrée de la box " + boxId + " refusée (HTTP "
+                    + current.statusCode() + ")");
+        }
+        BoxEntry entry = new EntryVerifier(organization, organizationKey, SerialMemory.inMemory(),
+                java.time.Clock.systemUTC()).verify(SignedDocument.fromJson(current.body())).entry();
+        if (!entry.boxId().equals(boxId)) {
+            throw new DirectoryException("Entrée d'une autre box servie pour " + boxId);
+        }
+        return java.util.Optional.of(entry);
+    }
+
     /** Numéro de la prochaine entrée de cette box : 1, ou le suivant de son entrée publiée. */
     long nextSerial(UUID boxId) throws IOException {
         HttpResponse<String> current = get("/directory/v1/entries/" + boxId, false);
