@@ -109,6 +109,8 @@ function afficher() {
       d.author ? "par " + d.author : null, d.comment || null,
       d.priority ? "priorité : " + d.priority.rules.length + " règle(s)" : "priorité locale",
       d.routing ? "routage : " + d.routing.rules.length + " règle(s)" : "routage local",
+      d.dicom ? "DICOM : " + (d.dicom.nodes || []).length + " nœud(s), " + ((d.dicom.outgoing || []).length
+        + (d.dicom.incoming || []).length) + " route(s)" : null,
     ].filter(Boolean).join(" · ");
     const reprendre = document.createElement("button");
     reprendre.type = "button";
@@ -123,6 +125,7 @@ function afficher() {
 function reprendreVersion(d) {
   $("priorite").value = d.priority ? JSON.stringify(d.priority, null, 2) : "";
   $("routage").value = d.routing ? JSON.stringify(d.routing, null, 2) : "";
+  $("dicom").value = d.dicom ? JSON.stringify(d.dicom, null, 2) : "";
   document.querySelector("input[name=cible][value=" + (d.target.all ? "toutes" : "liste") + "]").checked = true;
   for (const c of $("choix-box").querySelectorAll("input")) c.checked = !d.target.all && (d.target.boxes || []).includes(c.value);
   for (const c of $("choix-groupes").querySelectorAll("input")) c.checked = !d.target.all && (d.target.groups || []).includes(c.value);
@@ -146,6 +149,7 @@ function brouillon() {
     target: toutes ? { all: true } : { all: false, boxes, groups },
     author: $("auteur").value, comment: $("motif").value,
     priority: lireJson("priorite", "Priorité"), routing: lireJson("routage", "Routage"),
+    dicom: lireJson("dicom", "Configuration DICOM"),
   };
 }
 

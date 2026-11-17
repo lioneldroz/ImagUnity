@@ -89,3 +89,14 @@ textarea { width: 100%; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas
 .info .bulle { visibility: hidden; opacity: 0; transition: opacity .15s; position: absolute; z-index: 10; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); width: min(360px, 80vw); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--bord); background: var(--carte); color: var(--texte); box-shadow: 0 4px 16px rgba(0, 0, 0, .18); font-size: 13px; font-weight: 400; line-height: 1.45; text-align: left; }
 .info:hover .bulle, .info:focus-within .bulle { visibility: visible; opacity: 1; }
 dt .info .bulle { left: 0; transform: none; }
+.grille-config { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 12px; align-items: end; }
+@media (max-width: 760px) { .grille-config { grid-template-columns: 1fr; } }
+select { font: inherit; color: inherit; background: var(--fond); border: 1px solid var(--bord); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.config-aet { max-width: 520px; margin-top: 12px; }
+#config-noeuds input[type=text], #config-noeuds input[type=number] { min-width: 90px; }
+.route { border: 1px solid var(--bord); border-radius: 8px; padding: 10px 12px; margin-top: 8px; display: grid; gap: 8px; }
+.route-ligne { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.choix-liste { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.choix-liste label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.formulaire-config { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .formulaire-config { grid-template-columns: 1fr; } }

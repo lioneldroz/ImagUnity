@@ -301,6 +301,8 @@ final class LocalInterface implements AutoCloseable {
             case "GET /api/cle-publique" -> Map.of("nom", publicFile(keys).getFileName().toString(), "contenu",
                     java.nio.file.Files.readString(publicFile(keys)));
             case "POST /api/fraicheur" -> delegateFreshness(body);
+            case "GET /api/configurations" -> configurations();
+            case "POST /api/configuration" -> publishConfiguration(body);
             case "GET /api/demandes" -> pending();
             case "POST /api/valider" -> validate(body);
             case "POST /api/refuser" -> refuse(body);
@@ -354,6 +356,177 @@ final class LocalInterface implements AutoCloseable {
         state.put("renouvelerAvantJours", RENEW_BEFORE.toDays());
         state.put("phrase", phraseState());
         return state;
+    }
+
+    // --- Configuration des box : nœuds et routes DICOM, signés ici et publiés ---
+
+    /** Document de configuration publié, vérifié avec la clé de l'organisation. */
+    private record PublishedConfiguration(CentralConfiguration configuration, SignedDocument document) {
+    }
+
+    /** Documents de configuration publiés, vérifiés (un document daté du futur ou d'une autre clé est ignoré). */
+    private List<PublishedConfiguration> publishedConfigurations() throws IOException {
+        HttpResponse<String> response = calls.read("/directory/v1/configurations");
+        if (response.statusCode() == 404) {
+            return List.of();
+        }
+        if (response.statusCode() != 200) {
+            throw new Refusal(502, "Lecture des configurations refusée par l'annuaire (HTTP " + response.statusCode()
+                    + ")");
+        }
+        List<PublishedConfiguration> list = new ArrayList<>();
+        for (JsonNode item : Json.MAPPER.readTree(response.body()).path("configurations")) {
+            try {
+                SignedDocument document = SignedDocument.fromJson(item.toString());
+                list.add(new PublishedConfiguration(CentralConfiguration.verify(document, publicKey.organization(),
+                        publicKey.key(), clock), document));
+            } catch (DirectoryException | IllegalArgumentException e) {
+                // signé par une autre clé, ou altéré : ignoré
+            }
+        }
+        return list;
+    }
+
+    /** Document en vigueur pour une box : celui de numéro le plus haut qui la vise (comme la box le choisit). */
+    private static Optional<CentralConfiguration> effective(List<PublishedConfiguration> all, BoxEntry entry) {
+        return all.stream().map(PublishedConfiguration::configuration)
+                .filter(c -> c.target().includes(entry.boxId(), entry.groups()))
+                .max(java.util.Comparator.comparingLong(CentralConfiguration::sequence));
+    }
+
+    /** Version appliquée et dernier refus de chaque box, d'après leurs comptes rendus (compte du responsable). */
+    private Map<String, JsonNode> reports() {
+        Map<String, JsonNode> reports = new LinkedHashMap<>();
+        try {
+            HttpResponse<String> response = calls.get("/admin/api/state", true);
+            if (response.statusCode() == 200) {
+                for (JsonNode box : Json.MAPPER.readTree(response.body()).path("boxes")) {
+                    reports.put(box.path("boxId").asString(""), box);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            // comptes rendus facultatifs : l'onglet s'affiche sans eux
+        }
+        return reports;
+    }
+
+    /**
+     * Pour chaque box active : document en vigueur (nœuds, routes, règles), version qu'elle applique ; et les box
+     * qu'une route peut désigner (celles de l'organisation, et celles des partenaires reconnus).
+     */
+    private Map<String, Object> configurations() throws IOException {
+        Instant now = clock.instant();
+        List<PublishedConfiguration> all = publishedConfigurations();
+        Map<String, JsonNode> reports = reports();
+        List<Map<String, Object>> boxes = new ArrayList<>();
+        List<Map<String, Object>> targets = new ArrayList<>();
+        for (Published p : published().values()) {
+            BoxEntry e = p.entry();
+            if (e.statusAt(now) != BoxEntry.Status.ACTIVE) {
+                continue;
+            }
+            targets.add(Map.of("boxId", e.boxId().toString(), "nom", e.displayName(), "organisation",
+                    publicKey.organization()));
+            Map<String, Object> box = new LinkedHashMap<>();
+            box.put("boxId", e.boxId().toString());
+            box.put("nom", e.displayName());
+            box.put("groupes", e.groups());
+            Optional<CentralConfiguration> c = effective(all, e);
+            box.put("numero", c.map(CentralConfiguration::sequence).orElse(0L));
+            box.put("cible", c.map(x -> x.target().all() ? "toute l'organisation" : x.target().boxes()
+                    .contains(e.boxId()) ? "cette box" : "groupes " + String.join(", ", x.target().groups()))
+                    .orElse(null));
+            box.put("dicom", c.map(CentralConfiguration::dicom).orElse(null));
+            box.put("priorite", c.map(x -> x.priority() != null).orElse(false));
+            box.put("routage", c.map(x -> x.routing() != null).orElse(false));
+            JsonNode r = reports.get(e.boxId().toString());
+            if (r != null) {
+                box.put("appliquee", r.path("applied").isNumber() ? r.get("applied").asLong() : null);
+                box.put("refusee", r.path("refused").isNumber() ? r.get("refused").asLong() : null);
+                box.put("refus", r.path("refusal").isString() ? r.get("refusal").asString() : null);
+            }
+            boxes.add(box);
+        }
+        for (PublishedRecognition pr : recognitions()) {
+            Recognition rec = pr.recognition();
+            if (rec.statusAt(now) != BoxEntry.Status.ACTIVE) {
+                continue;
+            }
+            try {
+                HttpResponse<String> response = calls.read("/directory/v1/partners/" + rec.partner().fingerprint()
+                        + "/entries");
+                if (response.statusCode() != 200) {
+                    continue;
+                }
+                EntryVerifier verifier = new EntryVerifier(rec.partner().organization(), rec.partner().publicKey(),
+                        SerialMemory.inMemory(), clock);
+                for (JsonNode item : Json.MAPPER.readTree(response.body()).path("entries")) {
+                    try {
+                        BoxEntry e = verifier.verify(SignedDocument.fromJson(item.toString())).entry();
+                        if (e.statusAt(now) == BoxEntry.Status.ACTIVE) {
+                            targets.add(Map.of("boxId", e.boxId().toString(), "nom", e.displayName(), "organisation",
+                                    rec.partner().organization()));
+                        }
+                    } catch (DirectoryException | IllegalArgumentException ignored) {
+                        // entrée altérée : non proposée
+                    }
+                }
+            } catch (IOException | RuntimeException e) {
+                // annuaire du partenaire illisible : ses box ne sont pas proposées
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("box", boxes);
+        result.put("destinations", targets);
+        result.put("prochainNumero", all.stream().mapToLong(c -> c.configuration().sequence()).max().orElse(0) + 1);
+        return result;
+    }
+
+    /**
+     * Signe et publie la configuration DICOM d'une box : un document qui la vise elle seule, de numéro suivant, qui
+     * garde les règles de priorité et de routage du document en vigueur pour elle.
+     */
+    private Map<String, Object> publishConfiguration(JsonNode body) throws IOException {
+        UUID boxId = boxId(body);
+        Published p = published().get(boxId);
+        if (p == null || p.entry().statusAt(clock.instant()) != BoxEntry.Status.ACTIVE) {
+            throw new Refusal(404, "Box " + boxId + " absente de l'annuaire ou inactive");
+        }
+        CentralConfiguration.Dicom dicom;
+        try {
+            dicom = Json.MAPPER.treeToValue(body.path("dicom"), CentralConfiguration.Dicom.class);
+        } catch (RuntimeException e) {
+            throw new Refusal(422, "Configuration DICOM illisible : " + e.getMessage());
+        }
+        if (dicom == null) {
+            throw new Refusal(422, "Configuration DICOM absente");
+        }
+        List<PublishedConfiguration> all = publishedConfigurations();
+        Optional<CentralConfiguration> current = effective(all, p.entry());
+        long sequence = all.stream().mapToLong(c -> c.configuration().sequence()).max().orElse(0) + 1;
+        String comment = body.path("motif").asString("").strip();
+        CentralConfiguration draft = CentralConfiguration.draft(publicKey.organization(),
+                CentralConfiguration.Target.of(List.of(boxId)), sequence, clock.instant(), "responsable",
+                comment.isEmpty() ? null : comment, current.map(CentralConfiguration::priority).orElse(null),
+                current.map(CentralConfiguration::routing).orElse(null), dicom);
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        HttpResponse<String> response = calls.post("/directory/v1/configurations", organization
+                .signConfiguration(draft));
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            String detail = response.body();
+            try {
+                detail = Json.MAPPER.readTree(response.body()).path("detail").asString(detail);
+            } catch (RuntimeException ignored) {
+                // corps non JSON : tel quel
+            }
+            throw new Refusal(response.statusCode() == 422 ? 422 : 502, "Publication refusée par l'annuaire : "
+                    + detail);
+        }
+        String message = "Configuration n° " + sequence + " de « " + p.entry().displayName() + " » signée et "
+                + "publiée : la box l'applique à sa prochaine lecture de l'annuaire";
+        out.println(message);
+        return Map.of("message", message, "phrase", phraseState());
     }
 
     // --- Démarrage : création de l'organisation, vérifications, clé de fraîcheur ---

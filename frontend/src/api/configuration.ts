@@ -22,6 +22,8 @@ export interface CentralConfigurationView {
   error: string | null
   /** Groupes de la box, d'après son entrée d'annuaire (fixés par le responsable). */
   groups: string[]
+  /** Nœuds et routes DICOM centraux, une ligne chacun (vide : configuration DICOM locale). */
+  dicom?: string[]
 }
 
 export const fetchCentralConfiguration = () => getJson<CentralConfigurationView>('/api/v1/configuration')

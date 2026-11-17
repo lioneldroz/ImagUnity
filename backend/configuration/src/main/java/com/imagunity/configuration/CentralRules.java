@@ -1,5 +1,6 @@
 package com.imagunity.configuration;
 
+import com.imagunity.rules.DicomRouting;
 import com.imagunity.rules.PrioritySource;
 import com.imagunity.rules.RoutingRule;
 import com.imagunity.rules.RuleSet;
@@ -70,7 +71,11 @@ public final class CentralRules implements CentralConfigurationStatus {
     static final int REMEMBERED = 32;
 
     /** Version appliquée. */
-    record Applied(CentralConfiguration configuration, RuleSet rules, Instant appliedAt) {
+    record Applied(CentralConfiguration configuration, RuleSet rules, DicomRouting dicom, Instant appliedAt) {
+    }
+
+    /** Règles et configuration DICOM compilées d'un document. */
+    record Compiled(RuleSet rules, DicomRouting dicom) {
     }
 
     /**
@@ -160,18 +165,18 @@ public final class CentralRules implements CentralConfigurationStatus {
                 return;
             }
             CentralConfiguration configuration;
-            RuleSet rules;
+            Compiled rules;
             try {
                 configuration = CentralConfiguration.verify(SignedDocument.fromJson(stored.document()), organization,
                         organizationKey, clock);
-                rules = compile(configuration);
+                rules = compileAll(configuration);
             } catch (RuntimeException e) {
                 unverifiedDocument = stored.document();
                 LOG.warn("Configuration centrale enregistrée invalide ({}) : configuration locale en vigueur jusqu'à "
                         + "la prochaine lecture de l'annuaire", e.getMessage());
                 return;
             }
-            applied = new Applied(configuration, rules, stored.appliedAt());
+            applied = new Applied(configuration, rules.rules(), rules.dicom(), stored.appliedAt());
             appliedDocument = stored.document();
             floor = Math.max(floor, configuration.sequence());
             LOG.info("Configuration centrale {} en vigueur (appliquée le {})", configuration.describe(),
@@ -221,9 +226,9 @@ public final class CentralRules implements CentralConfigurationStatus {
                 .sorted(Comparator.comparingLong((Candidate c) -> c.configuration().sequence()).reversed()).toList();
         for (Candidate found : candidates) {
             CentralConfiguration candidate = found.configuration();
-            RuleSet rules;
+            Compiled rules;
             try {
-                rules = compile(candidate);
+                rules = compileAll(candidate);
             } catch (IllegalArgumentException e) {
                 if (candidate.sequence() > refused) {
                     refused = candidate.sequence();
@@ -234,7 +239,7 @@ public final class CentralRules implements CentralConfigurationStatus {
                 continue;
             }
             Instant now = clock.instant();
-            applied = new Applied(candidate, rules, now);
+            applied = new Applied(candidate, rules.rules(), rules.dicom(), now);
             appliedDocument = found.document().toJson();
             unverifiedDocument = null;
             floor = Math.max(floor, candidate.sequence());
@@ -278,6 +283,26 @@ public final class CentralRules implements CentralConfigurationStatus {
         return RuleSet.compile(configuration.priority() == null ? null : configuration.priority().defaultPriority(),
                 configuration.priority() == null ? null : specs(configuration.priority().rules()),
                 configuration.routing() == null ? null : specs(configuration.routing().rules()));
+    }
+
+    /** Règles et configuration DICOM d'un document ; {@code IllegalArgumentException} au premier élément invalide. */
+    static Compiled compileAll(CentralConfiguration configuration) {
+        return new Compiled(compile(configuration), dicom(configuration.dicom()));
+    }
+
+    /** Configuration DICOM compilée, ou {@code null} si le document n'en porte pas. */
+    public static DicomRouting dicom(CentralConfiguration.Dicom dicom) {
+        if (dicom == null) {
+            return null;
+        }
+        return DicomRouting.compile(dicom.aet(), dicom.nodes().stream().map(n -> new DicomRouting.NodeSpec(n.name(),
+                        n.aet(), n.host(), n.port(), n.source(), n.destination())).toList(),
+                routes(dicom.outgoing()), routes(dicom.incoming()));
+    }
+
+    private static List<DicomRouting.RouteSpec> routes(List<CentralConfiguration.Route> routes) {
+        return routes.stream().map(r -> new DicomRouting.RouteSpec(r.name(), r.from(), r.calledAet(), r.and(), r.or(),
+                r.to())).toList();
     }
 
     private static List<RuleSet.Spec> specs(List<CentralConfiguration.Rule> rules) {
@@ -328,6 +353,33 @@ public final class CentralRules implements CentralConfigurationStatus {
         return a == null ? Optional.empty() : Optional.ofNullable(a.rules().routing());
     }
 
+    /** Configuration DICOM centrale, si la version appliquée en fixe une. */
+    public Optional<DicomRouting> dicom() {
+        Applied a = applied;
+        return a == null ? Optional.empty() : Optional.ofNullable(a.dicom());
+    }
+
+    /** Lignes lisibles de la configuration DICOM centrale (console). */
+    static List<String> describe(DicomRouting d) {
+        List<String> lines = new java.util.ArrayList<>();
+        if (d.aet() != null) {
+            lines.add("AET de la box : " + d.aet());
+        }
+        d.nodes().values().stream().sorted(Comparator.comparing(DicomRouting.Node::name)).forEach(n -> lines.add(
+                "Nœud " + n.name() + " (" + n.aet() + (n.host() == null ? "" : ", " + n.host()
+                        + (n.port() == null ? "" : ":" + n.port())) + ") : " + (n.source() && n.destination()
+                        ? "source et destination" : n.source() ? "source" : "destination")));
+        d.outgoing().forEach(r -> lines.add("Route sortante " + r.name() + " : " + (r.fromAets().isEmpty()
+                ? "toute source" : String.join(", ", r.fromAets())) + (r.calledAet() == null ? ""
+                : " vers " + r.calledAet()) + (r.condition().and().isEmpty() && r.condition().or().isEmpty() ? ""
+                : " [" + r.condition().describe() + "]") + " → " + r.to().size() + " box"));
+        d.incoming().forEach(r -> lines.add("Route entrante " + r.name() + " : " + (r.from().isEmpty()
+                ? "toute box" : r.from().size() + " box") + (r.condition().and().isEmpty()
+                && r.condition().or().isEmpty() ? "" : " [" + r.condition().describe() + "]") + " → "
+                + String.join(", ", r.to())));
+        return lines;
+    }
+
     public Snapshot snapshot() {
         Applied a = applied;
         CentralConfiguration c = a == null ? null : a.configuration();
@@ -344,7 +396,7 @@ public final class CentralRules implements CentralConfigurationStatus {
                 + String.join(", ", r.destinations())).toList()).orElse(List.of());
         return new View(true, s.sequence(), s.issuedAt(), s.author(), s.comment(), s.appliedAt(), s.priority(),
                 s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error(),
-                List.copyOf(groups.get()));
+                List.copyOf(groups.get()), dicom().map(CentralRules::describe).orElse(List.of()));
     }
 
     /**

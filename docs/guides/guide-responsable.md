@@ -452,6 +452,28 @@ La preuve correspond aux entrées et reconnaissances publiées
 
 ---
 
+### 2.11 Configurer les box depuis l'interface : nœuds et routes DICOM
+
+Plutôt que de modifier le fichier `box.env` de chaque box sur place, configurez-les toutes depuis l'interface du responsable, onglet **« Configuration des box »**. La box applique la configuration à sa lecture suivante de l'annuaire, sans redémarrage.
+
+![Onglet Configuration des box : nœuds du site, route sortante vers une autre box, deux routes entrantes vers deux PACS](../images/guide-responsable/22-configuration-box.png)
+
+1. **Choisissez la box.** La ligne d'état montre la version en vigueur, celle que la box applique vraiment, et son dernier refus s'il y en a un.
+2. **Déclarez les nœuds DICOM de son site** : un nom, l'AET, l'adresse et le port, et les rôles.
+   - Une **source** a le droit d'envoyer à la box. Si vous indiquez son adresse, seul ce poste peut le faire sous cet AET.
+   - Une **destination** reçoit les examens restitués par la box.
+3. **Routes sortantes** : d'une source (ou de toutes) vers une ou plusieurs box, de votre organisation ou d'un partenaire.
+   - Un filtre est facultatif : `Modality=CT; SeriesDescription=*THORAX*`.
+   - Un AET appelé exigé est facultatif aussi : utile pour garder une destination déjà réglée dans le PACS, comme `IU_TO_B`.
+   - Les box désignées sont appairées automatiquement.
+4. **Routes entrantes** : d'une box émettrice (ou de toutes) vers un ou plusieurs PACS, avec un filtre. Par exemple, les IRM du CHU Sud vont au PACS IRM et tout le reste au PACS principal. Sans route entrante, la box restitue au PACS de sa configuration locale.
+5. **L'ordre compte** : la première route qui correspond s'applique. Le bouton « Monter » change l'ordre.
+6. **« Signer et publier »** avec la phrase de passe. Le document vise cette box seule et garde ses règles de priorité. Une erreur, comme un mot-clé DICOM inconnu dans un filtre, est signalée avant toute application.
+
+- **Reprendre la configuration d'une autre box** copie ses nœuds et ses routes pour partir d'un modèle. Vérifiez ensuite les adresses, qui sont propres à chaque site.
+- Restent dans `box.env` : l'adresse et le port d'écoute de la box, et le compte DICOMweb.
+- Une fois une box configurée ici, gérez aussi ses règles d'ici. Un document plus récent publié pour un groupe depuis l'interface d'administration remplacerait ses nœuds et ses routes ([configuration centralisée, § 11](../reference/configuration-centralisee.md#11-nœuds-et-routes-dicom)).
+
 ## 3. L'interface d'administration
 
 ### 3.1 Se connecter

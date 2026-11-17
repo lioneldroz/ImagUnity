@@ -34,8 +34,16 @@ export function CentralConfigurationCard() {
           {view.comment && <p className="muted small">Motif : {view.comment}</p>}
           <p className="small">
             Priorité des séries : {view.priority ? 'règles centrales' : 'règles locales'} — routage :{' '}
-            {view.routing ? 'règles centrales' : 'règles locales'}.
+            {view.routing ? 'règles centrales' : 'règles locales'} — nœuds et routes DICOM :{' '}
+            {view.dicom && view.dicom.length > 0 ? 'configuration centrale' : 'configuration locale'}.
           </p>
+          {view.dicom && view.dicom.length > 0 && (
+            <ul className="mono small">
+              {view.dicom.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
           {view.routingRules.length > 0 && (
             <ul className="mono small">
               {view.routingRules.map((rule) => (

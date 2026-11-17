@@ -25,6 +25,7 @@
   <button type="button" role="tab" data-onglet="demandes">Demandes en attente <span class="compteur" id="compte-demandes"></span></button>
   <button type="button" role="tab" data-onglet="box">Box de l'organisation <span class="compteur" id="compte-box"></span></button>
   <button type="button" role="tab" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
+  <button type="button" role="tab" data-onglet="configuration">Configuration des box</button>
   <button type="button" role="tab" data-onglet="partenaires">Organisations partenaires <span class="compteur" id="compte-partenaires"></span></button>
   <button type="button" role="tab" data-onglet="aide">Aide</button>
 </nav>
@@ -159,7 +160,7 @@
       <a href="#aide-principe">Le principe</a> · <a href="#aide-fichiers">Les fichiers</a> ·
       <a href="#aide-empreinte">L'empreinte</a> · <a href="#aide-phrase">La phrase de passe</a> ·
       <a href="#aide-groupes">Les groupes</a> · <a href="#aide-enrolement">L'enrôlement</a> ·
-      <a href="#aide-fraicheur">La fraîcheur</a> · <a href="#aide-partenaires">Les partenaires</a> ·
+      <a href="#aide-fraicheur">La fraîcheur</a> · <a href="#aide-configuration">La configuration des box</a> · <a href="#aide-partenaires">Les partenaires</a> ·
       <a href="#aide-incidents">En cas de problème</a> · <a href="#aide-mots">Les mots</a>
     </nav>
 
@@ -249,6 +250,21 @@
       qui reçoit une entrée plus ancienne que l'annoncée ne s'en sert pas, et une box qui ne voit plus de preuve récente
       (48 h) arrête les échanges. D'où le renouvellement mensuel : une délégation expirée arrête tout au bout de 48 h.</p>
 
+    <h3 id="aide-configuration">La configuration des box</h3>
+    <p>L'onglet « Configuration des box » décrit, pour chaque box, les appareils DICOM de son site et ses routes, sans
+      se déplacer sur place :</p>
+    <ul>
+      <li><strong>Nœuds</strong> : un PACS, un scanner, une station… Une <em>source</em> peut envoyer à la box ; une
+        <em>destination</em> reçoit les examens qu'elle restitue.</li>
+      <li><strong>Routes sortantes</strong> : « ce qui vient de telle source, et qui correspond à tel filtre, part vers
+        telles box ». Les box désignées sont appairées automatiquement.</li>
+      <li><strong>Routes entrantes</strong> : « ce qui vient de telle box part vers tels PACS ». Plusieurs PACS sont
+        possibles, selon l'émetteur ou le contenu (par exemple les IRM vers le PACS IRM).</li>
+    </ul>
+    <p>La première route qui correspond s'applique. Le document est signé ici et vise une seule box ; elle l'applique
+      sans redémarrage et le refuse en entier s'il contient une erreur. Son adresse d'écoute et son compte DICOMweb
+      restent dans son fichier <code>box.env</code>.</p>
+
     <h3 id="aide-partenaires">Les organisations partenaires</h3>
     <p>Pour échanger avec un autre établissement, chaque responsable reconnaît l'autre : il colle la clé publique du
       partenaire, compare l'empreinte avec lui au téléphone, indique son annuaire, ses relais et les groupes autorisés,
@@ -330,6 +346,59 @@
       </table>
     </div>
   </section>
+  <section id="onglet-configuration" role="tabpanel" hidden>
+    <h2>Configuration des box</h2>
+    <p class="aide">Les nœuds DICOM du site de chaque box (PACS, modalités, stations) et ses routes : d'une source
+      vers des box, et d'une box émettrice vers des PACS. Signée ici avec la clé de l'organisation, publiée par
+      l'annuaire, la configuration est appliquée par la box à sa lecture suivante, sans redémarrage. Elle remplace les
+      émetteurs autorisés, les destinations et le PACS de restitution de sa configuration locale.</p>
+    <div class="grille-config">
+      <label>Box
+        <select id="config-box"></select>
+      </label>
+      <p class="discret" id="config-etat"></p>
+    </div>
+    <div id="config-editeur" hidden>
+      <label class="config-aet">AET de la box (celui que les sources appellent ; vide : celui de sa configuration locale)
+        <input type="text" id="config-aet" maxlength="16" placeholder="IMAGUNITY_NORD">
+      </label>
+
+      <h3 class="bloc">Nœuds DICOM du site
+        <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
+      <div class="tableau">
+        <table>
+          <thead><tr><th>Nom</th><th>AET</th><th>Adresse</th><th>Port</th><th>Source</th><th>Destination</th><th></th></tr></thead>
+          <tbody id="config-noeuds"></tbody>
+        </table>
+      </div>
+      <div class="actions"><button type="button" class="secondaire" id="ajouter-noeud">Ajouter un nœud</button></div>
+
+      <h3 class="bloc">Routes sortantes : d'une source vers des box
+        <span class="info"><button type="button" class="info-bouton" aria-label="Routes sortantes" aria-describedby="bulle-sortantes">?</button><span class="bulle" role="tooltip" id="bulle-sortantes">La première route qui correspond à l'instance envoyée s'applique : sa source, l'AET appelé si la route en exige un, et ses filtres DICOM. Les box désignées sont appairées automatiquement. Une instance qu'aucune route ne prend est refusée, et la source la garde en échec.</span></span></h3>
+      <div id="config-sortantes"></div>
+      <div class="actions"><button type="button" class="secondaire" id="ajouter-sortante">Ajouter une route sortante</button></div>
+
+      <h3 class="bloc">Routes entrantes : d'une box émettrice vers des PACS
+        <span class="info"><button type="button" class="info-bouton" aria-label="Routes entrantes" aria-describedby="bulle-entrantes">?</button><span class="bulle" role="tooltip" id="bulle-entrantes">Pour chaque instance reçue, la première route qui correspond (box émettrice et filtres) désigne le ou les PACS qui la reçoivent. Sans aucune route entrante, la box restitue au PACS de sa configuration locale.</span></span></h3>
+      <div id="config-entrantes"></div>
+      <div class="actions"><button type="button" class="secondaire" id="ajouter-entrante">Ajouter une route entrante</button></div>
+
+      <p class="discret bloc" id="config-regles"></p>
+      <div class="formulaire-config bloc">
+        <label>Motif du changement (journal de la box)
+          <input type="text" id="config-motif" maxlength="200" placeholder="Nouveau PACS IRM">
+        </label>
+        <label>Reprendre la configuration d'une autre box
+          <select id="config-copier"><option value="">—</option></select>
+        </label>
+      </div>
+      <div class="actions bloc">
+        <button type="button" id="config-publier">Signer et publier</button>
+        <button type="button" class="secondaire" id="config-annuler">Annuler les modifications</button>
+      </div>
+    </div>
+  </section>
+
   <section id="onglet-partenaires" role="tabpanel" hidden>
     <h2>Organisations partenaires</h2>
     <p class="aide">Pour échanger avec les box d'une autre organisation, chaque responsable reconnaît l'autre : il

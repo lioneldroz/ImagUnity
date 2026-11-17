@@ -36,7 +36,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pydicom.dataset import Dataset, FileMetaDataset
@@ -269,10 +269,10 @@ def up(url):
 
 # --- PACS simulés --------------------------------------------------------------
 
-def start_pacs(work, org):
+def start_pacs(work, org, aet=None, port=None, name="pacs"):
     """PACS destinataire : SCP de stockage, garde chaque instance reçue (empreinte des pixels)."""
     received = {}
-    target = machine(work, org, "pacs")
+    target = machine(work, org, name)
 
     def on_store(event):
         ds = event.dataset
@@ -281,15 +281,22 @@ def start_pacs(work, org):
         ds.save_as(target / f"{ds.SOPInstanceUID}.dcm", enforce_file_format=True)
         return 0x0000
 
-    ae = AE(ae_title=f"PACS_{org}")
+    ae = AE(ae_title=aet or f"PACS_{org}")
     ae.supported_contexts = StoragePresentationContexts
-    ae.start_server(("127.0.0.1", ORGS[org]["pacs"]), block=False, evt_handlers=[(evt.EVT_C_STORE, on_store)])
+    ae.start_server(("127.0.0.1", port or ORGS[org]["pacs"]), block=False, evt_handlers=[(evt.EVT_C_STORE, on_store)])
     return received
 
 
-def make_study(instances, label):
+def make_study(instances, label, series_descriptions=None):
+    """Étude synthétique ; series_descriptions : une série par description, `instances` instances chacune."""
     study_uid = generate_uid()
-    series_uid = generate_uid()
+    datasets = []
+    for number, description in enumerate(series_descriptions or [None], start=1):
+        datasets.extend(make_series(study_uid, generate_uid(), number, description, instances, label))
+    return study_uid, datasets
+
+
+def make_series(study_uid, series_uid, number, description, instances, label):
     datasets = []
     for i in range(1, instances + 1):
         meta = FileMetaDataset()
@@ -306,7 +313,9 @@ def make_study(instances, label):
         ds.PatientID = f"IU-FEDERATION-{label}"
         ds.StudyDescription = f"Banc fédération {label}"
         ds.Modality = "CT"
-        ds.SeriesNumber = 1
+        ds.SeriesNumber = number
+        if description:
+            ds.SeriesDescription = description
         ds.InstanceNumber = i
         ds.Rows = ds.Columns = 128
         ds.SamplesPerPixel = 1
@@ -316,7 +325,7 @@ def make_study(instances, label):
         ds.PixelRepresentation = 0
         ds.PixelData = os.urandom(128 * 128 * 2)
         datasets.append(ds)
-    return study_uid, datasets
+    return datasets
 
 
 def send_study(org, datasets):
@@ -357,6 +366,76 @@ def exchange(sender, receiver, received, label, instances=5):
            f"{receiver}, {time.monotonic() - started:.0f} s" + (f", {transfer['errorMessage']}"
                                                                    if transfer.get("errorMessage") else ""))
     return transfer
+
+
+def publish_configuration(work, org, box_id, dicom):
+    """Le responsable signe et publie la configuration DICOM d'une box (document qui la vise elle seule)."""
+    poste = machine(work, org, "poste-responsable")
+    current = http("GET", annuaire_url(org) + "/directory/v1/configurations", auth=tuple(COMPTE.split(":")))
+    sequence = 1 + max([json.loads(d["payload"])["sequence"] for d in current["configurations"]] or [0])
+    draft = {"type": "imagunity.configuration", "suite": "IU1", "organization": ORGS[org]["id"],
+             "target": {"all": False, "boxes": [box_id]}, "sequence": sequence,
+             "issuedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "author": "banc",
+             "comment": "nœuds et routes DICOM", "dicom": dicom}
+    (poste / f"brouillon-{sequence}.json").write_text(json.dumps(draft, ensure_ascii=False))
+    admin(work, org, "configuration-signer", "--cles", "organisation.json", "--brouillon", f"brouillon-{sequence}.json",
+          "--sortie", f"configuration-{sequence}.json", "--confirmer")
+    admin(work, org, "configuration-publier", "--annuaire", annuaire_url(org), "--configuration",
+          f"configuration-{sequence}.json")
+    return sequence
+
+
+def central_dicom(work, box_ids, received):
+    """Configuration DICOM centrale : A route son PACS vers B ; B restitue les séries CRANE à un second PACS."""
+    received_crane = start_pacs(work, "B", aet="PACS_B_CRANE", port=ORGS["B"]["pacs"] + 10, name="pacs-crane")
+    publish_configuration(work, "A", box_ids["A"], {
+        "aet": "IU_A",
+        "nodes": [{"name": "pacs-a", "aet": "PACS_A", "host": "127.0.0.1", "port": ORGS["A"]["pacs"],
+                   "source": True, "destination": True}],
+        "outgoing": [{"name": "vers-b", "from": ["pacs-a"], "calledAet": "IU_TO_B", "to": [box_ids["B"]]}],
+        "incoming": [{"name": "tout", "to": ["pacs-a"]}]})
+    publish_configuration(work, "B", box_ids["B"], {
+        "aet": "IU_B",
+        "nodes": [{"name": "pacs-b", "aet": "PACS_B", "host": "127.0.0.1", "port": ORGS["B"]["pacs"],
+                   "source": True, "destination": True},
+                  {"name": "pacs-crane", "aet": "PACS_B_CRANE", "host": "127.0.0.1", "port": ORGS["B"]["pacs"] + 10,
+                   "destination": True}],
+        "outgoing": [{"name": "vers-a", "from": ["pacs-b"], "calledAet": "IU_TO_A", "to": [box_ids["A"]]}],
+        "incoming": [{"name": "crane", "from": [box_ids["A"]], "and": {"SeriesDescription": "*CRANE*"},
+                      "to": ["pacs-crane"]},
+                     {"name": "reste", "to": ["pacs-b"]}]})
+    for org in ORGS:
+        wait(lambda: console(org, "GET", "/api/v1/configuration").get("dicom"), 120,
+             f"configuration DICOM centrale appliquée par la box {org}")
+    lines = console("B", "GET", "/api/v1/configuration")["dicom"]
+
+    study_uid, datasets = make_study(3, "routes", ["THORAX", "CRANE"])
+    thorax = {ds.SOPInstanceUID: hashlib.sha256(ds.PixelData).hexdigest() for ds in datasets
+              if ds.SeriesDescription == "THORAX"}
+    crane = {ds.SOPInstanceUID: hashlib.sha256(ds.PixelData).hexdigest() for ds in datasets
+             if ds.SeriesDescription == "CRANE"}
+    send_study("A", datasets)
+    wait(lambda: (transfer_of("A", study_uid) or {}).get("state") in ("ACKNOWLEDGED", "FAILED"), 240,
+         "transfert routé accusé ou en échec", 2)
+    transfer = transfer_of("A", study_uid)
+    at_b = {uid: received["B"].get(uid) for uid in thorax}
+    at_crane = {uid: received_crane.get(uid) for uid in crane}
+    misrouted = [uid for uid in crane if uid in received["B"]] + [uid for uid in thorax if uid in received_crane]
+    result("Configuration DICOM centrale : routes et plusieurs PACS",
+           transfer["state"] == "ACKNOWLEDGED" and at_b == thorax and at_crane == crane and not misrouted,
+           f"{transfer['state']} ; série THORAX au PACS B ({sum(1 for v in at_b.values() if v)}/3), série CRANE au "
+           f"PACS CRANE ({sum(1 for v in at_crane.values() if v)}/3), {len(misrouted)} mal routée(s) ; "
+           f"console de B : {len(lines)} ligne(s), dont « {next((l for l in lines if 'crane' in l), '')} »")
+
+    # Une source qui n'est pas un nœud déclaré : association refusée par la box A.
+    ae = AE(ae_title="INCONNU")
+    ae.add_requested_context(CTImageStorage, ExplicitVRLittleEndian)
+    assoc = ae.associate("127.0.0.1", ORGS["A"]["dicom"], ae_title="IU_TO_B")
+    refused = not assoc.is_established
+    if assoc.is_established:
+        assoc.release()
+    result("Configuration DICOM centrale : source non déclarée refusée", refused,
+           "association de « INCONNU » refusée par la box A")
 
 
 def refused_send(sender, label, expected_reason):
@@ -501,6 +580,8 @@ def run(work, h2):
 
     exchange("A", "B", received["B"], "A-vers-B")
     exchange("B", "A", received["A"], "B-vers-A")
+
+    central_dicom(work, box_ids, received)
 
     # Refus.
     recognize(work, "A", "B", "urgences", "neuro")

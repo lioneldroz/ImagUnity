@@ -141,3 +141,50 @@ Un document peut viser des **groupes** (`"target": {"groups": ["imagerie-nord"]}
 - **Mise à jour d'un parc** : les box et les relais antérieurs refusent une entrée qui porte des groupes (champ inconnu dans un document signé) et gardent alors l'entrée précédente de cette box. Mettre à jour le service d'annuaire, les relais et toutes les box **avant** d'attribuer des groupes.
 
 *Vérifié en réel* (box 0.13.1) : n° 4 publiée pour `imagerie-nord` ; box-a placée dans le groupe l'applique, box-b reste sur la n° 2 (toute l'organisation) ; box-a retirée du groupe revient à la n° 2. Un relais non mis à jour écarte l'entrée de box-a avec groupes (journal « Entrée de l'annuaire écartée »), d'où l'ordre de mise à jour ci-dessus.
+
+## 11. Nœuds et routes DICOM
+
+Chaque box peut recevoir de l'organisation toute sa configuration DICOM : les nœuds de son site et ses routes. On la prépare, la signe et la publie depuis l'**interface du responsable**, onglet « Configuration des box » ([guide du responsable, § 2.11](../guides/guide-responsable.md#211-configurer-les-box-depuis-linterface-nœuds-et-routes-dicom)). La clé reste sur le poste du responsable.
+
+### Document
+
+Bloc `dicom` du document de configuration, à côté de `priority` et `routing` :
+
+```json
+"dicom": {
+  "aet": "IMAGUNITY_NORD",
+  "nodes": [
+    { "name": "pacs-nord", "aet": "PACS_NORD", "host": "10.2.0.15", "port": 104, "source": true, "destination": true },
+    { "name": "ct-urg", "aet": "CT_URG", "source": true },
+    { "name": "pacs-irm", "aet": "PACS_IRM", "host": "10.2.0.16", "port": 11112, "destination": true }
+  ],
+  "outgoing": [
+    { "name": "scanner-vers-sud", "from": ["ct-urg"], "and": { "Modality": "CT" }, "to": ["<identifiant de la box Sud>"] },
+    { "name": "ancienne-destination", "calledAet": "IU_TO_B", "to": ["<identifiant de la box B>"] }
+  ],
+  "incoming": [
+    { "name": "irm-du-sud", "from": ["<identifiant de la box Sud>"], "and": { "Modality": "MR" }, "to": ["pacs-irm"] },
+    { "name": "reste", "to": ["pacs-nord"] }
+  ]
+}
+```
+
+- **Nœud** : nom (minuscules, chiffres, tirets), AET, rôles. Une **source** peut envoyer à la box. Si son adresse est donnée, l'association doit en venir. Une **destination** reçoit les examens restitués : adresse et port obligatoires. 64 nœuds et 64 routes de chaque sens au plus.
+- **Route sortante** : d'une ou plusieurs sources (aucune : toutes), avec un AET appelé exigé ou non, et un filtre (`and`, `or`, même syntaxe que les règles), vers des **box désignées par leur identifiant d'annuaire**, de l'organisation ou d'un partenaire reconnu. La première route qui correspond s'applique. Une instance qu'aucune route ne prend est refusée : la source la garde en échec.
+- **Route entrante** : d'une ou plusieurs box émettrices (aucune : toutes), avec un filtre, vers un ou plusieurs nœuds destinations. Chaque instance va aux PACS de la première route qui correspond. Sans route qui corresponde, rien n'est restitué et le transfert échoue, avec le motif renvoyé à l'émetteur.
+- **AET de la box** (`aet`) : celui que les sources appellent, et sous lequel elle se présente aux PACS. Absent : celui de sa configuration locale (`IMAGUNITY_BOX_AET`). Les AET appelés acceptés sont celui-ci et ceux qu'exigent les routes sortantes.
+
+### Dans la box
+
+- **Préséance** : le bloc `dicom` présent remplace, sans redémarrage, les émetteurs autorisés, les destinations par AET, le routage par champ et le PACS de restitution de la configuration locale. Sans route entrante, la box restitue au PACS de sa configuration locale. Restent locaux : l'adresse et le port d'écoute, et le compte DICOMweb (un secret).
+- **Vérifications** : le service d'annuaire et la box vérifient tout (noms, AET, adresses, ports, rôles, mots-clés DICOM des filtres, identifiants de box). Un document invalide est refusé en entier, la configuration en vigueur reste, le refus apparaît dans la console et dans l'interface du responsable.
+- **Appairage automatique** : les box désignées par une route sortante et pas encore appairées le sont automatiquement, une à la fois, à la lecture de l'annuaire, si l'échange est permis (box active, accords, périmètre). Tant qu'une box n'est pas appairée, les instances pour elle sont refusées avec le motif « pas encore appairée ».
+- **Console** : la carte « Configuration centralisée » liste les nœuds et les routes en vigueur.
+- **Sécurité** : seul un document signé par la clé de l'organisation s'applique, sans retour en arrière possible. Un annuaire compromis ne peut ni créer ni modifier une route. Une source déclarée avec une adresse ne peut pas être imitée par un autre poste qui prendrait son AET.
+
+### Un document par box
+
+L'interface du responsable produit un document **pour une seule box**. Il reprend les règles de priorité et de routage par champ du document qui s'appliquait à elle. Une box n'applique qu'un document, le plus récent qui la vise. Un document plus récent publié **pour un groupe ou pour toute l'organisation**, sans bloc `dicom`, remplacerait donc aussi ses nœuds et ses routes par sa configuration locale. Une fois les box configurées depuis l'interface du responsable, y gérer aussi leurs règles. L'interface d'administration du service d'annuaire montre et reprend le bloc `dicom` (champ JSON), pour ne pas le perdre.
+
+*Vérifié en réel* (banc de fédération, deux organisations) : chaque responsable publie la configuration de sa box. A route son PACS vers la box de B. B restitue les séries `*CRANE*` venues de A à un second PACS, le reste au premier. Une étude de deux séries arrive série par série au bon PACS, accusé compris. Une source non déclarée est refusée dès l'association ([résultats](../../deploy/banc-essai/federation/resultats.md)).
+

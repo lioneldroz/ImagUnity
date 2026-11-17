@@ -49,8 +49,35 @@ public final class DicomRestorer implements StudyRestorer {
     private static final System.Logger LOG = System.getLogger(DicomRestorer.class.getName());
     private static final int MAX_PRESENTATION_CONTEXTS = 127;
 
-    /** Instance validée, prête à être envoyée. */
-    private record Validated(Instance instance, String sopClassUid, String transferSyntaxUid, long datasetOffset) {
+    /** Instance validée, prête à être envoyée ; {@code dataset} sans les pixels, pour le choix des destinations. */
+    private record Validated(Instance instance, String sopClassUid, String transferSyntaxUid, long datasetOffset,
+                             Attributes dataset) {
+    }
+
+    /**
+     * Choix des PACS de restitution par instance (routes entrantes de la configuration centralisée).
+     */
+    public interface Router {
+
+        /**
+         * PACS qui reçoivent cette instance venue de {@code origin}.
+         *
+         * @throws DicomValidationException si aucune route ne correspond : rien n'est restitué
+         */
+        List<RestoreConfig> targets(java.util.UUID origin, Attributes dataset) throws DicomValidationException;
+
+        /** Nom lisible d'une destination, pour les journaux. */
+        default String describe(RestoreConfig target) {
+            return target.calledAet() + " (" + target.host() + ":" + target.port() + ")";
+        }
+    }
+
+    /** Routeur de la configuration centralisée, relu à chaque étude ; vide : le PACS de la configuration locale. */
+    private volatile java.util.function.Supplier<java.util.Optional<Router>> router = java.util.Optional::empty;
+
+    /** Branche le choix des PACS par la configuration centralisée (appliqué sans redémarrage). */
+    public void router(java.util.function.Supplier<java.util.Optional<Router>> router) {
+        this.router = Objects.requireNonNull(router);
     }
 
     private record Pc(String sopClassUid, String transferSyntaxUid) {
@@ -87,6 +114,11 @@ public final class DicomRestorer implements StudyRestorer {
 
     @Override
     public void restore(String studyInstanceUid, List<Instance> instances) throws IOException {
+        restore(null, studyInstanceUid, instances);
+    }
+
+    @Override
+    public void restore(java.util.UUID origin, String studyInstanceUid, List<Instance> instances) throws IOException {
         if (instances.isEmpty()) {
             throw new DicomValidationException("Étude sans instance");
         }
@@ -94,8 +126,27 @@ public final class DicomRestorer implements StudyRestorer {
         for (Instance instance : instances) {
             validated.add(validate(studyInstanceUid, instance));
         }
-        send(validated);
-        LOG.log(Level.INFO, "Étude restituée à {0} : {1} instance(s)", config.calledAet(), validated.size());
+        java.util.Optional<Router> routes = router.get();
+        if (routes.isEmpty()) {
+            send(config, validated);
+            LOG.log(Level.INFO, "Étude restituée à {0} : {1} instance(s)", config.calledAet(), validated.size());
+            return;
+        }
+        // Toutes les destinations choisies avant le premier envoi : une instance sans route n'envoie rien.
+        Map<RestoreConfig, List<Validated>> byTarget = new LinkedHashMap<>();
+        for (Validated v : validated) {
+            for (RestoreConfig target : routes.get().targets(origin, v.dataset())) {
+                byTarget.computeIfAbsent(target, t -> new ArrayList<>()).add(v);
+            }
+        }
+        if (byTarget.isEmpty()) {
+            throw new DicomValidationException("Aucune destination de restitution pour cette étude");
+        }
+        for (Map.Entry<RestoreConfig, List<Validated>> e : byTarget.entrySet()) {
+            send(e.getKey(), e.getValue());
+            LOG.log(Level.INFO, "Étude restituée à {0} : {1} instance(s)", routes.get().describe(e.getKey()),
+                    e.getValue().size());
+        }
     }
 
     private static Validated validate(String studyUid, Instance instance) throws DicomValidationException {
@@ -121,7 +172,7 @@ public final class DicomRestorer implements StudyRestorer {
             require(studyUid.equals(ds.getString(Tag.StudyInstanceUID)), "Study Instance UID différent du manifeste");
             require(instance.seriesInstanceUid().equals(ds.getString(Tag.SeriesInstanceUID)),
                     "Series Instance UID différent du manifeste");
-            return new Validated(instance, cuid, tsuid, offset);
+            return new Validated(instance, cuid, tsuid, offset, ds);
         } catch (DicomValidationException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -135,7 +186,7 @@ public final class DicomRestorer implements StudyRestorer {
         }
     }
 
-    private void send(List<Validated> instances) throws IOException {
+    private void send(RestoreConfig config, List<Validated> instances) throws IOException {
         Map<Pc, Integer> contexts = new LinkedHashMap<>();
         for (Validated v : instances) {
             contexts.putIfAbsent(new Pc(v.sopClassUid(), v.transferSyntaxUid()), contexts.size() * 2 + 1);
