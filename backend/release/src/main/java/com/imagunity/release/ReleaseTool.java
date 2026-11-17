@@ -230,6 +230,7 @@ public final class ReleaseTool {
         if (store == null) {
             return 1;
         }
+        fetch(store, store.installed().map(ReleaseStore.Installed::sequence).orElse(0L), bundledSequence());
         ReleaseStore.Choice choice = store.choose(bundled);
         out.println(choice.jar() + "\t" + choice.manifest().version() + "\t" + choice.manifest().sequence());
         return 0;
@@ -252,8 +253,13 @@ public final class ReleaseTool {
             return 1;
         }
         long running = store.installed().map(ReleaseStore.Installed::sequence).orElse(0L);
+        long bundledSequence = bundledSequence();
+        // Version retenue comme exécutée, mais plus disponible (supprimée au démarrage car altérée) : la box ne démarre
+        // plus. Téléchargée de nouveau, elle impose un redémarrage, comme une version plus récente.
+        boolean missing = running > 0 && store.highestInstalled() < running && bundledSequence < running;
+        fetch(store, running, bundledSequence);
         long ready = store.highestInstalled();
-        out.println(ready > running ? "nouvelle\t" + ready : "a-jour\t" + running);
+        out.println(ready > running || (missing && ready == running) ? "nouvelle\t" + ready : "a-jour\t" + running);
         return 0;
     }
 
@@ -270,11 +276,27 @@ public final class ReleaseTool {
                 "/data/mises-a-jour")), new ReleaseVerifier(key.key(), ReleaseManifest.BOX), clock,
                 message -> err.println("[mises à jour] " + message));
         store.importDepot();
+        return store;
+    }
+
+    /** Interroge le serveur de mises à jour, s'il y en a un ({@code IMAGUNITY_UPDATE_URL}). */
+    private void fetch(ReleaseStore store, long running, long bundledSequence) {
         String url = environment.get("IMAGUNITY_UPDATE_URL");
         if (url != null && !url.isBlank()) {
-            store.fetch(URI.create(url), http, store.installed().map(ReleaseStore.Installed::sequence).orElse(0L));
+            store.fetch(URI.create(url), http, running, bundledSequence);
         }
-        return store;
+    }
+
+    /** Numéro de la version livrée avec l'image, d'après son manifeste ; 0 s'il est absent ou illisible. */
+    private long bundledSequence() {
+        Path manifest = Path.of(environment.getOrDefault("IMAGUNITY_RELEASE_BUNDLED", "/app/imagunity-box.jar")
+                + ReleaseStore.MANIFEST_SUFFIX);
+        try {
+            return ReleaseManifest.parse(SignedDocument.fromJson(java.nio.file.Files.readString(manifest,
+                    StandardCharsets.UTF_8))).sequence();
+        } catch (IOException | RuntimeException e) {
+            return 0; // pas de version livrée signée : choose la refuse de toute façon
+        }
     }
 
     static String normalize(String code) {

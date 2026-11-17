@@ -137,8 +137,12 @@ public final class ReleaseStore {
     /**
      * Télécharge la dernière version publiée ({@code <base>/latest.json}, puis {@code <base>/<artefact>}) si elle est
      * plus récente que celles connues. Une erreur n'est que signalée : la box démarre sur ce qu'elle a.
+     *
+     * <p>La version retenue comme exécutée ({@code knownSequence}) est téléchargée de nouveau si elle n'est plus disponible (ni
+     * installée, ni livrée avec l'image) : {@link #choose} supprime une version installée altérée, et sans ce nouveau
+     * téléchargement, la box ne démarrerait plus jusqu'à la version suivante de l'éditeur (anti-retour en arrière).
      */
-    public void fetch(URI base, HttpClient http, long knownSequence) {
+    public void fetch(URI base, HttpClient http, long knownSequence, long bundledSequence) {
         String root = base.toString().replaceAll("/+$", "");
         try {
             HttpResponse<InputStream> latest = http.send(request(root + "/" + LATEST),
@@ -155,9 +159,10 @@ public final class ReleaseStore {
             }
             SignedDocument document = SignedDocument.fromJson(new String(latestBody, StandardCharsets.UTF_8));
             ReleaseManifest manifest = verifier.verifyManifest(document);
-            if (manifest.sequence() <= Math.max(knownSequence, highestInstalled())) {
+            long available = Math.max(highestInstalled(), bundledSequence);
+            if (manifest.sequence() < knownSequence || manifest.sequence() <= available) {
                 log.accept("Serveur de mises à jour : pas de version plus récente que n° "
-                        + Math.max(knownSequence, highestInstalled()));
+                        + Math.max(knownSequence, available));
                 return;
             }
             Path download = Files.createDirectories(dir.resolve("telechargement"))

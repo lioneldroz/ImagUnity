@@ -17,6 +17,11 @@
 
 - **Preuves de fraîcheur après un redémarrage de la box** : relues depuis le cache, elles étaient rangées par nom d'organisation, une simple étiquette. Deux partenaires portant le même nom s'écrasaient l'un l'autre : l'un perdait sa preuve jusqu'à la lecture suivante de son annuaire, voire se voyait associer la délégation de l'autre. Chaque preuve est désormais rattachée à sa délégation par signature, puis à l'empreinte de son organisation. Rien à faire : le cache existant est relu tel quel.
 
+Corrections de la seconde relecture du code (novembre 2026) :
+
+- **Version de la box altérée sur le disque** : écartée au démarrage, elle n'était plus jamais téléchargée de nouveau (déjà « exécutée »), et la box restait arrêtée jusqu'à la version suivante de l'éditeur, le retour à la version livrée étant refusé. La mise à jour de la nuit la télécharge désormais de nouveau et redémarre la box ; une box sur sa version livrée ne la retélécharge pas.
+- **Configuration centralisée qui ne se revérifie pas au démarrage** (horloge en retard après une coupure, règle devenue invalide après une mise à jour du logiciel) : elle était abandonnée pour de bon au profit des règles locales, et effacée du disque à la lecture suivante. Elle est désormais gardée, et son numéro s'applique de nouveau dès qu'il se vérifie ; un document plus ancien reste refusé.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.
