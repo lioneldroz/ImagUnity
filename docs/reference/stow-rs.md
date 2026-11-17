@@ -42,6 +42,7 @@ DICOM JSON (`application/dicom+json`) :
 | 415 | Pas `multipart/related; type="application/dicom"` |
 | 401 / 403 | Pas de compte, ou compte sans ce droit |
 | 404 | Entrée DICOM désactivée sur cette box |
+| 503 | Entrée DICOM pas encore ouverte ou en cours de fermeture (démarrage, arrêt, mise à jour de la box) : réessayer |
 
 ## 4. Accès
 
