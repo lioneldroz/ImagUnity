@@ -38,6 +38,11 @@ Corrections de la seconde relecture du code (novembre 2026) :
 - **Disque plein pendant une réception** : l'espace libre n'était contrôlé qu'avant l'écriture, or une instance peut atteindre 4 Go et plusieurs arrivent en même temps. Il est désormais contrôlé aussi pendant l'écriture (tous les 64 Mo), et une réception qui ferait passer sous la réserve est interrompue avec un statut à réessayer.
 - **Arrêt de la box retardé par la console** : une console ouverte qui se reconnectait pendant l'arrêt obtenait un flux de 30 minutes que rien ne fermait. Il est désormais fermé aussitôt.
 
+- **Site central** :
+  - `sauvegarder.sh` écrit chaque fichier sous un nom provisoire puis le renomme une fois complet. Une sauvegarde interrompue ne laisse plus un fichier tronqué pris pour le plus récent.
+  - Le `Caddyfile` réserve au réseau d'administration la lecture des comptes rendus des box (`GET /directory/v1/configurations/reports/…`), comme les autres accès du responsable. Recopier le nouveau `Caddyfile`, puis recharger Caddy.
+- **Box sous systemd** : `installer.sh` ne modifie plus les droits du dossier `/etc/polkit-1/rules.d` quand il existe déjà.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.
