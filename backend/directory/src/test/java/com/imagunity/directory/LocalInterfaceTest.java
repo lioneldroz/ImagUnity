@@ -186,6 +186,14 @@ class LocalInterfaceTest {
         return box;
     }
 
+    /** Demande d'une box donnée, avec des clés données. */
+    private void boxSubmits(UUID box, HybridKeyPair keys, String code) {
+        SignedDocument request = EnrollmentRequest.create(keys, HybridKemKeyPair.generate().publicKey(), box, "Box",
+                Map.of(), clock.now);
+        pending.add("{\"boxId\":\"" + box + "\",\"receivedAt\":\"" + clock.now + "\",\"submission\":"
+                + EnrollmentSubmission.of(request, code).toJson() + "}");
+    }
+
     private HttpResponse<String> call(String method, String path, String body) throws Exception {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + ui.port() + path))
                 .header("X-Jeton", ui.token());
@@ -317,6 +325,41 @@ class LocalInterfaceTest {
                 .isEqualTo(200);
         clock.now = clock.now.plus(LocalInterface.KEEP);
         assertThat(json(call("GET", "/api/etat", null)).get("phrase").asString()).isEqualTo("requise");
+    }
+
+    @Test
+    void aUsedCodeDoesNotReenrollABoxWithOtherKeysOrARevokedBox() throws Exception {
+        String code = prepare(false, "Box Nord");
+        open(null);
+        UUID box = UUID.randomUUID();
+        HybridKeyPair keys = HybridKeyPair.generate();
+        boxSubmits(box, keys, code);
+        String fingerprint = request(box).get("empreinte").asString();
+        assertThat(call("POST", "/api/valider", validation(box, fingerprint, PHRASE, false)).statusCode())
+                .isEqualTo(200);
+
+        // Même box, autres clés : code utilisé, signature refusée.
+        HybridKeyPair other = HybridKeyPair.generate();
+        boxSubmits(box, other, code);
+        JsonNode reused = request(box);
+        assertThat(reused.get("statut").asString()).isEqualTo("code-utilise");
+        assertThat(reused.get("detail").asString()).contains("avec d'autres clés");
+        assertThat(call("POST", "/api/valider", validation(box, reused.get("empreinte").asString(), PHRASE, false))
+                .statusCode()).isEqualTo(409);
+        assertThat(entry(box).serial()).isEqualTo(1);
+
+        // Box révoquée, mêmes clés : le code ne la réintègre pas.
+        Organization organization = new Organization("chu-exemple",
+                KeyFiles.readPrivate(dir.resolve("org.json"), PHRASE.toCharArray()));
+        published.put(box, organization.revoke(published.get(box), clock.now, "box volée"));
+        pending.clear();
+        boxSubmits(box, keys, code);
+        JsonNode revoked = request(box);
+        assertThat(revoked.get("statut").asString()).isEqualTo("code-utilise");
+        assertThat(revoked.get("detail").asString()).contains("révoquée depuis");
+        assertThat(call("POST", "/api/valider", validation(box, fingerprint, PHRASE, false)).statusCode())
+                .isEqualTo(409);
+        assertThat(entry(box).revoked()).isTrue();
     }
 
     @Test

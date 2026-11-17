@@ -503,11 +503,17 @@ final class LocalInterface implements AutoCloseable {
         return keptKey().isPresent() ? "gardee" : "requise";
     }
 
+    /** Entrées publiées des box, vérifiées avec la clé de l'organisation (réutilisation d'un code). */
+    private Optional<BoxEntry> publishedEntry(UUID boxId) throws IOException {
+        return calls.publishedEntry(boxId, publicKey.organization(), publicKey.key());
+    }
+
     private List<Map<String, Object>> pending() throws IOException {
         EnrollmentCodes codes = EnrollmentCodes.read(codesFile);
+        PendingRequest.PublishedEntries published = this::publishedEntry;
         List<Map<String, Object>> list = new ArrayList<>();
         for (JsonNode item : listed()) {
-            Optional<PendingRequest> assessed = PendingRequest.assess(item, codes, clock.instant());
+            Optional<PendingRequest> assessed = PendingRequest.assess(item, codes, clock.instant(), published);
             if (assessed.isEmpty()) {
                 continue;
             }
@@ -543,8 +549,9 @@ final class LocalInterface implements AutoCloseable {
     private PendingRequest current(JsonNode body) throws IOException {
         UUID boxId = boxId(body);
         EnrollmentCodes codes = EnrollmentCodes.read(codesFile);
+        PendingRequest.PublishedEntries published = this::publishedEntry;
         for (JsonNode item : listed()) {
-            Optional<PendingRequest> p = PendingRequest.assess(item, codes, clock.instant());
+            Optional<PendingRequest> p = PendingRequest.assess(item, codes, clock.instant(), published);
             if (p.isPresent() && p.get().boxId().equals(boxId)) {
                 return p.get();
             }
@@ -599,7 +606,7 @@ final class LocalInterface implements AutoCloseable {
         }
         if (p.code() != null) {
             EnrollmentCodes codes = EnrollmentCodes.read(codesFile);
-            codes.replace(p.code(), p.code().used(p.boxId(), clock.instant())).write(codesFile);
+            codes.replace(p.code(), p.code().used(p.boxId(), p.keyFingerprint(), clock.instant())).write(codesFile);
         }
         String message = "Box « " + name + " » enrôlée et publiée (n° " + serial + ", " + days + " jours"
                 + (groups.isEmpty() ? "" : ", groupes " + String.join(", ", groups)) + ")";

@@ -338,10 +338,13 @@ public final class DirectoryAdmin {
             return 1;
         }
         tools.jackson.databind.JsonNode pending = Json.MAPPER.readTree(response.body());
+        DirectoryCalls calls = calls(o);
+        PendingRequest.PublishedEntries entries = id -> calls.publishedEntry(id, organization.id(),
+                organization.publicKey());
         int enrolled = 0;
         int skipped = 0;
         for (tools.jackson.databind.JsonNode item : pending) {
-            Optional<PendingRequest> assessed = PendingRequest.assess(item, codes, clock.instant());
+            Optional<PendingRequest> assessed = PendingRequest.assess(item, codes, clock.instant(), entries);
             if (assessed.isEmpty() || assessed.get().status() == PendingRequest.Status.ILLISIBLE) {
                 err.println("Demande illisible ou mal signée : laissée de côté"
                         + assessed.map(a -> " (" + a.detail() + ")").orElse(""));
@@ -358,7 +361,7 @@ public final class DirectoryAdmin {
             EnrollmentRequest request = p.request();
             EnrollmentSubmission submission = p.submission();
             EnrollmentCodes.Entry c = p.code();
-            long serial = calls(o).nextSerial(request.boxId());
+            long serial = calls.nextSerial(request.boxId());
             out.println("Box « " + c.name() + " »" + (c.name().equals(request.displayName()) ? ""
                     : " (nom proposé par la box : « " + request.displayName() + " »)") + ", " + request.boxId());
             out.println("  empreinte " + p.fingerprint() + ", code d'enrôlement "
@@ -377,7 +380,7 @@ public final class DirectoryAdmin {
                 skipped++;
                 continue;
             }
-            codes = codes.replace(c, c.used(request.boxId(), clock.instant()));
+            codes = codes.replace(c, c.used(request.boxId(), p.keyFingerprint(), clock.instant()));
             codes.write(file);
             out.println("  Enrôlée et publiée");
             enrolled++;
