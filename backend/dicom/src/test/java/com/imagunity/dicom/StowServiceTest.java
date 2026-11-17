@@ -111,6 +111,110 @@ class StowServiceTest {
     }
 
     @Test
+    void depositsAreRefusedBeforeTheDicomInputStartsAndAfterItStops() throws Exception {
+        scp.stop(); // entrée de setUp arrêtée : la box s'arrête, le serveur web répond encore
+        byte[] instance = part10(image("2.25.85", "2.25.85.1.1", "CT"));
+
+        StowService.Response stopped = post("IU_TO_B", null, List.of(instance));
+        assertThat(stopped.status()).isEqualTo(503);
+        assertThat(stopped.body()).contains("non démarrée").contains("réessayer");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> scp.storePart10("p", "IU_TO_B",
+                        new ByteArrayInputStream(instance), null))
+                .isInstanceOfSatisfying(DicomStoreScp.Refused.class,
+                        e -> assertThat(e.getStatus()).as("à réessayer").isEqualTo(Status.OutOfResources));
+
+        // Premier démarrage : dossier de réception pas encore créé, et l'entrée pas encore ouverte.
+        DicomStoreScp fresh = new DicomStoreScp(new DicomInputConfig("127.0.0.1", freePort(), Set.of(),
+                Map.of("IU_TO_B", "box-b"), storage.resolve("neuf"), Duration.ofMillis(400), 0), studies::add);
+        StowService early = new StowService(fresh);
+        assertThat(early.store("dicomweb:pacs", "IU_TO_B", null, TYPE, new ByteArrayInputStream(
+                MultipartRelatedReaderTest.body("", List.of(instance), "application/dicom"))).status())
+                .as("pas « fichier illisible » : entrée pas prête").isEqualTo(503);
+        assertThat(storage.resolve("neuf")).as("rien d'écrit").doesNotExist();
+
+        TestPorts.start(fresh);
+        try {
+            assertThat(early.store("dicomweb:pacs", "IU_TO_B", null, TYPE, new ByteArrayInputStream(
+                    MultipartRelatedReaderTest.body("", List.of(instance), "application/dicom"))).status())
+                    .isEqualTo(200);
+            assertThat(studies.poll(5, TimeUnit.SECONDS)).isNotNull();
+        } finally {
+            fresh.stop();
+        }
+    }
+
+    @Test
+    void stopWaitsForADepositInProgress() throws Exception {
+        byte[] instance = part10(image("2.25.86", "2.25.86.1.1", "CT"));
+        java.util.concurrent.CountDownLatch reading = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        // Corps qui n'arrive qu'à moitié, puis attend : dépôt en cours au moment de l'arrêt.
+        java.io.InputStream slow = new java.io.FilterInputStream(new ByteArrayInputStream(instance)) {
+            private boolean paused;
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                if (!paused) {
+                    paused = true;
+                    reading.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        throw new java.io.InterruptedIOException();
+                    }
+                }
+                return super.read(b, off, len);
+            }
+        };
+        java.util.concurrent.CompletableFuture<DicomStoreScp.Accepted> deposit =
+                java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return scp.storePart10("p", "IU_TO_B", slow, null);
+                    } catch (DicomStoreScp.Refused e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
+        assertThat(reading.await(5, TimeUnit.SECONDS)).isTrue();
+
+        java.util.concurrent.CompletableFuture<Void> stopping = java.util.concurrent.CompletableFuture.runAsync(scp::stop);
+        Thread.sleep(300);
+        assertThat(stopping).as("l'arrêt attend le dépôt en cours").isNotDone();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> scp.storePart10("p", "IU_TO_B",
+                new ByteArrayInputStream(instance), null)).as("nouveau dépôt pendant l'arrêt").hasMessageContaining(
+                "non démarrée");
+
+        release.countDown();
+        assertThat(deposit.get(5, TimeUnit.SECONDS).sopInstanceUid()).isEqualTo("2.25.86.1.1");
+        stopping.get(5, TimeUnit.SECONDS);
+        assertThat(storage.resolve("IU_TO_B/box-b/2.25.86/2.25.86.1/2.25.86.1.1.dcm"))
+                .as("instance sur le disque, reprise au prochain démarrage").exists();
+    }
+
+    @Test
+    void anInstanceRoutedToTwoPartnersIsKeptForNoneIfACopyFails() throws Exception {
+        // Le dossier de box-c ne peut pas être créé (un fichier porte son nom) : la seconde copie échoue.
+        Files.createDirectories(storage.resolve("IU_AUTO"));
+        Path blocker = Files.writeString(storage.resolve("IU_AUTO/box-c"), "pas un dossier");
+        byte[] mri = part10(image("2.25.87", "2.25.87.1.1", "MR"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> scp.storePart10("p", "IU_AUTO",
+                        new ByteArrayInputStream(mri), null))
+                .isInstanceOfSatisfying(DicomStoreScp.Refused.class,
+                        e -> assertThat(e.getStatus()).isEqualTo(Status.ProcessingFailure));
+        assertThat(storage.resolve("IU_AUTO/box-b/2.25.87/2.25.87.1/2.25.87.1.1.dcm"))
+                .as("copie de box-b retirée").doesNotExist();
+        assertThat(studies.poll(1, TimeUnit.SECONDS)).as("rien ne part, pas même vers box-b").isNull();
+
+        // Le PACS renvoie l'instance une fois le problème réglé : elle part vers les deux.
+        Files.delete(blocker);
+        assertThat(scp.storePart10("p", "IU_AUTO", new ByteArrayInputStream(mri), null).destinations())
+                .containsExactly("box-b", "box-c");
+        List<ReceivedStudy> received = new ArrayList<>(List.of(studies.poll(5, TimeUnit.SECONDS),
+                studies.poll(5, TimeUnit.SECONDS)));
+        assertThat(received).extracting(ReceivedStudy::destination).containsExactlyInAnyOrder("box-b", "box-c");
+    }
+
+    @Test
     void partialFailuresAreReportedPerInstance() throws Exception {
         Attributes otherStudy = image("2.25.99", "2.25.99.1.1", "CT");
         byte[] notDicom = "pas un fichier DICOM".getBytes(StandardCharsets.UTF_8);
@@ -185,20 +289,34 @@ class StowServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> scp.storePart10("p", null,
                 new ByteArrayInputStream(part10(dataset)), null)).hasMessageContaining("Destination inconnue");
 
-        DicomStoreScp full = new DicomStoreScp(new DicomInputConfig("127.0.0.1", 1, Set.of(), Map.of("IU_TO_B", "box-b"),
-                storage.resolve("plein"), Duration.ofSeconds(1), Long.MAX_VALUE), s -> { });
-        Files.createDirectories(storage.resolve("plein"));
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> full.storePart10("p", "IU_TO_B",
-                new ByteArrayInputStream(part10(dataset)), null))
-                .isInstanceOfSatisfying(DicomStoreScp.Refused.class,
-                        e -> assertThat(e.getStatus()).isEqualTo(Status.OutOfResources));
+        DicomStoreScp full = new DicomStoreScp(new DicomInputConfig("127.0.0.1", freePort(), Set.of(),
+                Map.of("IU_TO_B", "box-b"), storage.resolve("plein"), Duration.ofSeconds(1), Long.MAX_VALUE), s -> { });
+        TestPorts.start(full);
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> full.storePart10("p", "IU_TO_B",
+                    new ByteArrayInputStream(part10(dataset)), null))
+                    .isInstanceOfSatisfying(DicomStoreScp.Refused.class,
+                            e -> assertThat(e.getStatus()).isEqualTo(Status.OutOfResources));
+        } finally {
+            full.stop();
+        }
 
-        DicomStoreScp small = new DicomStoreScp(new DicomInputConfig("127.0.0.1", 1, Set.of(), Map.of("IU_TO_B",
-                "box-b"), storage.resolve("petit"), Duration.ofSeconds(1), 0), s -> { });
+        DicomStoreScp small = new DicomStoreScp(new DicomInputConfig("127.0.0.1", freePort(), Set.of(),
+                Map.of("IU_TO_B", "box-b"), storage.resolve("petit"), Duration.ofSeconds(1), 0), s -> { });
         small.limits(new DicomStoreScp.Limits(100, 1, Duration.ofSeconds(1), Duration.ofSeconds(1), Set.of()));
-        Files.createDirectories(storage.resolve("petit/.tmp"));
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> small.storePart10("p", "IU_TO_B",
-                new ByteArrayInputStream(part10(dataset)), null)).hasMessageContaining("trop grande");
+        TestPorts.start(small);
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> small.storePart10("p", "IU_TO_B",
+                    new ByteArrayInputStream(part10(dataset)), null)).hasMessageContaining("trop grande");
+        } finally {
+            small.stop();
+        }
+    }
+
+    private static int freePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
     }
 
     private static byte[] concat(byte[]... arrays) {

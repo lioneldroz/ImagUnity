@@ -66,6 +66,15 @@ public final class DicomStoreScp implements AutoCloseable {
     private Device device;
     private ExecutorService executor;
     private ScheduledExecutorService scheduler;
+    /**
+     * Vrai entre la fin de {@link #start()} et le début de {@link #stop()}. Les dépôts STOW-RS arrivent par le serveur
+     * web, qui démarre avant l'entrée DICOM et s'arrête après elle : hors de cette fenêtre, ils sont refusés (à
+     * réessayer), sans quoi ils écriraient dans un dossier de réception pas encore prêt ou déjà fermé.
+     */
+    private volatile boolean accepting;
+    /** Dépôts STOW-RS en cours (verrou partagé), attendus par {@link #stop()} (verrou exclusif). */
+    private final java.util.concurrent.locks.ReentrantReadWriteLock stowGate =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
 
     public DicomStoreScp(DicomInputConfig config, StudyListener listener) {
         this(config, listener, Clock.systemUTC());
@@ -188,6 +197,12 @@ public final class DicomStoreScp implements AutoCloseable {
             LOG.log(Level.INFO, "Routage par champ DICOM sur {0} : {1}", config.routingAet(),
                     String.join(" ; ", config.rules().stream().map(RoutingRule::describe).toList()));
         }
+        accepting = true; // dossier de réception prêt : les dépôts STOW-RS sont admis
+    }
+
+    /** Vrai si l'entrée DICOM est démarrée : les dépôts STOW-RS sont admis. */
+    public boolean accepting() {
+        return accepting;
     }
 
     /** Attente au plus, à l'arrêt, de la fin des réceptions et des signalements d'études en cours. */
@@ -201,14 +216,16 @@ public final class DicomStoreScp implements AutoCloseable {
     /**
      * Ferme le port DICOM. Les études en cours restent sur le disque et seront reprises au démarrage.
      *
-     * <p>Les réceptions en cours sont interrompues, puis attendues au plus {@link #stopTimeout(Duration) le délai
-     * d'arrêt} : au retour, plus aucun fil de l'entrée n'écrit dans le dossier de réception (sauf dépassement du
-     * délai, signalé dans le journal).
+     * <p>Les nouveaux dépôts STOW-RS sont refusés (à réessayer), ceux en cours attendus ; les réceptions C-STORE en
+     * cours sont interrompues, puis attendues. L'attente dure au plus {@link #stopTimeout(Duration) le délai d'arrêt} :
+     * au retour, plus rien n'écrit dans le dossier de réception (sauf dépassement du délai, signalé dans le journal).
      */
     public synchronized void stop() {
         if (executor == null) {
             return;
         }
+        accepting = false; // plus de nouveau dépôt STOW-RS
+        awaitStowDeposits();
         device.unbindConnections();
         scheduler.shutdownNow();
         executor.shutdownNow();
@@ -216,6 +233,21 @@ public final class DicomStoreScp implements AutoCloseable {
         executor = null;
         scheduler = null;
         LOG.log(Level.INFO, "Entrée DICOM fermée");
+    }
+
+    /** Attend la fin des dépôts STOW-RS en cours, au plus le délai d'arrêt. */
+    private void awaitStowDeposits() {
+        try {
+            if (stowGate.writeLock().tryLock(stopTimeout.toNanos(), TimeUnit.NANOSECONDS)) {
+                stowGate.writeLock().unlock();
+            } else {
+                LOG.log(Level.WARNING, "Entrée DICOM : des dépôts STOW-RS ne sont pas terminés après {0} ms",
+                        stopTimeout.toMillis());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.log(Level.WARNING, "Entrée DICOM : attente des dépôts STOW-RS interrompue");
+        }
     }
 
     private void awaitTermination(ExecutorService... services) {
@@ -321,6 +353,27 @@ public final class DicomStoreScp implements AutoCloseable {
      * @throws Refused si l'instance est refusée ; son statut DICOM donne la cause
      */
     public Accepted storePart10(String source, String calledAet, InputStream part10, String studyUid)
+            throws Refused {
+        // Verrou partagé : l'arrêt attend la fin de ce dépôt. Pris pendant l'arrêt, ou entrée non démarrée : refus.
+        if (!stowGate.readLock().tryLock()) {
+            throw notAccepting();
+        }
+        try {
+            if (!accepting) {
+                throw notAccepting();
+            }
+            return storeStarted(source, calledAet, part10, studyUid);
+        } finally {
+            stowGate.readLock().unlock();
+        }
+    }
+
+    private static Refused notAccepting() {
+        return new Refused(Status.OutOfResources, "Entrée DICOM non démarrée (démarrage ou arrêt de la box) : "
+                + "réessayer dans quelques instants", null, null);
+    }
+
+    private Accepted storeStarted(String source, String calledAet, InputStream part10, String studyUid)
             throws Refused {
         if (calledAet == null || !config.isKnownCalledAet(calledAet)) {
             throw new Refused(Status.ProcessingFailure, "Destination inconnue : " + calledAet, null, null);
@@ -459,16 +512,13 @@ public final class DicomStoreScp implements AutoCloseable {
                 throw new DicomServiceException(Status.CannotUnderstand,
                         "SOP Instance UID du jeu de données différent de celui de la commande");
             }
-            List<String> destinations = destinations(calledAet, dataset);
-            Path first = store.finalPath(calledAet, destinations.getFirst(), studyUid, seriesUid, iuid);
-            store.commit(temp, first);
-            for (String destination : destinations) {
-                Path target = store.finalPath(calledAet, destination, studyUid, seriesUid, iuid);
-                if (!target.equals(first)) {
-                    store.copy(first, target);
-                }
-                assembler.add(calledAet, destination, source, studyUid,
-                        new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
+            List<String> destinations = destinations(calledAet, dataset).stream().distinct().toList();
+            List<ReceivedInstance> placed = place(calledAet, destinations, temp, studyUid, seriesUid, cuid, iuid,
+                    tsuid);
+            // Toutes les copies sont en place : l'instance est rattachée à l'étude de chaque partenaire. Avant, un échec
+            // de copie aurait laissé partir l'instance vers les premiers partenaires, refusée pourtant au PACS.
+            for (int i = 0; i < destinations.size(); i++) {
+                assembler.add(calledAet, destinations.get(i), source, studyUid, placed.get(i));
             }
             LOG.log(Level.DEBUG, "Instance reçue de {0} pour {1} → {2}", source, calledAet, destinations);
             return new Accepted(cuid, iuid, studyUid, destinations);
@@ -480,6 +530,37 @@ public final class DicomStoreScp implements AutoCloseable {
             deleteQuietly(temp);
             LOG.log(Level.ERROR, "Échec de la réception d'une instance", e);
             throw new DicomServiceException(Status.ProcessingFailure, e);
+        }
+    }
+
+    /**
+     * Range l'instance pour chaque partenaire (déplacement vers le premier, copie vers les suivants). En cas d'échec,
+     * les copies créées par cette réception sont retirées : rien n'est rattaché, le PACS reçoit un échec et renverra
+     * l'instance. Un fichier qui existait déjà (même instance reçue plus tôt, déjà rattachée) est laissé en place.
+     */
+    private List<ReceivedInstance> place(String calledAet, List<String> destinations, Path temp, String studyUid,
+                                         String seriesUid, String cuid, String iuid, String tsuid) throws IOException {
+        List<Path> created = new java.util.ArrayList<>();
+        List<ReceivedInstance> placed = new java.util.ArrayList<>();
+        try {
+            Path first = store.finalPath(calledAet, destinations.getFirst(), studyUid, seriesUid, iuid);
+            for (String destination : destinations) {
+                Path target = store.finalPath(calledAet, destination, studyUid, seriesUid, iuid);
+                boolean existed = Files.exists(target);
+                if (target.equals(first)) {
+                    store.commit(temp, first);
+                } else {
+                    store.copy(first, target);
+                }
+                if (!existed) {
+                    created.add(target);
+                }
+                placed.add(new ReceivedInstance(cuid, iuid, seriesUid, tsuid, target, Files.size(target)));
+            }
+            return placed;
+        } catch (IOException | RuntimeException e) {
+            created.forEach(DicomStoreScp::deleteQuietly);
+            throw e;
         }
     }
 

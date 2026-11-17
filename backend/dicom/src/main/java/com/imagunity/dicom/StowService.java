@@ -65,6 +65,12 @@ public final class StowService {
         if (studyUid != null && !DicomUids.isValid(studyUid)) {
             return error(400, "Study Instance UID de l'URL invalide");
         }
+        if (!scp.accepting()) {
+            // Requête bien formée, mais démarrage ou arrêt de la box : le serveur web répond avant que l'entrée DICOM
+            // soit prête, et encore après sa fermeture. Rien n'est lu ni écrit ; le PACS réessaiera.
+            return error(503, "Entrée DICOM non démarrée (démarrage ou arrêt de la box) : réessayer dans quelques "
+                    + "instants");
+        }
         MultipartRelatedReader reader;
         try {
             reader = new MultipartRelatedReader(body, boundary);

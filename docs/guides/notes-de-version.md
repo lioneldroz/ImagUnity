@@ -12,6 +12,9 @@
 
 - **Code d'enrôlement réutilisé** : un code déjà utilisé restait « vérifié » pour la même box, même révoquée depuis, et avec d'autres clés. Quiconque détenait le code pouvait ainsi faire réenrôler une box révoquée sous ses propres clés, la demande étant présentée comme vérifiée au responsable. Le fichier des codes retient désormais l'empreinte des clés de la box enrôlée. Un code utilisé n'est plus recevable que pour la même box, avec les mêmes clés, tant qu'elle n'est pas révoquée. Rien à faire sur le site central : la correction est dans l'outil et l'interface du responsable. Les codes déjà utilisés avant la mise à jour ne servent plus : tirer un nouveau code pour réenrôler leur box.
 
+- **Dépôt STOW-RS pendant le démarrage ou l'arrêt de la box** : le serveur web répond avant que l'entrée DICOM soit ouverte, et encore après sa fermeture. Un dépôt arrivé à ce moment était refusé comme « fichier DICOM illisible » au démarrage, ou accepté après l'arrêt de l'entrée. Il est désormais refusé avec un code à réessayer (HTTP 503), et l'arrêt attend la fin des dépôts en cours (10 s au plus).
+- **Routage vers plusieurs partenaires** : si la copie d'une instance pour l'un des partenaires échouait, le PACS recevait un échec mais l'instance partait quand même vers les premiers. Désormais, l'instance n'est rattachée à aucune étude tant que toutes les copies ne sont pas en place, et les copies déjà faites sont retirées ; le PACS la renvoie.
+
 Corrections de la relecture du code du 15 novembre 2026 :
 
 - **Lecture réservée de l'annuaire contournable** : un chemin aux lettres encodées (`/directory/v1/%65ntries`) passait pour public alors qu'il menait à la liste des entrées ; de même, `/admin/%61pi/…` échappait à l'en-tête exigé par l'interface d'administration. Les deux filtres jugent désormais le chemin décodé. **Mettre à jour l'annuaire** si la lecture réservée est activée.
