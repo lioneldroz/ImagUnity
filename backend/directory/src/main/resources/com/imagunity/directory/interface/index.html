@@ -9,28 +9,59 @@
 </head>
 <body>
 <header class="bandeau">
-  <div>
-    <h1>ImagUnity — responsable de l'organisation</h1>
-    <p class="sous-titre" id="contexte">Interface locale du responsable</p>
+  <div class="identite">
+    <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path><path d="M9 12l2 2 4-4"></path></svg></span>
+    <div>
+      <h1 id="bandeau-organisation">ImagUnity</h1>
+      <p class="sous-titre">Responsable de l'organisation</p>
+    </div>
+    <span class="empreinte-bandeau" id="bandeau-empreinte" hidden></span>
   </div>
   <div class="actions">
-    <span class="discret" id="etat-phrase"></span>
-    <button type="button" class="secondaire" id="oublier" hidden>Oublier la phrase</button>
-    <button type="button" class="secondaire" id="actualiser">Actualiser</button>
-    <button type="button" class="secondaire" id="quitter">Quitter</button>
+    <span class="pastille" id="pastille-annuaire" hidden></span>
+    <span class="pastille neutre" id="etat-phrase"></span>
+    <button type="button" class="bandeau-bouton" id="oublier" hidden>Oublier la phrase</button>
+    <button type="button" class="bandeau-bouton" id="actualiser">Actualiser</button>
+    <button type="button" class="bandeau-bouton" id="quitter">Quitter</button>
   </div>
+  <p class="contexte" id="contexte">Interface locale du responsable</p>
 </header>
-<nav class="onglets" role="tablist">
-  <button type="button" role="tab" data-onglet="demarrage">Démarrage <span class="compteur" id="compte-demarrage"></span></button>
-  <button type="button" role="tab" data-onglet="demandes">Demandes en attente <span class="compteur" id="compte-demandes"></span></button>
-  <button type="button" role="tab" data-onglet="box">Box de l'organisation <span class="compteur" id="compte-box"></span></button>
-  <button type="button" role="tab" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
-  <button type="button" role="tab" data-onglet="configuration">Configuration des box</button>
-  <button type="button" role="tab" data-onglet="partenaires">Organisations partenaires <span class="compteur" id="compte-partenaires"></span></button>
-  <button type="button" role="tab" data-onglet="aide">Aide</button>
+<div class="disposition">
+<nav class="menu" aria-label="Sections">
+  <button type="button" data-onglet="tableau">Tableau de bord <span class="compteur" id="compte-tableau"></span></button>
+  <button type="button" data-onglet="demarrage">Démarrage <span class="compteur" id="compte-demarrage"></span></button>
+  <button type="button" data-onglet="demandes">Demandes <span class="compteur" id="compte-demandes"></span></button>
+  <button type="button" data-onglet="box">Box <span class="compteur" id="compte-box"></span></button>
+  <button type="button" data-onglet="configuration">Configuration des box <span class="compteur" id="compte-configuration"></span></button>
+  <button type="button" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
+  <button type="button" data-onglet="partenaires">Partenaires <span class="compteur" id="compte-partenaires"></span></button>
+  <button type="button" data-onglet="aide">Aide</button>
 </nav>
 <main>
   <p class="message" id="message" hidden></p>
+
+  <section id="onglet-tableau" role="region" aria-labelledby="titre-tableau" hidden>
+    <div class="entete-page">
+      <div>
+        <h2 id="titre-tableau">Tableau de bord</h2>
+        <p class="aide" id="tableau-resume">Chargement…</p>
+      </div>
+      <button type="button" data-aller="codes">Tirer un code d'enrôlement</button>
+    </div>
+    <h3>À faire</h3>
+    <ul class="afaire" id="afaire"></ul>
+    <div class="indicateurs" id="indicateurs"></div>
+    <div class="entete-page bloc">
+      <h3>Box de l'organisation</h3>
+      <label class="recherche">Rechercher <input type="search" id="tableau-recherche" placeholder="nom ou groupe"></label>
+    </div>
+    <div class="tableau">
+      <table>
+        <thead><tr><th>Box</th><th>État</th><th>Groupes</th><th>Configuration</th><th>Valide jusqu'au</th></tr></thead>
+        <tbody id="tableau-box"></tbody>
+      </table>
+    </div>
+  </section>
 
   <section id="onglet-demarrage" role="tabpanel" hidden>
     <h2>Démarrer et faire vivre l'organisation</h2>
@@ -137,7 +168,7 @@
       <li class="etape" id="etape-demandes">
         <div class="entete"><h3>6. Valider les box qui se présentent</h3><span class="badge" id="statut-demandes"></span></div>
         <p>Au démarrage, chaque box dépose sa demande dans l'annuaire, avec la preuve de son code. Elle apparaît dans
-          l'onglet « Demandes en attente » : un clic sur « Valider » la signe et la publie. La box est active quelques
+          l'onglet « Demandes » : un clic sur « Valider » la signe et la publie. La box est active quelques
           minutes après.</p>
         <div class="actions"><button type="button" class="secondaire" data-aller="demandes">Voir les demandes</button></div>
       </li>
@@ -148,7 +179,7 @@
           <li><strong>Chaque semaine</strong> : onglet « Box », renouveler les entrées qui expirent bientôt (elles sont cochées d'office).</li>
           <li><strong>Chaque mois</strong> : étape 4, renouveler la délégation de fraîcheur.</li>
           <li><strong>Box perdue, volée ou retirée</strong> : onglet « Box », la révoquer.</li>
-          <li><strong>Échanger avec un autre établissement</strong> : onglet « Organisations partenaires ».</li>
+          <li><strong>Échanger avec un autre établissement</strong> : « Partenaires ».</li>
         </ul>
       </li>
     </ol>
@@ -275,7 +306,7 @@
       <dt>« Annuaire injoignable »</dt><dd>L'adresse de l'annuaire (en haut de page) est fausse, ou le service est arrêté. Relancer l'interface avec la bonne adresse, ou demander à l'exploitant.</dd>
       <dt>« Clé différente » à l'étape 2</dt><dd>L'annuaire a été installé avec une autre clé publique que celle de ce poste : recopier la bonne (étape 1) et le redémarrer.</dd>
       <dt>« Phrase de passe incorrecte »</dt><dd>Majuscules, accents, espaces comptent. Après plusieurs échecs, vérifier le fichier de clé utilisé (en haut de l'onglet Démarrage).</dd>
-      <dt>Une box ne devient pas active</dt><dd>Vérifier sa demande dans « Demandes en attente » ; une box lit l'annuaire toutes les 5 minutes.</dd>
+      <dt>Une box ne devient pas active</dt><dd>Vérifier sa demande dans « Demandes » ; une box lit l'annuaire toutes les 5 minutes.</dd>
       <dt>Ce poste est perdu ou en panne</dt><dd>Restaurer la sauvegarde des fichiers sur un autre poste, puis relancer l'interface avec <code>interface-responsable.bat</code>.</dd>
     </dl>
 
@@ -352,18 +383,22 @@
       vers des box, et d'une box émettrice vers des PACS. Signée ici avec la clé de l'organisation, publiée par
       l'annuaire, la configuration est appliquée par la box à sa lecture suivante, sans redémarrage. Elle remplace les
       émetteurs autorisés, les destinations et le PACS de restitution de sa configuration locale.</p>
-    <div class="grille-config">
-      <label>Box
-        <select id="config-box"></select>
-      </label>
-      <p class="discret" id="config-etat"></p>
-    </div>
+    <div class="config-disposition">
+    <div class="config-liste" id="config-liste" aria-label="Box à configurer"></div>
+    <div class="config-detail">
+    <p class="discret" id="config-vide" hidden></p>
     <div id="config-editeur" hidden>
-      <label class="config-aet">AET de la box (celui que les sources appellent ; vide : celui de sa configuration locale)
-        <input type="text" id="config-aet" maxlength="16" placeholder="IMAGUNITY_NORD">
-      </label>
+      <div class="config-entete">
+        <div>
+          <h3 id="config-titre"></h3>
+          <p class="discret" id="config-etat"></p>
+        </div>
+        <label class="config-aet">AET de la box
+          <input type="text" id="config-aet" maxlength="16" placeholder="celui de sa configuration locale">
+        </label>
+      </div>
 
-      <h3 class="bloc">Nœuds DICOM du site
+      <h3 class="bloc">Appareils du site
         <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
       <div class="tableau">
         <table>
@@ -371,17 +406,17 @@
           <tbody id="config-noeuds"></tbody>
         </table>
       </div>
-      <div class="actions"><button type="button" class="secondaire" id="ajouter-noeud">Ajouter un nœud</button></div>
+      <div class="actions"><button type="button" class="ajouter" id="ajouter-noeud">+ Ajouter un appareil</button></div>
 
-      <h3 class="bloc">Routes sortantes : d'une source vers des box
+      <h3 class="bloc">Envois : d'un appareil vers des box
         <span class="info"><button type="button" class="info-bouton" aria-label="Routes sortantes" aria-describedby="bulle-sortantes">?</button><span class="bulle" role="tooltip" id="bulle-sortantes">La première route qui correspond à l'instance envoyée s'applique : sa source, l'AET appelé si la route en exige un, et ses filtres DICOM. Les box désignées sont appairées automatiquement. Une instance qu'aucune route ne prend est refusée, et la source la garde en échec.</span></span></h3>
       <div id="config-sortantes"></div>
-      <div class="actions"><button type="button" class="secondaire" id="ajouter-sortante">Ajouter une route sortante</button></div>
+      <div class="actions"><button type="button" class="ajouter" id="ajouter-sortante">+ Ajouter un envoi</button></div>
 
-      <h3 class="bloc">Routes entrantes : d'une box émettrice vers des PACS
+      <h3 class="bloc">Réceptions : d'une box vers des PACS
         <span class="info"><button type="button" class="info-bouton" aria-label="Routes entrantes" aria-describedby="bulle-entrantes">?</button><span class="bulle" role="tooltip" id="bulle-entrantes">Pour chaque instance reçue, la première route qui correspond (box émettrice et filtres) désigne le ou les PACS qui la reçoivent. Sans aucune route entrante, la box restitue au PACS de sa configuration locale.</span></span></h3>
       <div id="config-entrantes"></div>
-      <div class="actions"><button type="button" class="secondaire" id="ajouter-entrante">Ajouter une route entrante</button></div>
+      <div class="actions"><button type="button" class="ajouter" id="ajouter-entrante">+ Ajouter une réception</button></div>
 
       <p class="discret bloc" id="config-regles"></p>
       <div class="formulaire-config bloc">
@@ -392,10 +427,15 @@
           <select id="config-copier"><option value="">—</option></select>
         </label>
       </div>
-      <div class="actions bloc">
-        <button type="button" id="config-publier">Signer et publier</button>
-        <button type="button" class="secondaire" id="config-annuler">Annuler les modifications</button>
+      <div class="barre-config">
+        <span id="config-changements">Aucun changement</span>
+        <div class="actions">
+          <button type="button" class="secondaire" id="config-annuler">Annuler les modifications</button>
+          <button type="button" id="config-publier">Vérifier et signer</button>
+        </div>
       </div>
+    </div>
+    </div>
     </div>
   </section>
 
@@ -435,6 +475,7 @@
     </form>
   </section>
 </main>
+</div>
 
 <dialog id="dialogue-signer">
   <form method="dialog" id="formulaire-signer">

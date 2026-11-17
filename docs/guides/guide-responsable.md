@@ -192,7 +192,7 @@ La durée de validité des entrées se règle avec `--validite-jours` (90 jours 
 
 ### 2.4 L'interface locale du responsable
 
-Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. La page a six onglets : « Démarrage », « Demandes en attente », « Box de l'organisation », « Codes d'enrôlement », « Organisations partenaires » pour la fédération (§ 2.9), et « Aide ».
+Plutôt qu'en ligne de commande, les tâches courantes peuvent se faire depuis une page web servie par l'outil du responsable, **sur son poste** : valider ou refuser les demandes d'enrôlement, renouveler et révoquer les box, tirer les codes d'enrôlement. Un menu à gauche mène aux sections : « Tableau de bord », « Démarrage », « Demandes », « Box », « Configuration des box » (§ 2.11), « Codes d'enrôlement », « Partenaires » pour la fédération (§ 2.9), et « Aide ». Le bandeau du haut rappelle l'organisation et son empreinte, et dit si l'annuaire répond et si la clé est déverrouillée.
 
 **Sous Windows, sans commande à taper** : le kit du poste du responsable (dossier `poste-responsable` de la livraison, ou [`deploy/poste-responsable`](../../deploy/poste-responsable/LISEZMOI.md)) contient `imagunity-directory.jar`, `reglages.bat` (adresse de l'annuaire, dossier des fichiers) et `interface-responsable.bat`, à lancer d'un double-clic. Seul Java 25 est à installer. Le compte de dépôt et la phrase de passe se saisissent dans la page.
 
@@ -206,6 +206,12 @@ Interface du responsable : http://127.0.0.1:52817/#jeton=TV1vrcQWjDYVb15-c7tFmhx
 ```
 
 Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement). Sans `--compte` ni `IMAGUNITY_ANNUAIRE_COMPTE`, le compte de dépôt se saisit dans la page ; il n'est gardé qu'en mémoire, le temps de la session.
+
+#### Tableau de bord
+
+C'est la page d'accueil. En haut, **« À faire »** : ce qui attend une action, le plus urgent d'abord (annuaire injoignable, délégation de fraîcheur qui expire, configuration refusée par une box, demandes d'enrôlement, entrées à renouveler), chacune avec un bouton qui mène au bon endroit. Puis quatre indicateurs (box actives, preuve de fraîcheur, configurations appliquées, partenaires) et la liste des box, filtrable par nom ou par groupe, avec leur état et la version de configuration qu'elles appliquent.
+
+![Tableau de bord : une action à faire, quatre indicateurs, la liste des box avec leur configuration](../images/guide-responsable/23-tableau-de-bord.png)
 
 #### Onglet « Démarrage »
 
@@ -456,19 +462,22 @@ La preuve correspond aux entrées et reconnaissances publiées
 
 Plutôt que de modifier le fichier `box.env` de chaque box sur place, configurez-les toutes depuis l'interface du responsable, onglet **« Configuration des box »**. La box applique la configuration à sa lecture suivante de l'annuaire, sans redémarrage.
 
-![Onglet Configuration des box : nœuds du site, route sortante vers une autre box, deux routes entrantes vers deux PACS](../images/guide-responsable/22-configuration-box.png)
+![Onglet Configuration des box : liste des box à gauche ; à droite les appareils du site, un envoi vers une autre box, deux réceptions vers deux PACS](../images/guide-responsable/22-configuration-box.png)
 
-1. **Choisissez la box.** La ligne d'état montre la version en vigueur, celle que la box applique vraiment, et son dernier refus s'il y en a un.
+1. **Choisissez la box** dans la liste de gauche ; son étiquette donne la version qu'elle applique, « locale » si elle n'a pas encore de configuration centrale, ou « refus » en rouge. À droite, la ligne d'état précise la version en vigueur et le dernier refus.
 2. **Déclarez les nœuds DICOM de son site** : un nom, l'AET, l'adresse et le port, et les rôles.
    - Une **source** a le droit d'envoyer à la box. Si vous indiquez son adresse, seul ce poste peut le faire sous cet AET.
    - Une **destination** reçoit les examens restitués par la box.
-3. **Routes sortantes** : d'une source (ou de toutes) vers une ou plusieurs box, de votre organisation ou d'un partenaire.
+3. **Envois** (routes sortantes) : d'une source (ou de toutes) vers une ou plusieurs box, de votre organisation ou d'un partenaire.
    - Un filtre est facultatif : `Modality=CT; SeriesDescription=*THORAX*`.
    - Un AET appelé exigé est facultatif aussi : utile pour garder une destination déjà réglée dans le PACS, comme `IU_TO_B`.
    - Les box désignées sont appairées automatiquement.
-4. **Routes entrantes** : d'une box émettrice (ou de toutes) vers un ou plusieurs PACS, avec un filtre. Par exemple, les IRM du CHU Sud vont au PACS IRM et tout le reste au PACS principal. Sans route entrante, la box restitue au PACS de sa configuration locale.
+4. **Réceptions** (routes entrantes) : d'une box émettrice (ou de toutes) vers un ou plusieurs PACS, avec un filtre. Par exemple, les IRM du CHU Sud vont au PACS IRM et tout le reste au PACS principal. Sans route entrante, la box restitue au PACS de sa configuration locale.
+   - En tête de chaque envoi et de chaque réception, une ligne résume la route : de → filtre → vers. Elle suit vos saisies.
 5. **L'ordre compte** : la première route qui correspond s'applique. Le bouton « Monter » change l'ordre.
-6. **« Signer et publier »** avec la phrase de passe. Le document vise cette box seule et garde ses règles de priorité. Une erreur, comme un mot-clé DICOM inconnu dans un filtre, est signalée avant toute application.
+6. **« Vérifier et signer »**, dans la barre du bas qui compte les changements non publiés (« Annuler les modifications » revient à la version en vigueur). La fenêtre liste ce qui change par rapport à cette version : ajouts (+), retraits (−), modifications champ par champ (~) et changements d'ordre (↕). Cochez « J'ai relu ces changements », saisissez la phrase de passe, puis « Signer et publier ». Le document vise cette box seule et garde ses règles de priorité. Une erreur, comme un mot-clé DICOM inconnu dans un filtre, est signalée avant toute application.
+
+![Fenêtre de signature : la liste des changements, la case de relecture, la phrase de passe](../images/guide-responsable/24-signature-configuration.png)
 
 - **Reprendre la configuration d'une autre box** copie ses nœuds et ses routes pour partir d'un modèle. Vérifiez ensuite les adresses, qui sont propres à chaque site.
 - Restent dans `box.env` : l'adresse et le port d'écoute de la box, et le compte DICOMweb.

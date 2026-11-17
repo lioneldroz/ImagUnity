@@ -70,31 +70,38 @@ function afficherEtat() {
     b.disabled = !etat.initialisee && !["demarrage", "aide"].includes(b.dataset.onglet);
   });
   if (!etat.initialisee) {
-    $("contexte").textContent = "Aucune organisation sur ce poste pour l'instant : commencez par l'onglet « Démarrage » — annuaire " + etat.annuaire;
+    $("bandeau-organisation").textContent = "ImagUnity";
+    $("bandeau-empreinte").hidden = true;
+    $("contexte").textContent = "Aucune organisation sur ce poste pour l'instant : commencez par « Démarrage » — annuaire " + etat.annuaire;
     $("etat-phrase").textContent = "";
     $("oublier").hidden = true;
     return;
   }
-  $("contexte").textContent = "Organisation " + etat.organisation + " (empreinte " + etat.empreinteOrganisation
-    + ") — annuaire " + etat.annuaire + " — entrées signées pour " + etat.validiteJours + " jours";
+  $("bandeau-organisation").textContent = etat.organisation;
+  $("bandeau-empreinte").textContent = etat.empreinteOrganisation;
+  $("bandeau-empreinte").title = "Empreinte de la clé de l'organisation";
+  $("bandeau-empreinte").hidden = false;
+  $("contexte").textContent = "Annuaire " + etat.annuaire + " — entrées signées pour " + etat.validiteJours + " jours";
   const textes = {
-    inutile: "Clé non protégée par phrase de passe (déconseillé)",
-    environnement: "Phrase de passe fournie par l'environnement",
-    gardee: "Clé déverrouillée pour cette session",
-    requise: "Phrase de passe demandée à chaque signature",
+    inutile: "Clé non protégée (déconseillé)",
+    environnement: "Phrase de passe fournie",
+    gardee: "Clé déverrouillée",
+    requise: "Clé verrouillée",
   };
   $("etat-phrase").textContent = textes[etat.phrase] || "";
   $("oublier").hidden = etat.phrase !== "gardee";
 }
 
 function ongletCourant() {
-  const b = document.querySelector("[data-onglet][aria-selected=true]");
+  const b = document.querySelector("[data-onglet][aria-current=page]");
   return b ? b.dataset.onglet : "demarrage";
 }
 
 function ongletActif(nom) {
-  document.querySelectorAll("[data-onglet]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.onglet === nom)));
-  ["demarrage", "demandes", "box", "codes", "configuration", "partenaires", "aide"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
+  document.querySelectorAll("[data-onglet]").forEach((b) => {
+    if (b.dataset.onglet === nom) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  ["tableau", "demarrage", "demandes", "box", "codes", "configuration", "partenaires", "aide"].forEach((o) => { $("onglet-" + o).hidden = o !== nom; });
   try { sessionStorage.setItem("onglet", nom); } catch (e) { /* sans stockage : onglet non retenu */ }
 }
 
@@ -114,6 +121,7 @@ function signer({ titre, resume, libelle, danger, extra, action }) {
   $("garder").checked = false;
   $("confirmer-signer").textContent = libelle;
   $("confirmer-signer").className = danger ? "danger" : "";
+  $("confirmer-signer").disabled = false;
   $("dialogue-signer").showModal();
   const premier = $("signer-extra").querySelector("input") || (phrase ? $("phrase") : null);
   if (premier) premier.focus();
@@ -536,6 +544,11 @@ async function copier(texte) {
 function afficherDemarrage(d, extras) {
   const e = d.etat;
   const a = d.annuaire || {};
+  dernierDemarrage = d;
+  const pastille = $("pastille-annuaire");
+  pastille.hidden = false;
+  pastille.textContent = a.joignable ? "Annuaire joignable" : "Annuaire injoignable";
+  pastille.className = "pastille" + (a.joignable ? "" : " refus");
   let faites = 0;
   $("org-dossier").textContent = e.dossier;
   $("organisation-a-creer").hidden = e.initialisee;
@@ -643,7 +656,10 @@ async function telechargerCle() {
 
 let configs = null;
 let edition = null;
+let editionOrigine = null;
 let editionModifiee = false;
+let boxSelection = null;
+let dernierDemarrage = null;
 
 const texteFiltre = (m) => Object.entries(m || {}).map(([k, v]) => k + "=" + v).join("; ");
 
@@ -670,23 +686,55 @@ function copieDicom(d) {
 }
 
 function boxChoisie() {
-  return configs && configs.box.find((b) => b.boxId === $("config-box").value);
+  return configs && configs.box.find((b) => b.boxId === boxSelection);
 }
 
 function modifie() {
   editionModifiee = true;
+  afficherChangements();
+}
+
+function etiquetteConfig(b) {
+  if (b.refusee && (!b.appliquee || b.refusee > b.appliquee)) return ["refus", "refus"];
+  if (!b.numero) return ["locale", "neutre"];
+  if (b.appliquee !== undefined && b.appliquee !== null && b.appliquee < b.numero) return ["n° " + b.numero + " en attente", "attention"];
+  return ["n° " + b.numero, ""];
+}
+
+function choisirBox(id) {
+  if (editionModifiee && id !== boxSelection) {
+    message("Modifications de « " + (boxChoisie() || {}).nom + " » abandonnées.", "");
+  }
+  boxSelection = id;
+  editionModifiee = false;
+  rendreListeBox();
+  afficherEtatBox();
+  chargerEdition();
+}
+
+function rendreListeBox() {
+  $("config-liste").replaceChildren(...configs.box.map((b) => {
+    const bt = element("button");
+    bt.type = "button";
+    bt.setAttribute("aria-pressed", String(b.boxId === boxSelection));
+    const textes = element("span");
+    textes.append(element("span", "nom", b.nom), element("span", "groupes", b.groupes && b.groupes.length ? b.groupes.join(", ") : "sans groupe"));
+    const [libelle, genre] = etiquetteConfig(b);
+    bt.append(textes, element("span", "etiquette " + genre, libelle));
+    bt.addEventListener("click", () => choisirBox(b.boxId));
+    return bt;
+  }));
 }
 
 function afficherConfigurations(c) {
   configs = c;
-  const select = $("config-box");
-  const avant = select.value;
-  select.replaceChildren(...c.box.map((b) => {
-    const o = element("option", null, b.nom);
-    o.value = b.boxId;
-    return o;
-  }));
-  if (c.box.some((b) => b.boxId === avant)) select.value = avant;
+  if (!c.box.some((b) => b.boxId === boxSelection)) {
+    boxSelection = c.box.length ? c.box[0].boxId : null;
+    editionModifiee = false;
+  }
+  rendreListeBox();
+  const refus = c.box.filter((b) => etiquetteConfig(b)[1] === "refus").length;
+  $("compte-configuration").textContent = refus ? String(refus) : "";
   $("config-copier").replaceChildren(element("option", null, "—"), ...c.box.map((b) => {
     const o = element("option", null, b.nom);
     o.value = b.boxId;
@@ -694,8 +742,9 @@ function afficherConfigurations(c) {
   }));
   $("config-copier").firstChild.value = "";
   $("config-editeur").hidden = c.box.length === 0;
+  $("config-vide").hidden = c.box.length !== 0;
   if (c.box.length === 0) {
-    $("config-etat").textContent = "Aucune box active dans l'annuaire.";
+    $("config-vide").textContent = "Aucune box active dans l'annuaire : enrôlez-en une d'abord.";
     return;
   }
   afficherEtatBox();
@@ -705,6 +754,7 @@ function afficherConfigurations(c) {
 function afficherEtatBox() {
   const b = boxChoisie();
   if (!b) return;
+  $("config-titre").textContent = b.nom;
   const morceaux = [b.numero ? "Version en vigueur : n° " + b.numero + " (" + b.cible + ")" : "Aucune configuration centrale : configuration locale"];
   if (b.appliquee !== undefined && b.appliquee !== null) morceaux.push("appliquée par la box : n° " + b.appliquee);
   if (b.refusee) morceaux.push("refus de la n° " + b.refusee + " : " + b.refus);
@@ -721,10 +771,62 @@ function chargerEdition(depuis) {
   if (!b) return;
   const source = depuis ? configs.box.find((x) => x.boxId === depuis) : b;
   edition = copieDicom(source && source.dicom);
+  editionOrigine = copieDicom(b.dicom);
   editionModifiee = !!depuis;
   $("config-aet").value = edition.aet;
   rendreNoeuds();
   rendreRoutes();
+  afficherChangements();
+}
+
+/** Différences entre la configuration publiée et celle en cours d'édition : [signe, genre, texte]. */
+function differences(avant, apres) {
+  const liste = [];
+  if ((avant.aet || "") !== (apres.aet || "")) liste.push(["~", "modif", "AET de la box : " + (avant.aet || "local") + " → " + (apres.aet || "local")]);
+  const comparer = (a, b, quoi, decrire) => {
+    const parNom = (l) => new Map(l.map((x) => [x.name, x]));
+    const ma = parNom(a);
+    const mb = parNom(b);
+    for (const x of b) {
+      if (!ma.has(x.name)) liste.push(["+", "ajout", quoi + " « " + x.name + " » " + decrire(x)]);
+      else if (JSON.stringify(ma.get(x.name)) !== JSON.stringify(x)) liste.push(["~", "modif", quoi + " « " + x.name + " » : " + ecarts(ma.get(x.name), x)]);
+    }
+    for (const x of a) if (!mb.has(x.name)) liste.push(["−", "retrait", quoi + " « " + x.name + " » retiré(e)"]);
+    const ordreA = a.map((x) => x.name).filter((n) => mb.has(n));
+    const ordreB = b.map((x) => x.name).filter((n) => ma.has(n));
+    if (ordreA.join("|") !== ordreB.join("|")) liste.push(["↕", "modif", "Ordre des " + quoi.toLowerCase() + "s changé"]);
+  };
+  const libelles = { aet: "AET", host: "adresse", port: "port", source: "source", destination: "destination",
+    from: "de", calledAet: "AET appelé", and: "filtre (tous)", or: "filtre (un de)", to: "vers" };
+  const valeur = (k, v) => {
+    if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) return k === "from" ? "toutes" : "—";
+    if (typeof v === "boolean") return v ? "oui" : "non";
+    if (Array.isArray(v)) return v.map((x) => (typeof x === "object" ? JSON.stringify(x) : (k === "to" || k === "from") && nomBox(x) || x)).join(", ");
+    if (typeof v === "object") return Object.entries(v).map(([c, m]) => c + "=" + m).join("; ");
+    return String(v);
+  };
+  const ecarts = (x, y) => Object.keys(libelles)
+    .filter((k) => JSON.stringify(x[k] === undefined ? null : x[k]) !== JSON.stringify(y[k] === undefined ? null : y[k]))
+    .map((k) => (libelles[k] || k) + " " + valeur(k, x[k]) + " → " + valeur(k, y[k])).join(" · ") || "modifié";
+  const role = (n) => [n.source ? "source" : null, n.destination ? "destination" : null].filter(Boolean).join(" et ") || "sans rôle";
+  comparer(avant.nodes, apres.nodes, "Appareil", (n) => "· " + n.aet + (n.host ? " · " + n.host + (n.port ? ":" + n.port : "") : "") + " · " + role(n));
+  comparer(avant.outgoing, apres.outgoing, "Envoi", (r) => "→ " + (r.to.length ? r.to.map(nomBox).join(", ") : "aucune box"));
+  comparer(avant.incoming, apres.incoming, "Réception", (r) => "→ " + (r.to.length ? r.to.join(", ") : "aucun PACS"));
+  return liste;
+}
+
+function afficherChangements() {
+  if (!edition || !editionOrigine) return;
+  const edite = Object.assign({}, edition, { aet: $("config-aet").value.trim() });
+  const n = differences(editionOrigine, edite).length;
+  const zone = $("config-changements");
+  zone.replaceChildren();
+  if (!n) {
+    zone.textContent = "Aucun changement à publier";
+  } else {
+    zone.append(element("strong", null, n + " changement" + (n > 1 ? "s" : "")), document.createTextNode(" non publié" + (n > 1 ? "s" : "")));
+  }
+  $("config-publier").disabled = n === 0;
 }
 
 function caseACocher(libelle, coche, action) {
@@ -791,9 +893,37 @@ function listeChoix(titre, options, choisis, vide) {
   return bloc;
 }
 
+function resumeFlux(r, i, sortante) {
+  const flux = element("div", "flux");
+  const morceau = (classe, texte) => flux.append(element("span", classe, texte));
+  const fleche = () => morceau("fleche", "→");
+  morceau("rang", String(i + 1));
+  morceau("titre-route", r.name || "(sans nom)");
+  const filtre = [r.and, r.or ? "ou " + r.or : ""].filter((x) => x && x.trim()).join(" ; ") || "aucun filtre";
+  if (sortante) {
+    morceau("de", r.from.length ? r.from.join(", ") : "tout appareil source");
+    fleche();
+    morceau("filtre", (r.calledAet ? "AET " + r.calledAet + " ; " : "") + filtre);
+    fleche();
+    morceau("vers", r.to.length ? r.to.map(nomBox).join(", ") : "aucune box");
+  } else {
+    morceau("vers", r.from.length ? r.from.map(nomBox).join(", ") : "toute box");
+    fleche();
+    morceau("filtre", filtre);
+    fleche();
+    morceau("de", r.to.length ? r.to.join(", ") : "aucun PACS");
+  }
+  return flux;
+}
+
 function rendreRoute(r, i, sortante) {
   const liste = sortante ? edition.outgoing : edition.incoming;
   const carte = element("div", "route");
+  let resume = resumeFlux(r, i, sortante);
+  carte.append(resume);
+  const majResume = () => { const nouveau = resumeFlux(r, i, sortante); resume.replaceWith(nouveau); resume = nouveau; };
+  carte.addEventListener("input", majResume);
+  carte.addEventListener("change", majResume);
   const ligne = element("div", "route-ligne");
   const libelle = (t, champ) => { const l = element("label", null, t); l.append(champ); return l; };
   ligne.append(libelle("Nom de la route", champTexte(r.name, (v) => { r.name = v; }, { maxLength: 64 })));
@@ -805,7 +935,7 @@ function rendreRoute(r, i, sortante) {
     { placeholder: "Modality=CT; SeriesDescription=*THORAX*" })));
   ligne.append(libelle("Filtre : un de ces champs", champTexte(r.or, (v) => { r.or = v; }, { placeholder: "facultatif" })));
   carte.append(ligne);
-  const autre = $("config-box").value;
+  const autre = boxSelection;
   const boxes = configs.destinations.filter((d) => d.boxId !== autre).map((d) => [d.boxId, nomBox(d.boxId)]);
   if (sortante) {
     const sources = edition.nodes.filter((n) => n.source && n.name).map((n) => [n.name, n.name + " (" + n.aet + ")"]);
@@ -855,11 +985,24 @@ function publierConfiguration() {
   }
   const resume = dicom.nodes.length + " nœud(s), " + dicom.outgoing.length + " route(s) sortante(s), "
     + dicom.incoming.length + " route(s) entrante(s)";
+  const extra = element("div", "signature-config");
+  const liste = element("ul", "differences");
+  differences(editionOrigine, Object.assign({}, edition, { aet: $("config-aet").value.trim() })).forEach(([signe, genre, texte]) => {
+    const li = element("li");
+    li.append(element("span", "signe " + genre, signe), element("span", null, texte));
+    liste.append(li);
+  });
+  const relu = element("input");
+  relu.type = "checkbox";
+  const lrelu = element("label", "choix");
+  lrelu.append(relu, document.createTextNode("J'ai relu ces changements : c'est bien ce que je veux signer"));
+  extra.append(element("p", "discret", "Ce qui change par rapport à la version en vigueur :"), liste, lrelu);
   signer({
     titre: "Signer la configuration de « " + b.nom + " »",
-    resume: "Document n° " + configs.prochainNumero + " pour cette box seule : " + resume
-      + ". Il remplace sa configuration DICOM locale dès sa prochaine lecture de l'annuaire.",
+    resume: "Document n° " + configs.prochainNumero + " pour cette box seule (" + resume
+      + "). La box l'applique à sa prochaine lecture de l'annuaire, sans redémarrage.",
     libelle: "Signer et publier",
+    extra,
     action: async (phrase, garder) => {
       const r = await api("POST", "/api/configuration", { boxId: b.boxId, dicom, motif: $("config-motif").value, phrase, garder });
       editionModifiee = false;
@@ -867,6 +1010,116 @@ function publierConfiguration() {
       return r;
     },
   });
+  $("confirmer-signer").disabled = true;
+  relu.addEventListener("change", () => { $("confirmer-signer").disabled = !relu.checked; });
+}
+
+// --- Tableau de bord ---
+
+let tableauBox = [];
+
+function afficherTableau({ demandes, boites, partenaires, demarrage }) {
+  const afaire = [];
+  const ajouter = (urgence, titre, detail, action, aller) => afaire.push({ urgence, titre, detail, action, aller });
+  const a = (demarrage && demarrage.annuaire) || {};
+  const f = (demarrage && demarrage.fraicheur) || {};
+  if (demarrage && !a.joignable) {
+    ajouter("urgent", "Annuaire injoignable", "Adresse " + etat.annuaire + (a.detail ? " (" + a.detail + ")" : ""), "Voir", "demarrage");
+  }
+  if (etat.compte === "requis") {
+    ajouter("bientot", "Compte de dépôt de l'annuaire à saisir", "Nécessaire pour valider les demandes et publier.", "Saisir", "demarrage");
+  }
+  if (demandes && demandes.length) {
+    const codes = demandes.filter((d) => d.statut === "code-verifie").length;
+    ajouter("", demandes.length + " demande" + (demandes.length > 1 ? "s" : "") + " d'enrôlement en attente",
+      codes === demandes.length ? "Toutes portent un code vérifié : validation en un clic." : codes + " avec un code vérifié.", "Valider", "demandes");
+  }
+  if (!f.numero) {
+    ajouter("bientot", "Clé de fraîcheur pas encore déléguée", "Les box ne peuvent pas vérifier que l'annuaire est à jour.", "Déléguer", "demarrage");
+  } else if (f.expireBientot) {
+    ajouter("urgent", "Délégation de fraîcheur : expire le " + jour(f.jusquAu), "Sans renouvellement, les échanges s'arrêtent 48 h après la fin.", "Renouveler", "demarrage");
+  } else if (!a.fraicheurPubliee && a.joignable) {
+    ajouter("bientot", "Délégation n° " + f.numero + " à installer sur l'annuaire", "L'annuaire ne publie pas encore de preuve de fraîcheur.", "Voir", "demarrage");
+  }
+  const aRenouveler = (boites || []).filter((b) => b.aRenouveler);
+  if (aRenouveler.length) {
+    ajouter("bientot", aRenouveler.length + " entrée" + (aRenouveler.length > 1 ? "s" : "") + " de box à renouveler",
+      aRenouveler.map((b) => b.nom).join(", ") + ".", "Renouveler", "box");
+  }
+  for (const b of (configs ? configs.box : [])) {
+    if (etiquetteConfig(b)[1] === "refus") {
+      ajouter("urgent", "« " + b.nom + " » a refusé la configuration n° " + b.refusee, b.refus || "", "Corriger", "configuration:" + b.boxId);
+    }
+  }
+  const ordre = { urgent: 0, bientot: 1, "": 2 };
+  afaire.sort((x, y) => ordre[x.urgence] - ordre[y.urgence]);
+  const zone = $("afaire");
+  zone.replaceChildren();
+  if (!afaire.length) zone.append(element("li", "vide", "Rien à faire : tout est à jour."));
+  for (const t of afaire) {
+    const li = element("li");
+    const texte = element("div", "texte");
+    texte.append(element("div", "titre", t.titre), element("div", "discret", t.detail));
+    li.append(element("span", "point " + t.urgence), texte, bouton(t.action, "secondaire", () => aller(t.aller)));
+    zone.append(li);
+  }
+  $("tableau-resume").textContent = afaire.length
+    ? afaire.length + " action" + (afaire.length > 1 ? "s vous attendent" : " vous attend") + "."
+    : "Tout est à jour.";
+  $("compte-tableau").textContent = afaire.length ? String(afaire.length) : "";
+
+  const actives = (boites || []).filter((b) => b.statut === "ACTIVE").length;
+  const configurees = configs ? configs.box.filter((b) => b.numero && b.appliquee === b.numero).length : 0;
+  const refus = configs ? configs.box.filter((b) => etiquetteConfig(b)[1] === "refus").length : 0;
+  const accords = (partenaires || []).filter((p) => p.statut === "ACTIVE").length;
+  const indicateur = (libelle, valeur, note, refusNote) => {
+    const d = element("div", "indicateur");
+    d.append(element("div", "discret", libelle), element("div", "valeur", valeur), element("div", "note" + (refusNote ? " refus" : ""), note));
+    return d;
+  };
+  $("indicateurs").replaceChildren(
+    indicateur("Box actives", boites ? actives + " / " + boites.length : "—", boites ? (boites.length - actives) + " autre(s) : révoquées ou expirées" : "annuaire illisible"),
+    indicateur("Preuve de fraîcheur", a.fraicheurPubliee ? "publiée" : "absente", f.numero ? "délégation n° " + f.numero + " jusqu'au " + jour(f.jusquAu) : "clé pas encore déléguée", !a.fraicheurPubliee),
+    indicateur("Configuration centrale", configs ? configurees + " / " + configs.box.length + " box" : "—", refus ? refus + " refus à corriger" : "appliquée par les box concernées", refus > 0),
+    indicateur("Organisations partenaires", String(accords), accords ? "accords actifs" : "aucun accord actif"));
+
+  const parBox = new Map((configs ? configs.box : []).map((b) => [b.boxId, b]));
+  tableauBox = (boites || []).map((b) => ({ b, c: parBox.get(b.boxId) }));
+  rendreTableauBox();
+}
+
+function aller(cible) {
+  const [onglet, box] = cible.split(":");
+  ongletActif(onglet);
+  if (box && configs) choisirBox(box);
+}
+
+function rendreTableauBox() {
+  const filtre = ($("tableau-recherche").value || "").trim().toLowerCase();
+  const corps = $("tableau-box");
+  corps.replaceChildren();
+  const etats = { ACTIVE: ["Active", ""], REVOKED: ["Révoquée", "neutre"], EXPIRED: ["Expirée", "refus"], NOT_YET_VALID: ["Pas encore valide", "attention"] };
+  const lignes = tableauBox.filter(({ b }) => !filtre || b.nom.toLowerCase().includes(filtre)
+    || (b.groupes || []).some((g) => g.includes(filtre)));
+  if (!lignes.length) {
+    const td = element("td", "discret", tableauBox.length ? "Aucune box ne correspond." : "Aucune box dans l'annuaire.");
+    td.colSpan = 5;
+    const tr = element("tr");
+    tr.append(td);
+    corps.append(tr);
+  }
+  for (const { b, c } of lignes) {
+    const tr = element("tr");
+    const [libelle, genre] = b.aRenouveler && b.statut === "ACTIVE" ? ["À renouveler", "attention"] : (etats[b.statut] || [b.statut, "neutre"]);
+    const config = c ? etiquetteConfig(c) : ["—", "neutre"];
+    const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
+    cellule(element("strong", null, b.nom));
+    cellule(element("span", "etiquette " + genre, libelle));
+    cellule(document.createTextNode(b.groupes && b.groupes.length ? b.groupes.join(", ") : "—"));
+    cellule(element("span", "etiquette " + config[1], config[0]));
+    cellule(document.createTextNode(jour(b.valideJusquau)));
+    corps.append(tr);
+  }
 }
 
 /** Onglet dont la liste n'a pas pu être lue : le motif s'affiche à sa place. */
@@ -910,8 +1163,10 @@ async function charger() {
     try {
       afficherConfigurations(await api("GET", "/api/configurations"));
     } catch (e) {
-      $("config-etat").textContent = "Configurations illisibles : " + e.message;
+      $("config-vide").hidden = false;
+      $("config-vide").textContent = "Configurations illisibles : " + e.message;
     }
+    afficherTableau({ demandes, boites, partenaires, demarrage });
     if (demandes) afficherDemandes(demandes);
     if (boites) afficherBox(boites);
     if (codes) afficherCodes(codes);
@@ -924,15 +1179,15 @@ async function charger() {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-onglet]").forEach((b) => b.addEventListener("click", () => ongletActif(b.dataset.onglet)));
-  let onglet = "demarrage";
+  let onglet = "tableau";
   try { onglet = sessionStorage.getItem("onglet") || onglet; } catch (e) { /* onglet par défaut */ }
   ongletActif(onglet);
   $("formulaire-organisation").addEventListener("submit", creerOrganisation);
   $("formulaire-compte").addEventListener("submit", seConnecter);
   $("deleguer").addEventListener("click", deleguer);
   $("telecharger-cle").addEventListener("click", telechargerCle);
-  $("config-box").addEventListener("change", () => { editionModifiee = false; afficherEtatBox(); chargerEdition(); });
   $("config-aet").addEventListener("input", modifie);
+  $("tableau-recherche").addEventListener("input", rendreTableauBox);
   $("ajouter-noeud").addEventListener("click", () => {
     edition.nodes.push({ name: "", aet: "", host: "", port: 104, source: true, destination: false });
     modifie(); rendreNoeuds(); rendreRoutes();
