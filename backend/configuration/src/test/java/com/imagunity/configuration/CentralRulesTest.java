@@ -121,6 +121,34 @@ class CentralRulesTest {
     }
 
     @Test
+    void aStoredDocumentThatNoLongerVerifiesAtStartupCanBeAppliedAgain() {
+        Instant now = clock.now.get();
+        SignedDocument fifth = document(5, CentralConfiguration.Target.everyone(), "Modality", true);
+        assertThat(rules().synchronize(List.of(fifth))).isTrue();
+
+        // Redémarrage avec l'horloge en retard (instantané de VM, horloge pas encore synchronisée) : le document
+        // enregistré paraît émis dans le futur et ne se revérifie pas ; règles locales en attendant.
+        clock.now.set(now.minus(Duration.ofHours(1)));
+        CentralRules restarted = rules();
+        restarted.load();
+        assertThat(restarted.snapshot().sequence()).isZero();
+        SignedDocument fourth = document(4, CentralConfiguration.Target.everyone(), "Modality", false);
+        assertThat(restarted.synchronize(List.of(fourth, fifth))).as("pas de retour en arrière vers le n° 4")
+                .isFalse();
+        assertThat(restarted.snapshot().sequence()).isZero();
+
+        // Horloge revenue à l'heure : le document est resté sur le disque (le n° 4 vu entre-temps ne l'a pas
+        // effacé), un nouveau démarrage le reprend, et le même n° 5, toujours publié, s'applique de nouveau.
+        clock.now.set(now.plus(Duration.ofMinutes(1)));
+        CentralRules again = rules();
+        again.load();
+        assertThat(again.snapshot().sequence()).as("document gardé sur le disque").isEqualTo(5);
+        assertThat(restarted.synchronize(List.of(fourth, fifth))).isTrue();
+        assertThat(restarted.snapshot().sequence()).isEqualTo(5);
+        assertThat(restarted.routing()).isPresent();
+    }
+
+    @Test
     void anInvalidDocumentIsRefusedAndThePreviousRulesStay() {
         CentralRules rules = rules();
         rules.synchronize(List.of(document(3, CentralConfiguration.Target.everyone(), "Modality", false)));

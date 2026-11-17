@@ -101,6 +101,13 @@ public final class CentralRules implements CentralConfigurationStatus {
     private volatile Applied applied;
     /** Document appliqué (JSON signé), ou {@code null}. */
     private String appliedDocument;
+    /**
+     * Document enregistré qui ne s'est pas revérifié au démarrage (horloge en retard, règle devenue invalide après une
+     * mise à jour du logiciel…) : gardé sur le disque, et son numéro peut de nouveau s'appliquer à la lecture suivante
+     * de l'annuaire. Sans cela, le plancher anti-retour (son numéro) l'écarterait à jamais, au profit des règles
+     * locales, jusqu'au document suivant du responsable.
+     */
+    private String unverifiedDocument;
     private Instant storedAt;
     /** Documents vérifiés déjà vus, par numéro. */
     private final java.util.TreeMap<Long, Candidate> seen = new java.util.TreeMap<>();
@@ -152,10 +159,19 @@ public final class CentralRules implements CentralConfigurationStatus {
             if (stored.document() == null) {
                 return;
             }
-            SignedDocument document = SignedDocument.fromJson(stored.document());
-            CentralConfiguration configuration = CentralConfiguration.verify(document, organization, organizationKey,
-                    clock);
-            applied = new Applied(configuration, compile(configuration), stored.appliedAt());
+            CentralConfiguration configuration;
+            RuleSet rules;
+            try {
+                configuration = CentralConfiguration.verify(SignedDocument.fromJson(stored.document()), organization,
+                        organizationKey, clock);
+                rules = compile(configuration);
+            } catch (RuntimeException e) {
+                unverifiedDocument = stored.document();
+                LOG.warn("Configuration centrale enregistrée invalide ({}) : configuration locale en vigueur jusqu'à "
+                        + "la prochaine lecture de l'annuaire", e.getMessage());
+                return;
+            }
+            applied = new Applied(configuration, rules, stored.appliedAt());
             appliedDocument = stored.document();
             floor = Math.max(floor, configuration.sequence());
             LOG.info("Configuration centrale {} en vigueur (appliquée le {})", configuration.describe(),
@@ -188,7 +204,8 @@ public final class CentralRules implements CentralConfigurationStatus {
         }
         // Sinon, seuls les documents plus récents que tout ce qui a déjà été appliqué comptent (pas de retour en
         // arrière, même après un redémarrage).
-        long current = dropped ? 0 : floor;
+        // Document enregistré non revérifié au démarrage : son propre numéro reste admis (pas un plus ancien).
+        long current = dropped ? 0 : unverifiedDocument != null ? floor - 1 : floor;
         List<Candidate> published = documents.stream().map(this::verified).flatMap(Optional::stream).toList();
         boolean learned = false;
         for (Candidate candidate : published) {
@@ -219,6 +236,7 @@ public final class CentralRules implements CentralConfigurationStatus {
             Instant now = clock.instant();
             applied = new Applied(candidate, rules, now);
             appliedDocument = found.document().toJson();
+            unverifiedDocument = null;
             floor = Math.max(floor, candidate.sequence());
             save(now);
             LOG.info("Configuration centrale {} appliquée{}", candidate.describe(), candidate.author() == null ? ""
@@ -284,7 +302,8 @@ public final class CentralRules implements CentralConfigurationStatus {
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temp, JSON.writeValueAsString(new Stored(appliedDocument, at, floor,
+            Files.writeString(temp, JSON.writeValueAsString(new Stored(
+                    appliedDocument != null ? appliedDocument : unverifiedDocument, at, floor,
                     seen.values().stream().map(c -> c.document().toJson()).toList())), StandardCharsets.UTF_8);
             Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
