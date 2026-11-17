@@ -77,6 +77,12 @@ class MessagesTest {
                 .hasMessageContaining("illisible");
         assertThatThrownBy(() -> MessageEnvelope.open(rebuild(envelope, header.replace("\"x25519\"", "\"x25519bis\"")
                 .replaceFirst(",\"x25519bis\":\"[^\"]+\"", "")), B)).hasMessageContaining("invalide");
+        // Contenu authentique mais de moins de 4 octets (n'importe qui peut sceller pour cette box) : refus net.
+        for (int length = 0; length < 4; length++) {
+            byte[] tiny = MessageEnvelope.sealPadded(new byte[length], B.publicKey());
+            assertThatThrownBy(() -> MessageEnvelope.open(tiny, B)).as(length + " octet(s)")
+                    .isInstanceOf(ProtocolException.class).hasMessageContaining("Longueur");
+        }
     }
 
     private static byte[] rebuild(byte[] envelope, String header) {

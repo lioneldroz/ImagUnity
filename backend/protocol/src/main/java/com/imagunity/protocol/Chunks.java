@@ -114,6 +114,9 @@ public final class Chunks {
             while (buffer.hasRemaining()) {
                 position += channel.write(buffer, position);
             }
+            // Sur le disque avant que le morceau soit noté reçu puis acquitté (le relais l'oublie alors) : sans cela,
+            // une coupure de courant laisserait un trou dans le paquet, que la reprise ne redemanderait pas.
+            channel.force(false);
         }
     }
 }
