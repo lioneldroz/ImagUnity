@@ -174,3 +174,13 @@ test('10.7 et 12.7 : lien d\'évitement en premier, focus toujours visible', asy
   }
   expect(vus.size, 'éléments atteints au clavier').toBeGreaterThan(10);
 });
+
+test.describe('thème clair seulement', () => {
+  test.use({ colorScheme: 'dark' });
+  test("système réglé en sombre : l'interface d'administration de l'annuaire reste claire", async ({ page }) => {
+    await ouvrir(page);
+    expect(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(246, 247, 249)');
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light only');
+  });
+});

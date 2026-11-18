@@ -12,19 +12,10 @@
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
+  /* Thème clair seulement, même si le navigateur ou le système est réglé en sombre. */
+  color-scheme: light only;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161c;
-    --surface: #1b2129;
-    --text: #e6eaf0;
-    --muted: #9aa5b3;
-    --border: #2c3440;
-    --field-border: #6b7686;
-    --error: #f97066;
-  }
-}
 
 body {
   margin: 0;
@@ -88,17 +79,6 @@ dd {
   --warning-bg: #fffaeb;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ok: #75e0a7;
-    --ok-bg: #053321;
-    --progress: #84caff;
-    --progress-bg: #102a56;
-    --error-bg: #55160c;
-    --warning: #fec84b;
-    --warning-bg: #4e1d09;
-  }
-}
 
 .console {
   max-width: 1200px;

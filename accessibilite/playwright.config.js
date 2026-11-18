@@ -1,4 +1,5 @@
-// Contrôles d'accessibilité (RGAA 4.1.2) : chaque interface est testée en thème clair et en thème sombre.
+// Contrôles d'accessibilité (RGAA 4.1.2). Les interfaces n'ont qu'un thème clair : un test par interface vérifie
+// qu'elles le gardent quand le système est réglé en sombre.
 const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
@@ -9,6 +10,5 @@ module.exports = defineConfig({
   use: { browserName: 'chromium', trace: 'off' },
   projects: [
     { name: 'clair', use: { colorScheme: 'light' } },
-    { name: 'sombre', use: { colorScheme: 'dark' } },
   ],
 });
