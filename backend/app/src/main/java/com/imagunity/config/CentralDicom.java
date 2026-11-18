@@ -71,9 +71,9 @@ public final class CentralDicom {
      * Constat sur un appareil : dernier essai (pour quelle définition : AET, adresse, port), dernier envoi reçu, dernière
      * connexion refusée.
      */
-    private record Seen(String tested, Instant echoAt, String echoError, Instant receivedAt, Instant refusedAt,
-                        String refusedFrom) {
-        static final Seen NONE = new Seen(null, null, null, null, null, null);
+    private record Seen(String tested, Instant echoAt, String echoError, Instant echoOkAt, Instant receivedAt,
+                        Instant refusedAt, String refusedFrom) {
+        static final Seen NONE = new Seen(null, null, null, null, null, null, null);
     }
 
     /**
@@ -204,7 +204,7 @@ public final class CentralDicom {
         Instant now = clock.instant();
         seen.compute(node, (k, v) -> {
             Seen o = v == null ? Seen.NONE : v;
-            return new Seen(o.tested(), o.echoAt(), o.echoError(), now, o.refusedAt(), o.refusedFrom());
+            return new Seen(o.tested(), o.echoAt(), o.echoError(), o.echoOkAt(), now, o.refusedAt(), o.refusedFrom());
         });
     }
 
@@ -212,7 +212,7 @@ public final class CentralDicom {
         Instant now = clock.instant();
         seen.compute(node, (k, v) -> {
             Seen o = v == null ? Seen.NONE : v;
-            return new Seen(o.tested(), o.echoAt(), o.echoError(), o.receivedAt(), now, from);
+            return new Seen(o.tested(), o.echoAt(), o.echoError(), o.echoOkAt(), o.receivedAt(), now, from);
         });
     }
 
@@ -254,7 +254,10 @@ public final class CentralDicom {
             Instant at = clock.instant();
             seen.compute(node.name(), (k, v) -> {
                 Seen p = v == null ? Seen.NONE : v;
-                return new Seen(definition, at, error.orElse(null), p.receivedAt(), p.refusedAt(), p.refusedFrom());
+                // Dernier succès : gardé tant que la destination ne change pas (une autre adresse repart de zéro).
+                Instant okAt = error.isEmpty() ? at : definition.equals(p.tested()) ? p.echoOkAt() : null;
+                return new Seen(definition, at, error.orElse(null), okAt, p.receivedAt(), p.refusedAt(),
+                        p.refusedFrom());
             });
             done++;
         }
@@ -273,7 +276,8 @@ public final class CentralDicom {
             boolean tested = node.destination() && o.tested() != null;
             list.add(new com.imagunity.directory.NodeCheck(node.name(), tested ? o.echoAt() : null,
                     tested ? o.echoError() : null, node.source() ? o.receivedAt() : null,
-                    node.source() ? o.refusedAt() : null, node.source() ? o.refusedFrom() : null));
+                    node.source() ? o.refusedAt() : null, node.source() ? o.refusedFrom() : null,
+                    tested ? o.echoOkAt() : null));
         }
         return list;
     }

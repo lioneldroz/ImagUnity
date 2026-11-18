@@ -16,16 +16,24 @@ import java.util.Objects;
  * @param receivedAt  date de la dernière association acceptée de cette source, ou {@code null}
  * @param refusedAt   date de la dernière association refusée (adresse inattendue), ou {@code null}
  * @param refusedFrom adresse d'où venait cette association refusée
+ * @param echoOkAt    date du dernier C-ECHO réussi vers cette destination, telle qu'elle est déclarée (adresse, port,
+ *                    AET), ou {@code null}
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record NodeCheck(String node, Instant echoAt, String echoError, Instant receivedAt, Instant refusedAt,
-                        String refusedFrom) {
+                        String refusedFrom, Instant echoOkAt) {
 
     public NodeCheck {
         Objects.requireNonNull(node, "node");
         echoError = cut(echoError);
         refusedFrom = cut(refusedFrom);
+    }
+
+    /** Sans date de dernier succès (box antérieure). */
+    public NodeCheck(String node, Instant echoAt, String echoError, Instant receivedAt, Instant refusedAt,
+                     String refusedFrom) {
+        this(node, echoAt, echoError, receivedAt, refusedAt, refusedFrom, echoError == null ? echoAt : null);
     }
 
     /** L'essai de connexion a réussi. */
