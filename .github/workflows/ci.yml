@@ -59,6 +59,34 @@ jobs:
       - run: npm run lint   # Analyse statique (ESLint, en général)
       - run: npm run build  # Vérifie que l'application compile pour la production
 
+  accessibilite:
+    name: Accessibilité (RGAA 4.1.2)
+    # Critères vérifiables automatiquement (axe-core, étiquette RGAAv4) et mesures maison : contrastes des champs,
+    # messages de statut, 320 px, espacement du texte, focus, lien d'évitement. Ne remplace pas un audit manuel.
+    # Interfaces couvertes : administration de l'annuaire (/admin/), API simulée. Voir accessibilite/README.md.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: accessibilite
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: accessibilite/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium   # Navigateur de la version de Playwright du lockfile
+      - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright, thèmes clair et sombre
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4   # Rapport détaillé (résultats axe-core joints à chaque test)
+        if: ${{ !cancelled() }}
+        with:
+          name: rapport-accessibilite
+          path: accessibilite/playwright-report
+          retention-days: 14
+
   compose:
     name: Docker Compose (validation)
     runs-on: ubuntu-latest

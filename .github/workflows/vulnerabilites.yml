@@ -61,6 +61,7 @@ jobs:
           ./osv-scanner scan source --config osv-scanner.toml --format markdown --output-file resultat.md \
             -L backend/target/sbom.cdx.json \
             -L frontend/package-lock.json \
+            -L accessibilite/package-lock.json \
             -L deploy/banc-essai/campagne/requirements.txt || code=$?
           cat resultat.md
           { echo "## Vulnérabilités connues des dépendances"; echo; cat resultat.md; } >> "$GITHUB_STEP_SUMMARY"
