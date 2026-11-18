@@ -4,6 +4,8 @@
 
 ## Version suivante (en préparation)
 
+- **Interface d'administration de l'annuaire (`/admin/`) : accessibilité (RGAA 4.1.2)**. Champs « En-tête DICOM » et « Document signé » étiquetés ; tableaux titrés, en-têtes de colonne déclarés ; résultat de l'essai des règles et messages annoncés par les lecteurs d'écran, même répétés ; contours des champs et textes d'exemple assez contrastés (clair et sombre) ; page lisible à 320 px de large et avec un espacement du texte agrandi, sans défilement horizontal ; lien d'évitement vers le contenu.
+
 - **Interface du responsable en mode sombre** (navigateur ou système réglé en sombre) : l'empreinte du bandeau était invisible, les boutons désactivés (« Vérifier et signer », « Signer et publier », « Renouveler la sélection ») et les textes d'exemple des champs presque illisibles. Tous les textes atteignent désormais un contraste d'au moins 4,5, dans les deux modes, bulles d'aide et fenêtres comprises. Mise en page alignée sur la maquette (largeur, marges).
 
 - **État de chaque appareil DICOM, vu par la box** : la box essaie la connexion (C-ECHO) de chaque destination de sa configuration centrale, tout de suite pour une destination nouvelle ou modifiée puis toutes les 30 minutes, et note pour chaque source le dernier envoi reçu et la dernière connexion refusée (adresse inattendue). Ces constats partent dans son compte rendu signé ; l'interface du responsable les affiche par appareil (colonne « État vu par la box »), dans « À faire » quand une destination ne répond pas, et dans la fenêtre de signature. La console de la box les montre aussi. Aucune donnée de patient. **À déployer** : box et outil du responsable ; l'annuaire n'a pas à changer (un annuaire antérieur garde le compte rendu signé tel quel).
