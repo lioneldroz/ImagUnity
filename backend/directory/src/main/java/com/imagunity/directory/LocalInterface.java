@@ -306,6 +306,7 @@ final class LocalInterface implements AutoCloseable {
             case "GET /api/configurations" -> configurations();
             case "POST /api/configuration" -> publishConfiguration(body);
             case "POST /api/configuration/essai" -> tryConfiguration(body);
+            case "POST /api/essai-connexion" -> requestTest(body);
             case "GET /api/demandes" -> pending();
             case "POST /api/valider" -> validate(body);
             case "POST /api/refuser" -> refuse(body);
@@ -624,6 +625,39 @@ final class LocalInterface implements AutoCloseable {
         }
     }
 
+    /**
+     * « Tester maintenant » : demande signée à la box d'essayer tout de suite la connexion de chacune de ses
+     * destinations, déposée dans l'annuaire, qui réveille la box ; elle répond par son compte rendu.
+     */
+    private Map<String, Object> requestTest(JsonNode body) throws IOException {
+        UUID boxId = boxId(body);
+        Published p = published().get(boxId);
+        if (p == null || p.entry().statusAt(clock.instant()) != BoxEntry.Status.ACTIVE) {
+            throw new Refusal(404, "Box " + boxId + " absente de l'annuaire ou inactive");
+        }
+        Organization organization = organization(body.path("phrase").asString(""), body.path("garder")
+                .asBoolean(false));
+        SignedDocument request = organization.signTestRequest(boxId, clock.instant());
+        HttpResponse<String> response = calls.post("/directory/v1/test-requests", request);
+        if (response.statusCode() == 404) {
+            throw new Refusal(502, "L'annuaire ne connaît pas les demandes d'essai : mettez-le à jour. La box essaie "
+                    + "de toute façon ses destinations toutes les 30 minutes.");
+        }
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            throw new Refusal(502, "Demande d'essai refusée par l'annuaire (HTTP " + response.statusCode() + ")");
+        }
+        TestRequest sent = Json.read(request.payload(), TestRequest.class, "Demande d'essai");
+        String message = "Essai de connexion demandé à « " + p.entry().displayName() + " » : elle répond dans "
+                + "quelques secondes (au plus à sa prochaine lecture de l'annuaire)";
+        out.println(message);
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("id", sent.id());
+        answer.put("le", sent.requestedAt().toString());
+        answer.put("message", message);
+        answer.put("phrase", phraseState());
+        return answer;
+    }
+
     /** Champs d'un examen fictif : {@code Modality=CT; SeriesDescription=THORAX}. */
     static Map<String, String> fields(String text) {
         Map<String, String> fields = new LinkedHashMap<>();
@@ -653,6 +687,7 @@ final class LocalInterface implements AutoCloseable {
                 report.nodes().forEach(check -> nodes.put(check.node(), check));
                 devices.put("le", report.reportedAt().toString());
                 devices.put("noeuds", nodes);
+                devices.put("essai", report.answered());
             });
         } catch (IOException | RuntimeException ex) {
             // compte rendu facultatif : les appareils s'affichent sans leur état

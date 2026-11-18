@@ -223,6 +223,9 @@ class CentralDicomTest {
         assertThat(echoes).containsExactlyInAnyOrder("PACS_NORD@10.2.0.15:104 par IMAGUNITY_NORD",
                 "PACS_IRM@10.2.0.16:11112 par IMAGUNITY_NORD");
         assertThat(dicom.checkDestinations()).as("déjà essayées").isZero();
+        echoes.clear();
+        assertThat(dicom.checkDestinations(true)).as("demande d'essai : toutes, tout de suite").isEqualTo(2);
+        assertThat(echoes).hasSize(2);
         CentralInput input = dicom.input().orElseThrow();
         input.callingAllowed("CT_URG", InetAddress.getLoopbackAddress());
         input.callingAllowed("PACS_NORD", InetAddress.getByName("10.9.9.9"));
@@ -249,6 +252,81 @@ class CentralDicomTest {
             assertThat(c.echoOk()).isTrue();
             assertThat(c.state()).isNotEqualTo(before);
         });
+    }
+
+    @Test
+    void aTestRequestFromTheResponsibleIsAnsweredInTheNextReport() throws Exception {
+        java.nio.file.Path file = java.nio.file.Files.createTempDirectory("box").resolve("configuration-centrale.json");
+        com.imagunity.configuration.CentralRules rules = new com.imagunity.configuration.CentralRules(SELF,
+                ORG.id(), ORG_KEYS.publicKey(), file, clock);
+        com.imagunity.directory.CentralConfiguration.Dicom d = new com.imagunity.directory.CentralConfiguration.Dicom(
+                "IMAGUNITY_NORD", List.of(new com.imagunity.directory.CentralConfiguration.Node("pacs", "PACS",
+                "10.2.0.15", 104, false, true)), List.of(), List.of());
+        String configuration = ORG.signConfiguration(com.imagunity.directory.CentralConfiguration.draft(ORG.id(),
+                com.imagunity.directory.CentralConfiguration.Target.of(List.of(SELF)), 1, clock.now, null, null, null,
+                null, d)).toJson();
+        AtomicReference<String> request = new AtomicReference<>();
+        List<String> reports = new CopyOnWriteArrayList<>();
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            String body = path.equals("/directory/v1/configurations")
+                    ? "{\"organization\":\"chu-exemple\",\"configurations\":[" + configuration + "]}"
+                    : path.equals("/directory/v1/test-requests/" + SELF) ? request.get() : null;
+            if (path.equals("/directory/v1/configurations/reports")) {
+                reports.add(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets
+                        .UTF_8));
+                body = "";
+            }
+            byte[] bytes = body == null ? new byte[0] : body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(body == null ? 404 : bytes.length == 0 ? 201 : 200,
+                    bytes.length == 0 ? -1 : bytes.length);
+            if (bytes.length > 0) {
+                exchange.getResponseBody().write(bytes);
+            }
+            exchange.close();
+        });
+        server.start();
+        try {
+            com.imagunity.directory.DirectoryClient client = new com.imagunity.directory.DirectoryClient(
+                    java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort()), Duration.ofSeconds(2));
+            List<String> echoes = new ArrayList<>();
+            CentralDicom dicom = new CentralDicom(rules::dicom, repository, directory(), SELF,
+                    new PairingService(repository, new DisabledTransport(), clock, Duration.ofMinutes(5)), "iu",
+                    "LOCAL", clock, (host, port, called, calling) -> {
+                        echoes.add(called);
+                        return Optional.empty();
+                    });
+            rules.nodeChecks(dicom::checks);
+            TestRequests tests = new TestRequests(SELF, ORG.id(), ORG_KEYS.publicKey(), clock);
+            com.imagunity.orchestration.BoxIdentity identity = new com.imagunity.orchestration.BoxIdentity(SELF,
+                    HybridKeyPair.generate());
+            DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, rules, identity, null, dicom,
+                    tests);
+            assertThat(echoes).as("destination nouvelle : essayée").containsExactly("PACS");
+            assertThat(reports).hasSize(1);
+            DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, rules, identity, null, dicom,
+                    tests);
+            assertThat(echoes).as("rien de neuf").hasSize(1);
+            assertThat(reports).hasSize(1);
+
+            String id = com.imagunity.directory.TestRequest.verify(org(request, clock.now), ORG.id(),
+                    ORG_KEYS.publicKey(), clock.now).id();
+            DirectoryConfiguration.synchronizeAll(null, client, null, Runnable::run, rules, identity, null, dicom,
+                    tests);
+            assertThat(echoes).as("demande d'essai : essayée de nouveau, tout de suite").hasSize(2);
+            assertThat(reports).hasSize(2);
+            assertThat(reports.getLast()).contains(id);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static com.imagunity.directory.SignedDocument org(AtomicReference<String> holder, Instant now) {
+        com.imagunity.directory.SignedDocument signed = ORG.signTestRequest(SELF, now);
+        holder.set(signed.toJson());
+        return signed;
     }
 
     @Test

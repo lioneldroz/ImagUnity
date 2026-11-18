@@ -169,6 +169,7 @@ class DirectoryConfiguration {
                         .requestMatchers(HttpMethod.POST, "/directory/v1/entries").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations").hasRole("PUBLISHER")
                         .requestMatchers(HttpMethod.POST, "/directory/v1/recognitions").hasRole("PUBLISHER")
+                        .requestMatchers(HttpMethod.POST, "/directory/v1/test-requests").hasRole("PUBLISHER")
                         // Comptes rendus : signés par la box, vérifiés par le service ; sans compte.
                         .requestMatchers(HttpMethod.POST, "/directory/v1/configurations/reports").permitAll()
                         // Demandes d'enrôlement : déposées par les box (sans compte), lues par le responsable.

@@ -206,6 +206,11 @@ class CentralRulesTest {
                 .singleElement().satisfies(c -> assertThat(c.echoError()).hasSize(200));
         rules.reported(changed);
         assertThat(rules.reportIfDue(box)).isEmpty();
+        rules.answered("demande-1");
+        SignedDocument answer = rules.reportIfDue(box).orElseThrow();
+        assertThat(ConfigurationReport.verify(answer, id -> java.util.Optional.of(box.publicKey())).answered())
+                .as("réponse à la demande d'essai, aussitôt").isEqualTo("demande-1");
+        rules.reported(answer);
         java.util.List<String> order = new java.util.ArrayList<>();
         rules.synchronizeWith(new com.imagunity.directory.DirectoryClient(java.net.URI.create("http://127.0.0.1:9"),
                 java.time.Duration.ofMillis(200)), box, () -> order.add("essais"));

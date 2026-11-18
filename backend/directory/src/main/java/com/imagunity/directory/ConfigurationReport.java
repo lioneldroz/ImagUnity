@@ -21,13 +21,15 @@ import java.util.UUID;
  *                    renouvellement
  * @param nodes       état des appareils DICOM du site (essais de connexion, envois reçus), si la configuration
  *                    centrale en déclare
+ * @param answered    identifiant de la dernière demande d'essai traitée ({@link TestRequest}), ou {@code null}
  */
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record ConfigurationReport(String type, UUID boxId, long applied,
                                   @JsonInclude(JsonInclude.Include.NON_NULL) Instant appliedAt, long refused,
                                   @JsonInclude(JsonInclude.Include.NON_NULL) String refusal, Instant reportedAt,
                                   @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<String> protocols,
-                                  @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<NodeCheck> nodes) {
+                                  @JsonInclude(JsonInclude.Include.NON_EMPTY) java.util.List<NodeCheck> nodes,
+                                  @JsonInclude(JsonInclude.Include.NON_NULL) String answered) {
 
     public static final String TYPE = "imagunity.configuration.report";
 
@@ -39,12 +41,21 @@ public record ConfigurationReport(String type, UUID boxId, long applied,
         }
         protocols = Protocols.of(protocols);
         nodes = nodes == null ? java.util.List.of() : java.util.List.copyOf(nodes);
+        if (answered != null && answered.length() > 64) {
+            answered = answered.substring(0, 64);
+        }
+    }
+
+    /** Compte rendu sans demande d'essai traitée. */
+    public ConfigurationReport(String type, UUID boxId, long applied, Instant appliedAt, long refused, String refusal,
+                               Instant reportedAt, java.util.List<String> protocols, java.util.List<NodeCheck> nodes) {
+        this(type, boxId, applied, appliedAt, refused, refusal, reportedAt, protocols, nodes, null);
     }
 
     /** Compte rendu sans état des appareils. */
     public ConfigurationReport(String type, UUID boxId, long applied, Instant appliedAt, long refused, String refusal,
                                Instant reportedAt, java.util.List<String> protocols) {
-        this(type, boxId, applied, appliedAt, refused, refusal, reportedAt, protocols, java.util.List.of());
+        this(type, boxId, applied, appliedAt, refused, refusal, reportedAt, protocols, java.util.List.of(), null);
     }
 
     /** Compte rendu sans version de protocole annoncée (box antérieure). */
@@ -62,7 +73,13 @@ public record ConfigurationReport(String type, UUID boxId, long applied,
     /** Compte rendu avec l'état des appareils du site. */
     public ConfigurationReport withNodes(java.util.List<NodeCheck> checks) {
         return new ConfigurationReport(type, boxId, applied, appliedAt, refused, refusal, reportedAt, protocols,
-                checks);
+                checks, answered);
+    }
+
+    /** Compte rendu qui répond à cette demande d'essai. */
+    public ConfigurationReport withAnswered(String requestId) {
+        return new ConfigurationReport(type, boxId, applied, appliedAt, refused, refusal, reportedAt, protocols, nodes,
+                requestId);
     }
 
     /** Signé par la box. */

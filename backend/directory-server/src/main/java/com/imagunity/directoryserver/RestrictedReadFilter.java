@@ -75,7 +75,8 @@ final class RestrictedReadFilter extends OncePerRequestFilter {
             return Access.ACCOUNTS;
         }
         if (path.equals(API + "/recognitions") || path.equals(API + "/configurations")
-                || path.startsWith(API + "/partners/")) {
+                || path.startsWith(API + "/partners/") || path.equals(API + "/events")
+                || path.startsWith(API + "/test-requests/")) {
             return Access.BOXES;
         }
         return Access.PUBLIC;

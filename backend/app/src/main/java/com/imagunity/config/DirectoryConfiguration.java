@@ -400,23 +400,45 @@ class DirectoryConfiguration {
     SmartLifecycle directoryLifecycle(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                                       DirectoryProperties properties, ExecutorService orchestrationExecutor,
                                       org.springframework.beans.factory.ObjectProvider<CentralRules> central,
-                                      BoxIdentity identity, AutomaticEnrollment enrollment, CentralDicom dicom) {
+                                      BoxIdentity identity, AutomaticEnrollment enrollment, CentralDicom dicom,
+                                      KeyFiles.OrganizationPublicKey key, Clock clock) {
         return new SmartLifecycle() {
             private ScheduledExecutorService scheduler;
+            private Thread wakeUp;
 
             @Override
             public void start() {
                 handshake.start();
-                scheduler = Executors.newSingleThreadScheduledExecutor(
+                ScheduledExecutorService s = Executors.newSingleThreadScheduledExecutor(
                         Thread.ofPlatform().name("annuaire").daemon().factory());
+                scheduler = s;
                 CentralRules rules = central.getIfAvailable();
-                scheduler.scheduleWithFixedDelay(() -> synchronizeAll(directory, client, handshake,
-                        orchestrationExecutor, rules, identity, enrollment, dicom), 0, properties.syncInterval().toMillis(),
-                        TimeUnit.MILLISECONDS);
+                TestRequests tests = new TestRequests(identity.boxId(), key.organization(), key.key(), clock);
+                Runnable sync = () -> synchronizeAll(directory, client, handshake, orchestrationExecutor, rules,
+                        identity, enrollment, dicom, tests);
+                s.scheduleWithFixedDelay(sync, 0, properties.syncInterval().toMillis(), TimeUnit.MILLISECONDS);
+                // Réveil par l'annuaire : une lecture tout de suite, une seule en attente à la fois.
+                java.util.concurrent.atomic.AtomicBoolean pending = new java.util.concurrent.atomic.AtomicBoolean();
+                Runnable wake = () -> {
+                    if (pending.compareAndSet(false, true)) {
+                        try {
+                            s.execute(() -> {
+                                pending.set(false);
+                                sync.run();
+                            });
+                        } catch (java.util.concurrent.RejectedExecutionException e) {
+                            pending.set(false); // box en cours d'arrêt
+                        }
+                    }
+                };
+                wakeUp = Thread.ofPlatform().name("annuaire-reveil").daemon()
+                        .start(new DirectoryWakeUp(client, identity.boxId(), wake));
             }
 
             @Override
             public void stop() {
+                wakeUp.interrupt();
+                wakeUp = null;
                 scheduler.shutdownNow();
                 scheduler = null;
             }
@@ -447,6 +469,16 @@ class DirectoryConfiguration {
     static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
                                java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity,
                                AutomaticEnrollment enrollment, CentralDicom dicom) {
+        synchronizeAll(directory, client, handshake, executor, rules, identity, enrollment, dicom, null);
+    }
+
+    /**
+     * Avec {@code tests}, une demande d'essai du responsable fait essayer tout de suite chaque destination, et le compte
+     * rendu part aussitôt en la nommant.
+     */
+    static void synchronizeAll(LocalDirectory directory, DirectoryClient client, PeerHandshake handshake,
+                               java.util.concurrent.Executor executor, CentralRules rules, BoxIdentity identity,
+                               AutomaticEnrollment enrollment, CentralDicom dicom, TestRequests tests) {
         try {
             synchronize(directory, client, handshake, executor);
         } catch (RuntimeException e) {
@@ -461,7 +493,11 @@ class DirectoryConfiguration {
         }
         if (rules != null) {
             try {
-                rules.synchronizeWith(client, identity.keys(), dicom == null ? () -> { } : dicom::checkDestinations);
+                rules.synchronizeWith(client, identity.keys(), dicom == null ? () -> { } : () -> {
+                    java.util.Optional<String> asked = tests == null ? java.util.Optional.empty() : tests.next(client);
+                    dicom.checkDestinations(asked.isPresent());
+                    asked.ifPresent(rules::answered);
+                });
             } catch (RuntimeException e) {
                 LOG.error("Lecture de la configuration centrale en échec, nouvel essai au prochain intervalle", e);
             }

@@ -125,6 +125,8 @@ public final class CentralRules implements CentralConfigurationStatus {
     private Instant reportedAt;
     private String reportedState;
     private volatile Supplier<List<NodeCheck>> nodeChecks = List::of;
+    /** Dernière demande d'essai traitée, reprise dans le compte rendu. */
+    private volatile String answered;
 
     /** Groupes de cette box, d'après son entrée d'annuaire vérifiée. */
     private final java.util.function.Supplier<java.util.Collection<String>> groups;
@@ -476,7 +478,12 @@ public final class CentralRules implements CentralConfigurationStatus {
         }
         Snapshot s = snapshot();
         return Optional.of(ConfigurationReport.of(boxId, s.sequence(), s.appliedAt(), s.refused(), s.refusal(), now)
-                .withNodes(nodeChecks.get()).sign(boxKeys));
+                .withNodes(nodeChecks.get()).withAnswered(answered).sign(boxKeys));
+    }
+
+    /** Une demande d'essai vient d'être traitée : le compte rendu suivant part tout de suite, et la nomme. */
+    public void answered(String requestId) {
+        this.answered = requestId;
     }
 
     /** État des appareils DICOM du site, joint au compte rendu (essais de connexion, envois reçus). */
@@ -486,7 +493,7 @@ public final class CentralRules implements CentralConfigurationStatus {
 
     private String state() {
         Snapshot s = snapshot();
-        StringBuilder state = new StringBuilder(s.sequence() + "/" + s.refused());
+        StringBuilder state = new StringBuilder(s.sequence() + "/" + s.refused() + "/" + answered);
         nodeChecks.get().forEach(c -> state.append('|').append(c.state()));
         return state.toString();
     }

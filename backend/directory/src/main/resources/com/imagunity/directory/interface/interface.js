@@ -785,6 +785,7 @@ function choisirBox(id) {
   }
   boxSelection = id;
   editionModifiee = false;
+  afficherEssai();
   rendreListeBox();
   afficherEtatBox();
   chargerEdition();
@@ -993,6 +994,9 @@ function rendreNoeuds() {
     corps.append(tr);
   }
   const b = boxChoisie();
+  const destinations = b && b.dicom && b.dicom.nodes.some((n) => n.destination);
+  $("config-tester").disabled = !destinations;
+  $("config-tester").title = destinations ? "" : "Aucune destination publiée pour cette box : rien à essayer";
   edition.nodes.forEach((n, i) => {
     const tr = element("tr");
     const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
@@ -1096,6 +1100,90 @@ function rendreRoute(r, i, sortante) {
   }), bouton("Retirer la route", "secondaire petit", () => { liste.splice(i, 1); modifie(); rendreRoutes(); }));
   carte.append(actions);
   return carte;
+}
+
+// --- Tester maintenant : essai de connexion demandé à la box ---
+
+/** Essai en cours de suivi : box, identifiant de la demande, date, minuterie. */
+let essaiEnCours = null;
+/** Au-delà, la box n'a pas répondu par son flux de réveil : elle le fera à sa lecture périodique (5 min au plus). */
+const ESSAI_ATTENTE_MS = 6 * 60 * 1000;
+
+function testerMaintenant() {
+  const b = boxChoisie();
+  if (!b) return;
+  signer({
+    titre: "Tester maintenant « " + b.nom + " »",
+    resume: "La box essaiera tout de suite la connexion (C-ECHO) de chacune de ses destinations, puis rendra compte. "
+      + "Aucune donnée d'examen n'est envoyée. La demande est signée avec la clé de l'organisation : la box ne suit "
+      + "que celles-là.",
+    libelle: "Demander l'essai",
+    action: async (phrase, garder) => {
+      const r = await api("POST", "/api/essai-connexion", { boxId: b.boxId, phrase, garder });
+      suivreEssai(b.boxId, r.id, r.le);
+      return r;
+    },
+  });
+}
+
+function suivreEssai(boxId, id, le) {
+  if (essaiEnCours) clearTimeout(essaiEnCours.minuterie);
+  essaiEnCours = { boxId, id, le: new Date(le), minuterie: null };
+  afficherEssai();
+  essaiEnCours.minuterie = setTimeout(verifierEssai, 2000);
+}
+
+/** Relit l'état des appareils de la box jusqu'au compte rendu qui répond à la demande. */
+async function verifierEssai() {
+  const e = essaiEnCours;
+  if (!e) return;
+  try {
+    const c = await api("GET", "/api/configurations");
+    const neuf = c.box.find((x) => x.boxId === e.boxId);
+    const ancien = configs && configs.box.find((x) => x.boxId === e.boxId);
+    if (neuf && ancien) {
+      ancien.appareils = neuf.appareils;
+      if (boxSelection === e.boxId && edition) rendreNoeuds();
+    }
+    if (neuf && neuf.appareils && neuf.appareils.essai === e.id) {
+      e.fini = new Date(neuf.appareils.le);
+      afficherEssai();
+      essaiEnCours = null;
+      if (dernierTableau) afficherTableau(dernierTableau);
+      return;
+    }
+  } catch (err) {
+    // annuaire momentanément illisible : nouvel essai au tour suivant
+  }
+  if (Date.now() - e.le.getTime() > ESSAI_ATTENTE_MS) {
+    e.perdu = true;
+    afficherEssai();
+    essaiEnCours = null;
+    return;
+  }
+  e.minuterie = setTimeout(verifierEssai, 3000);
+  afficherEssai();
+}
+
+let dernierEssai = null;
+
+function afficherEssai() {
+  const e = essaiEnCours || dernierEssai;
+  dernierEssai = e;
+  const zone = $("config-essai-statut");
+  if (!e || e.boxId !== boxSelection) {
+    zone.textContent = "";
+    return;
+  }
+  const heure = (d) => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (e.fini) {
+    zone.textContent = "Essai terminé à " + heure(e.fini) + " : résultat dans la colonne « État vu par la box ».";
+  } else if (e.perdu) {
+    zone.textContent = "Pas encore de réponse de la box : elle essaiera à sa prochaine lecture de l'annuaire. "
+      + "Si cela dure, vérifiez qu'elle est en marche et à jour.";
+  } else {
+    zone.textContent = "Essai demandé à " + heure(e.le) + " : en attente de la box…";
+  }
 }
 
 // --- Essai sur un examen fictif ---
@@ -1430,6 +1518,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("essai-de").addEventListener("change", majEssai);
   $("sauvegarder").addEventListener("click", sauvegarder);
   $("essai-lancer").addEventListener("click", essayer);
+  $("config-tester").addEventListener("click", testerMaintenant);
   $("essai-champs").addEventListener("keydown", (e) => { if (e.key === "Enter") essayer(); });
   $("ajouter-noeud").addEventListener("click", () => {
     edition.nodes.push({ name: "", aet: "", host: "", port: 104, source: true, destination: false });

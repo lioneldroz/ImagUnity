@@ -147,6 +147,136 @@ public final class DirectoryClient {
     }
 
     /**
+     * Dernière demande d'essai déposée pour cette box, non vérifiée ; vide s'il n'y en a pas, ou si l'annuaire est
+     * antérieur aux demandes d'essai (404).
+     *
+     * @throws DirectoryException si l'annuaire est injoignable ou répond mal
+     */
+    public java.util.Optional<SignedDocument> fetchTestRequest(java.util.UUID boxId) {
+        Reply response = get("/directory/v1/test-requests/" + boxId, "Lecture de la demande d'essai");
+        if (response.statusCode() == 404) {
+            return java.util.Optional.empty();
+        }
+        if (response.statusCode() != 200) {
+            throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
+                    + " à la lecture de la demande d'essai");
+        }
+        return java.util.Optional.of(SignedDocument.fromJson(response.body()));
+    }
+
+    /** Plus longue ligne admise dans le flux d'événements. */
+    static final int MAX_EVENT_LINE = 4096;
+    /** Flux muet plus longtemps (l'annuaire envoie un battement toutes les 25 s) : coupé, puis rouvert. */
+    static final Duration EVENTS_IDLE = Duration.ofSeconds(90);
+    private volatile Duration eventsIdle = EVENTS_IDLE;
+
+    /** Délai de silence au-delà duquel le flux est coupé (essais). */
+    DirectoryClient eventsIdle(Duration idle) {
+        this.eventsIdle = idle;
+        return this;
+    }
+
+    /**
+     * Écoute le flux d'événements de l'annuaire (Server-Sent Events), ouvert par la box : chaque événement est un simple
+     * signal de réveil (son nom et son texte), qui n'est cru pour rien d'autre ; la box relit alors l'annuaire et
+     * vérifie ce qu'elle y trouve. Bloque jusqu'à la fin du flux.
+     *
+     * @return faux si l'annuaire n'a pas de flux d'événements (antérieur : 404), vrai si le flux s'est terminé
+     * @throws DirectoryException si l'annuaire est injoignable, refuse le flux ou le coupe en erreur
+     */
+    public boolean listen(java.util.function.BiConsumer<String, String> onEvent) {
+        String path = "/directory/v1/events";
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(base + path))
+                .header("Accept", "text/event-stream");
+        SignedRead r = reader;
+        if (r != null) {
+            r.headers(path, now.get()).forEach(request::header);
+        } else if (account != null) {
+            request.header("Authorization", "Basic " + java.util.Base64.getEncoder().encodeToString(account
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        }
+        try {
+            HttpResponse<java.io.InputStream> response = http.send(request.build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                if (response.statusCode() == 404) {
+                    return false;
+                }
+                if (response.statusCode() != 200) {
+                    throw new DirectoryException("Annuaire : réponse HTTP " + response.statusCode()
+                            + " au flux d'événements");
+                }
+                java.util.concurrent.atomic.AtomicLong last = new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+                long idle = eventsIdle.toNanos();
+                Thread watchdog = Thread.ofVirtual().name("annuaire-evenements-veille").start(() -> {
+                    try {
+                        while (System.nanoTime() - last.get() < idle) {
+                            Thread.sleep(Math.max(1, Math.min(idle / 3, 10_000_000_000L) / 1_000_000));
+                        }
+                        in.close(); // coupure silencieuse : la lecture s'arrête, l'appelant rouvre le flux
+                    } catch (InterruptedException | IOException e) {
+                        // flux terminé normalement
+                    }
+                });
+                try {
+                    readEvents(in, onEvent, () -> last.set(System.nanoTime()));
+                } finally {
+                    watchdog.interrupt();
+                }
+                return true;
+            }
+        } catch (IOException e) {
+            throw new DirectoryException("Flux d'événements coupé : " + reason(e), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new DirectoryException("Flux d'événements interrompu", e);
+        }
+    }
+
+    /** Lit des événements {@code event:} / {@code data:} séparés par une ligne vide ; les commentaires sont ignorés. */
+    static void readEvents(java.io.InputStream in, java.util.function.BiConsumer<String, String> onEvent)
+            throws IOException {
+        readEvents(in, onEvent, () -> { });
+    }
+
+    static void readEvents(java.io.InputStream in, java.util.function.BiConsumer<String, String> onEvent,
+                           Runnable activity) throws IOException {
+        String event = "message";
+        StringBuilder data = new StringBuilder();
+        StringBuilder line = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1) {
+            activity.run();
+            if (c != '\n') {
+                if (c != '\r') {
+                    if (line.length() >= MAX_EVENT_LINE) {
+                        throw new IOException("ligne d'événement trop longue");
+                    }
+                    line.append((char) c);
+                }
+                continue;
+            }
+            String text = new String(line.toString().getBytes(java.nio.charset.StandardCharsets.ISO_8859_1),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            line.setLength(0);
+            if (text.isEmpty()) {
+                if (!data.isEmpty() || !event.equals("message")) {
+                    onEvent.accept(event, data.toString());
+                }
+                event = "message";
+                data.setLength(0);
+            } else if (text.startsWith("event:")) {
+                event = text.substring(6).strip();
+            } else if (text.startsWith("data:")) {
+                if (!data.isEmpty()) {
+                    data.append('\n');
+                }
+                data.append(text.substring(5).strip());
+            }
+        }
+    }
+
+    /**
      * Reconnaissances de partenaires publiées par le responsable (fédération), non vérifiées : à faire passer par
      * {@link LocalDirectory#synchronizeRecognitions}. Un service d'annuaire antérieur à la fédération (404) n'en a
      * aucune.

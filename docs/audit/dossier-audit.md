@@ -114,6 +114,8 @@ Points sur lesquels l'avis de l'auditeur est particulièrement attendu :
 | Annuaire — lecture | `GET /directory/v1/**` | aucune (documents signés) | `directory-server` |
 | Annuaire — dépôt | `POST /directory/v1/entries`, `/configurations` | compte du responsable (HTTP Basic) ; le service revérifie les signatures | `directory-server` |
 | Annuaire — comptes rendus des box | `POST /directory/v1/configurations/reports` | signature de la box | `directory-server` |
+| Annuaire — demandes d'essai de connexion | `POST /directory/v1/test-requests` (dépôt), `GET /directory/v1/test-requests/{box}` | dépôt : compte du responsable, et signature du responsable revérifiée ; la box revérifie la signature, la date (15 min au plus) et ne suit une demande qu'une fois | `directory-server/TestRequestController`, `app/TestRequests` |
+| Annuaire — flux de réveil des box | `GET /directory/v1/events` (Server-Sent Events, ouvert par la box) | comme les lectures (lecture réservée : box active, lecture signée) ; signal sans valeur probante, 5 000 flux au plus, battement 25 s, fermeture à 10 min | `directory-server/DirectoryEvents`, `app/DirectoryWakeUp` |
 | Annuaire — interface d'administration | `/admin/**`, `/admin/api/**` | compte du responsable ; en-tête `X-ImagUnity-Admin` ; CSP `default-src 'self'` | `directory-server` |
 
 ## 7. Mise en œuvre d'une pile d'essai

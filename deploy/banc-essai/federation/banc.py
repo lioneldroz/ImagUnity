@@ -11,7 +11,9 @@ d'un responsable à l'autre. Le banc :
 2. fait signer à chaque responsable la reconnaissance de l'autre (périmètre en groupes, relais autorisés) ;
 3. appaire les box par l'annuaire, envoie un examen synthétique de A vers B puis de B vers A, et vérifie qu'il arrive
    intact au PACS destinataire, accusé compris ;
-4. vérifie les preuves de fraîcheur des deux annuaires (clés déléguées par les responsables) ;
+4. vérifie les preuves de fraîcheur des deux annuaires (clés déléguées par les responsables) ; publie la configuration
+   DICOM centrale de chaque box, puis « Tester maintenant » : l'annuaire réveille la box par son flux d'événements,
+   elle essaie (C-ECHO) son PACS et répond par son compte rendu ;
 5. vérifie les refus : box hors périmètre, relais non autorisé, accord à sens unique, identifiant de box revendiqué
    par l'autre organisation, annuaire du partenaire figé, accord révoqué.
 
@@ -28,6 +30,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -41,6 +44,7 @@ from pathlib import Path
 
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import CTImageStorage, ExplicitVRLittleEndian, generate_uid
+from pynetdicom.sop_class import Verification
 from pynetdicom import AE, StoragePresentationContexts, evt
 
 HERE = Path(__file__).resolve().parent
@@ -60,6 +64,7 @@ ORGS = {
           "groupe": "neuro", "vers": "IU_TO_A", "partenaire": "box-a"},
 }
 COMPTE = "responsable:depot-synthetique"
+ECHOS = {}  # C-ECHO reçus par chaque PACS simulé
 LECTEUR = "lecteur:lecture-synthetique"   # compte de lecture du relais (lecture réservée)
 
 PROCESSES = []
@@ -281,9 +286,17 @@ def start_pacs(work, org, aet=None, port=None, name="pacs"):
         ds.save_as(target / f"{ds.SOPInstanceUID}.dcm", enforce_file_format=True)
         return 0x0000
 
-    ae = AE(ae_title=aet or f"PACS_{org}")
+    title = aet or f"PACS_{org}"
+
+    def on_echo(event):
+        ECHOS[title] = ECHOS.get(title, 0) + 1
+        return 0x0000
+
+    ae = AE(ae_title=title)
     ae.supported_contexts = StoragePresentationContexts
-    ae.start_server(("127.0.0.1", port or ORGS[org]["pacs"]), block=False, evt_handlers=[(evt.EVT_C_STORE, on_store)])
+    ae.add_supported_context(Verification)
+    ae.start_server(("127.0.0.1", port or ORGS[org]["pacs"]), block=False,
+                    evt_handlers=[(evt.EVT_C_STORE, on_store), (evt.EVT_C_ECHO, on_echo)])
     return received
 
 
@@ -438,6 +451,39 @@ def central_dicom(work, box_ids, received):
            "association de « INCONNU » refusée par la box A")
 
 
+def tester_maintenant(work, box_ids):
+    """« Tester maintenant » : le responsable de A demande trois fois un essai de connexion à sa box ; l'annuaire la
+    réveille par son flux d'événements, elle essaie (C-ECHO) son PACS et répond par son compte rendu signé."""
+    box = box_ids["A"]
+    auth = tuple(COMPTE.split(":"))
+
+    def report():
+        try:
+            document = http("GET", annuaire_url("A") + f"/directory/v1/configurations/reports/{box}", auth=auth)
+            return json.loads(document["payload"])
+        except urllib.error.HTTPError:
+            return {}
+
+    delays = []
+    echoes_before = ECHOS.get("PACS_A", 0)
+    for _ in range(3):
+        start_time = time.time()
+        output = admin(work, "A", "essai-connexion", "--cles", "organisation.json", "--annuaire",
+                       annuaire_url("A"), "--box-id", box)
+        request_id = re.search(r"demande ([0-9a-f-]{36})", output).group(1)
+        wait(lambda: report().get("answered") == request_id, 60, "compte rendu qui répond à la demande d'essai", 0.2)
+        delays.append(time.time() - start_time)
+    nodes = {n["node"]: n for n in report().get("nodes", [])}
+    echo_ok = "echoAt" in nodes.get("pacs-a", {}) and "echoError" not in nodes.get("pacs-a", {})
+    echoes = ECHOS.get("PACS_A", 0) - echoes_before
+    opened = "Flux d'événements de l'annuaire ouvert" in (work / "journaux" / "box-A.log").read_text(errors="replace")
+    # Lecture périodique toutes les 5 s : sans réveil, la réponse arriverait en 2,5 s en moyenne (hors signature).
+    result("Tester maintenant : réveil de la box par l'annuaire, C-ECHO, compte rendu",
+           echo_ok and echoes >= 3 and opened and max(delays) < 4,
+           f"réponses en {', '.join(f'{d:.1f}' for d in delays)} s (signature et dépôt compris) ; {echoes} C-ECHO "
+           f"reçus par PACS_A ; pacs-a : {'réussi' if echo_ok else nodes.get('pacs-a')} ; flux ouvert : {opened}")
+
+
 def refused_send(sender, label, expected_reason):
     """Un envoi qui doit échouer, avec un motif contenant expected_reason."""
     study_uid, datasets = make_study(1, label)
@@ -582,6 +628,7 @@ def run(work, h2):
     exchange("B", "A", received["A"], "B-vers-A")
 
     central_dicom(work, box_ids, received)
+    tester_maintenant(work, box_ids)
 
     # Refus.
     recognize(work, "A", "B", "urgences", "neuro")

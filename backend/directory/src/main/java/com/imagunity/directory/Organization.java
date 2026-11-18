@@ -185,6 +185,11 @@ public final class Organization {
         return configuration.sign(keys);
     }
 
+    /** Demande d'essai de connexion des appareils DICOM de cette box, signée. */
+    public SignedDocument signTestRequest(java.util.UUID boxId, java.time.Instant now) {
+        return TestRequest.create(id, boxId, now).sign(keys);
+    }
+
     /** Identifiant d'organisation : lettres minuscules, chiffres et tirets, 64 caractères au plus. */
     static String requireValidId(String id) {
         if (id == null || !id.matches("[a-z0-9][a-z0-9-]{0,63}")) {
