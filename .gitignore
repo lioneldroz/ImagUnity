@@ -57,3 +57,7 @@ desktop.ini
 
 # Scripts de la box sous systemd (versionnés, malgré la règle bin/ ci-dessus)
 !deploy/box-systemd/bin/
+
+# --- Contrôles d'accessibilité (Playwright) ---
+accessibilite/playwright-report/
+accessibilite/test-results/

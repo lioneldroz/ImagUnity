@@ -89,11 +89,16 @@ java -jar app/target/imagunity-box.jar
 
 Liste des scénarios et des autres tests : [backend/scenarios/README.md](backend/scenarios/README.md).
 
+### Accessibilité (RGAA 4.1.2)
+
+Le job **Accessibilité (RGAA 4.1.2)** de la CI contrôle l'interface d'administration de l'annuaire (`/admin/`) : validation HTML, axe-core limité aux règles du RGAA, et mesures que les outils ne font pas (contrastes des champs, messages de statut, affichage à 320 px, espacement du texte, focus, lien d'évitement), en thème clair et sombre. Il couvre une partie seulement des critères : il évite les régressions, il ne remplace pas un audit. Détails et lancement en local : [accessibilite/README.md](accessibilite/README.md).
+
 ### Vulnérabilités des dépendances
 
 Le workflow **Vulnérabilités (CVE)** (`.github/workflows/vulnerabilites.yml`) passe les dépendances au crible de la base [OSV](https://osv.dev) avec OSV-Scanner :
 - **backend** : nomenclature CycloneDX produite par Maven, avec les versions réellement résolues, transitives comprises (hors dépendances de test) ;
 - **frontend** : `frontend/package-lock.json` ;
+- **contrôles d'accessibilité** : `accessibilite/package-lock.json` ;
 - **campagne de tests** : `deploy/banc-essai/campagne/requirements.txt`.
 
 Il tourne à chaque push sur `main`, sur chaque pull request, **chaque lundi** (un avis publié après coup est vu sans attendre un push) et à la demande (onglet *Actions*). Il **échoue dès qu'une vulnérabilité connue est trouvée** ; le rapport s'affiche dans le résumé de l'exécution.
@@ -103,7 +108,7 @@ Exceptions : `osv-scanner.toml`, chacune avec sa justification et une **date d'e
 ```bash
 (cd backend && ./mvnw -q org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom -DoutputFormat=json -DoutputName=sbom.cdx)
 osv-scanner scan source --config osv-scanner.toml -L backend/target/sbom.cdx.json \
-    -L frontend/package-lock.json -L deploy/banc-essai/campagne/requirements.txt
+    -L frontend/package-lock.json -L accessibilite/package-lock.json -L deploy/banc-essai/campagne/requirements.txt
 ```
 
 Frontend (http://localhost:5173, les appels `/api` sont relayés vers le backend) :
