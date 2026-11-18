@@ -9,7 +9,7 @@ Tests automatiques des interfaces web d'ImagUnity au regard du [RGAA 4.1.2](http
 
 ## Ce qui est contrôlé
 
-Chaque test tourne en thème clair et en thème sombre, avec une API simulée : aucun service Java n'est démarré.
+Chaque test tourne en thème clair et en thème sombre, avec une API simulée : aucun service Java n'est démarré. Les deux interfaces d'administration (responsable, annuaire) n'ont pas de thème sombre : en thème sombre, le test vérifie qu'elles restent claires et lisibles. La console de la box suit le thème du système.
 
 | Contrôle | Critères RGAA | Outil |
 |---|---|---|

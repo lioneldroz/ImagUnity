@@ -92,7 +92,7 @@ Cette déclaration a été établie le **[date de publication — à compléter]
 ### Environnement de test
 
 Audit interne (18 novembre 2026) :
-- navigateur Chromium, en thème clair et en thème sombre ;
+- navigateur Chromium, en thème clair et en thème sombre (les interfaces d'administration restent en thème clair, la console de la box suit le thème du système) ;
 - affichage à 1 280 px et à 320 px de large ;
 - espacement du texte agrandi (critère 10.12) ;
 - texte agrandi à 200 % : interface d'administration de l'annuaire seulement, à vérifier sur les deux autres lors de l'audit complet.
