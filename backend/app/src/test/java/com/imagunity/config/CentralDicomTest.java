@@ -206,6 +206,52 @@ class CentralDicomTest {
     }
 
     @Test
+    void devicesAreTestedAndWhatTheBoxSeesIsReported() throws Exception {
+        AtomicReference<Optional<DicomRouting>> current = new AtomicReference<>(Optional.empty());
+        List<String> echoes = new ArrayList<>();
+        CentralDicom dicom = new CentralDicom(current::get, repository, directory(), SELF,
+                new PairingService(repository, new DisabledTransport(), clock, Duration.ofMinutes(5)), "iu", "LOCAL",
+                clock, (host, port, called, calling) -> {
+                    echoes.add(called + "@" + host + ":" + port + " par " + calling);
+                    return called.equals("PACS_IRM") ? Optional.of("connexion refusée") : Optional.empty();
+                });
+        assertThat(dicom.checkDestinations()).isZero();
+        assertThat(dicom.checks()).isEmpty();
+
+        current.set(Optional.of(routing("127.0.0.1")));
+        assertThat(dicom.checkDestinations()).as("deux destinations").isEqualTo(2);
+        assertThat(echoes).containsExactlyInAnyOrder("PACS_NORD@10.2.0.15:104 par IMAGUNITY_NORD",
+                "PACS_IRM@10.2.0.16:11112 par IMAGUNITY_NORD");
+        assertThat(dicom.checkDestinations()).as("déjà essayées").isZero();
+        CentralInput input = dicom.input().orElseThrow();
+        input.callingAllowed("CT_URG", InetAddress.getLoopbackAddress());
+        input.callingAllowed("PACS_NORD", InetAddress.getByName("10.9.9.9"));
+
+        Map<String, com.imagunity.directory.NodeCheck> checks = new java.util.HashMap<>();
+        dicom.checks().forEach(c -> checks.put(c.node(), c));
+        assertThat(checks.get("pacs-nord").echoOk()).isTrue();
+        assertThat(checks.get("pacs-nord").refusedFrom()).isEqualTo("10.9.9.9");
+        assertThat(checks.get("pacs-nord").receivedAt()).isNull();
+        assertThat(checks.get("pacs-irm").echoError()).isEqualTo("connexion refusée");
+        assertThat(checks.get("pacs-irm").receivedAt()).as("pas une source").isNull();
+        assertThat(checks.get("ct-urg").echoAt()).as("pas une destination").isNull();
+        assertThat(checks.get("ct-urg").receivedAt()).isEqualTo(clock.now);
+        String before = checks.get("pacs-irm").state();
+
+        clock.now = clock.now.plus(CentralDicom.ECHO_EVERY);
+        echoes.clear();
+        assertThat(dicom.checkDestinations()).as("de nouveau après l'intervalle").isEqualTo(2);
+        current.set(Optional.of(DicomRouting.compile("IMAGUNITY_NORD", List.of(new DicomRouting.NodeSpec("pacs-irm",
+                "PACS_IRM2", "10.2.0.16", 11112, false, true)), List.of(), List.of())));
+        echoes.clear();
+        assertThat(dicom.checkDestinations()).as("destination modifiée : essayée tout de suite").isEqualTo(1);
+        assertThat(dicom.checks()).singleElement().satisfies(c -> {
+            assertThat(c.echoOk()).isTrue();
+            assertThat(c.state()).isNotEqualTo(before);
+        });
+    }
+
+    @Test
     void boxesNamedByARouteArePairedOneAtATime() {
         AtomicReference<Optional<DicomRouting>> current = new AtomicReference<>(Optional.of(routing(null)));
         List<String> joined = new ArrayList<>();

@@ -373,6 +373,9 @@ class DirectoryConfiguration {
         CentralDicom dicom = new CentralDicom(rules == null ? java.util.Optional::empty : rules::dicom, peers,
                 directory, identity.boxId(), pairing, transport.addressKind(), restore.boxAet(), clock);
         scp.ifAvailable(s -> s.central(dicom::input));
+        if (rules != null) {
+            rules.nodeChecks(dicom::checks);
+        }
         if (restorer.getIfAvailable() instanceof com.imagunity.dicom.DicomRestorer r) {
             r.router(dicom::router);
         }
@@ -458,7 +461,7 @@ class DirectoryConfiguration {
         }
         if (rules != null) {
             try {
-                rules.synchronizeWith(client, identity.keys());
+                rules.synchronizeWith(client, identity.keys(), dicom == null ? () -> { } : dicom::checkDestinations);
             } catch (RuntimeException e) {
                 LOG.error("Lecture de la configuration centrale en échec, nouvel essai au prochain intervalle", e);
             }

@@ -53,6 +53,7 @@ final class LocalInterface implements AutoCloseable {
     private final Path keys;
     private final Path codesFile;
     private final DirectoryCalls calls;
+    private final Optional<ConfigurationTrial> trial = ConfigurationTrial.available();
     private final long days;
     private final Clock clock;
     private final PrintStream out;
@@ -301,8 +302,10 @@ final class LocalInterface implements AutoCloseable {
             case "GET /api/cle-publique" -> Map.of("nom", publicFile(keys).getFileName().toString(), "contenu",
                     java.nio.file.Files.readString(publicFile(keys)));
             case "POST /api/fraicheur" -> delegateFreshness(body);
+            case "POST /api/sauvegarde" -> backup();
             case "GET /api/configurations" -> configurations();
             case "POST /api/configuration" -> publishConfiguration(body);
+            case "POST /api/configuration/essai" -> tryConfiguration(body);
             case "GET /api/demandes" -> pending();
             case "POST /api/valider" -> validate(body);
             case "POST /api/refuser" -> refuse(body);
@@ -355,7 +358,108 @@ final class LocalInterface implements AutoCloseable {
         state.put("validiteJours", days);
         state.put("renouvelerAvantJours", RENEW_BEFORE.toDays());
         state.put("phrase", phraseState());
+        state.put("sauvegarde", backupState());
         return state;
+    }
+
+    // --- Sauvegarde du dossier de l'organisation ---
+
+    /** Trace de la dernière sauvegarde : date et empreinte de chaque fichier copié. */
+    private Path backupRecord() {
+        return keys.toAbsolutePath().resolveSibling("sauvegarde.json");
+    }
+
+    /**
+     * Fichiers à sauvegarder : la clé (chiffrée), sa clé publique, les codes d'enrôlement. Pas la clé de fraîcheur, en
+     * clair et remplacée chaque mois.
+     */
+    private List<Path> backupFiles() {
+        return java.util.stream.Stream.of(keys, publicFile(keys), codesFile).map(Path::toAbsolutePath)
+                .filter(java.nio.file.Files::isRegularFile).toList();
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(java.nio.file.Files.readAllBytes(file)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Date de la dernière sauvegarde, et fichiers modifiés ou créés depuis. */
+    private Map<String, Object> backupState() throws IOException {
+        Map<String, Object> state = new LinkedHashMap<>();
+        Map<String, String> recorded = Map.of();
+        Path record = backupRecord();
+        if (java.nio.file.Files.isRegularFile(record)) {
+            try {
+                JsonNode r = Json.MAPPER.readTree(java.nio.file.Files.readString(record));
+                state.put("le", r.path("le").asString(null));
+                Map<String, String> files = new LinkedHashMap<>();
+                r.path("fichiers").properties().forEach(e -> files.put(e.getKey(), e.getValue().asString("")));
+                recorded = files;
+            } catch (RuntimeException e) {
+                // trace illisible : comme si aucune sauvegarde n'avait été faite
+            }
+        }
+        List<String> changed = new ArrayList<>();
+        for (Path file : backupFiles()) {
+            String name = file.getFileName().toString();
+            if (!sha256(file).equals(recorded.get(name))) {
+                changed.add(name);
+            }
+        }
+        state.put("modifies", changed);
+        state.put("fichiers", backupFiles().stream().map(f -> f.getFileName().toString()).toList());
+        return state;
+    }
+
+    /**
+     * Archive zip des fichiers de l'organisation, à enregistrer sur un support séparé ; la date et l'empreinte des
+     * fichiers sont retenues pour le rappel.
+     */
+    private Map<String, Object> backup() throws IOException {
+        if (!initialized()) {
+            throw new Refusal(409, "Aucune organisation sur ce poste : rien à sauvegarder");
+        }
+        Instant now = clock.instant();
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        Map<String, String> hashes = new LinkedHashMap<>();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(bytes)) {
+            for (Path file : backupFiles()) {
+                String name = file.getFileName().toString();
+                if (hashes.containsKey(name)) {
+                    continue;
+                }
+                java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(name);
+                entry.setLastModifiedTime(java.nio.file.Files.getLastModifiedTime(file));
+                zip.putNextEntry(entry);
+                zip.write(java.nio.file.Files.readAllBytes(file));
+                zip.closeEntry();
+                hashes.put(name, sha256(file));
+            }
+            zip.putNextEntry(new java.util.zip.ZipEntry("LISEZMOI.txt"));
+            zip.write(("Sauvegarde du dossier de l'organisation « " + publicKey.organization() + " » ("
+                    + publicKey.key().shortCode() + "), le " + now + ".\n\n"
+                    + "organisation.json est la clé privée, chiffrée par la phrase de passe : rangez cette archive sur "
+                    + "un support séparé (clé USB au coffre), et la phrase de passe ailleurs.\n"
+                    + "Pour restaurer : recopier ces fichiers dans le dossier de l'outil du responsable.\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("le", now.toString());
+        record.put("fichiers", hashes);
+        java.nio.file.Files.writeString(backupRecord(), Json.MAPPER.writeValueAsString(record));
+        String day = now.atZone(java.time.ZoneOffset.UTC).toLocalDate().toString();
+        out.println("Sauvegarde du dossier de l'organisation remise au navigateur (" + String.join(", ",
+                hashes.keySet()) + ")");
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("nom", "imagunity-sauvegarde-" + publicKey.organization() + "-" + day + ".zip");
+        answer.put("contenu", Base64.getEncoder().encodeToString(bytes.toByteArray()));
+        answer.put("sauvegarde", backupState());
+        return answer;
     }
 
     // --- Configuration des box : nœuds et routes DICOM, signés ici et publiés ---
@@ -445,6 +549,9 @@ final class LocalInterface implements AutoCloseable {
                 box.put("refusee", r.path("refused").isNumber() ? r.get("refused").asLong() : null);
                 box.put("refus", r.path("refusal").isString() ? r.get("refusal").asString() : null);
             }
+            if (c.map(CentralConfiguration::dicom).isPresent()) {
+                box.put("appareils", devices(e));
+            }
             boxes.add(box);
         }
         for (PublishedRecognition pr : recognitions()) {
@@ -480,6 +587,77 @@ final class LocalInterface implements AutoCloseable {
         result.put("destinations", targets);
         result.put("prochainNumero", all.stream().mapToLong(c -> c.configuration().sequence()).max().orElse(0) + 1);
         return result;
+    }
+
+    /**
+     * Essai de la configuration en cours d'édition sur un examen fictif : route qu'une instance suivrait, avec le code
+     * de routage de la box. Rien n'est signé ni publié.
+     */
+    private Map<String, Object> tryConfiguration(JsonNode body) {
+        ConfigurationTrial trial = this.trial.orElseThrow(() -> new Refusal(501,
+                "Essai indisponible dans cette installation de l'outil"));
+        CentralConfiguration.Dicom dicom;
+        try {
+            dicom = Json.MAPPER.treeToValue(body.path("dicom"), CentralConfiguration.Dicom.class);
+        } catch (RuntimeException e) {
+            throw new Refusal(422, "Configuration DICOM illisible : " + e.getMessage());
+        }
+        if (dicom == null) {
+            throw new Refusal(422, "Configuration DICOM absente");
+        }
+        String from = body.path("de").asString("").strip();
+        try {
+            Map<String, String> fields = fields(body.path("champs").asString(""));
+            ConfigurationTrial.Result result;
+            if (body.path("sens").asString("").equals("reception")) {
+                result = trial.incoming(dicom, from.isEmpty() ? null : UUID.fromString(from), fields);
+            } else {
+                result = trial.outgoing(dicom, from, body.path("aetAppele").asString(""), fields);
+            }
+            Map<String, Object> answer = new LinkedHashMap<>();
+            answer.put("route", result.route());
+            answer.put("rang", result.rank());
+            answer.put("vers", result.to());
+            return answer;
+        } catch (IllegalArgumentException e) {
+            throw new Refusal(422, e.getMessage());
+        }
+    }
+
+    /** Champs d'un examen fictif : {@code Modality=CT; SeriesDescription=THORAX}. */
+    static Map<String, String> fields(String text) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        for (String part : text.split(";")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            int equals = part.indexOf('=');
+            if (equals <= 0) {
+                throw new IllegalArgumentException("Champ « " + part.strip() + " » : écrire Mot-clé=valeur, par "
+                        + "exemple Modality=CT");
+            }
+            fields.put(part.substring(0, equals).strip(), part.substring(equals + 1).strip());
+        }
+        return fields;
+    }
+
+    /**
+     * Ce que la box constate de ses appareils (essais de connexion, envois reçus), d'après son dernier compte rendu
+     * signé par elle ; vide sans compte rendu lisible.
+     */
+    private Map<String, Object> devices(BoxEntry entry) {
+        Map<String, Object> devices = new LinkedHashMap<>();
+        try {
+            calls.report(entry).ifPresent(report -> {
+                Map<String, NodeCheck> nodes = new LinkedHashMap<>();
+                report.nodes().forEach(check -> nodes.put(check.node(), check));
+                devices.put("le", report.reportedAt().toString());
+                devices.put("noeuds", nodes);
+            });
+        } catch (IOException | RuntimeException ex) {
+            // compte rendu facultatif : les appareils s'affichent sans leur état
+        }
+        return devices;
     }
 
     /**

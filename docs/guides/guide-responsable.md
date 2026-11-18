@@ -209,9 +209,11 @@ Ouvrez cette adresse dans le navigateur du poste (`--ouvrir` l'ouvre directement
 
 #### Tableau de bord
 
-C'est la page d'accueil. En haut, **« À faire »** : ce qui attend une action, le plus urgent d'abord (annuaire injoignable, délégation de fraîcheur qui expire, configuration refusée par une box, demandes d'enrôlement, entrées à renouveler), chacune avec un bouton qui mène au bon endroit. Puis quatre indicateurs (box actives, preuve de fraîcheur, configurations appliquées, partenaires) et la liste des box, filtrable par nom ou par groupe, avec leur état et la version de configuration qu'elles appliquent.
+C'est la page d'accueil. En haut, **« À faire »** : ce qui attend une action, le plus urgent d'abord (annuaire injoignable, délégation de fraîcheur qui expire, configuration refusée par une box, appareil qui ne répond pas à la box, demandes d'enrôlement, entrées à renouveler, sauvegarde à faire), chacune avec un bouton qui mène au bon endroit. Puis quatre indicateurs (box actives, preuve de fraîcheur, configurations appliquées, partenaires) et la liste des box, filtrable par nom ou par groupe, avec leur état et la version de configuration qu'elles appliquent.
 
-![Tableau de bord : une action à faire, quatre indicateurs, la liste des box avec leur configuration](../images/guide-responsable/23-tableau-de-bord.png)
+![Tableau de bord : un appareil qui ne répond pas, la clé de fraîcheur à déléguer, la sauvegarde à faire ; quatre indicateurs ; la liste des box avec leur configuration](../images/guide-responsable/23-tableau-de-bord.png)
+
+**Sauvegarde.** Sous le menu, le bloc « Sauvegarde » donne la date de la dernière copie du dossier de l'organisation, et les fichiers modifiés depuis (un code tiré modifie `codes.json`). « Sauvegarder maintenant » remet au navigateur une archive `imagunity-sauvegarde-<organisation>-<date>.zip` : la clé de l'organisation (chiffrée par la phrase de passe), sa clé publique, `codes.json` et un `LISEZMOI.txt`. Enregistrez-la sur un support séparé, une clé USB rangée au coffre par exemple, et la phrase de passe ailleurs. La clé de fraîcheur n'y est pas : elle est en clair, et remplacée chaque mois. Le rappel apparaît dans « À faire » tant que le dossier n'a jamais été sauvegardé, quand un fichier a changé depuis, ou après 90 jours. Pour restaurer, recopiez les fichiers de l'archive dans le dossier de l'outil.
 
 #### Onglet « Démarrage »
 
@@ -465,7 +467,10 @@ Plutôt que de modifier le fichier `box.env` de chaque box sur place, configurez
 ![Onglet Configuration des box : liste des box à gauche ; à droite les appareils du site, un envoi vers une autre box, deux réceptions vers deux PACS](../images/guide-responsable/22-configuration-box.png)
 
 1. **Choisissez la box** dans la liste de gauche ; son étiquette donne la version qu'elle applique, « locale » si elle n'a pas encore de configuration centrale, ou « refus » en rouge. À droite, la ligne d'état précise la version en vigueur et le dernier refus.
-2. **Déclarez les nœuds DICOM de son site** : un nom, l'AET, l'adresse et le port, et les rôles.
+2. **Déclarez les nœuds DICOM de son site** : un nom, l'AET, l'adresse et le port, et les rôles. La colonne **« État vu par la box »** reprend son dernier compte rendu :
+   - pour une destination, le dernier essai de connexion (C-ECHO), réussi ou en échec avec sa raison (« pas de réponse dans le délai », « association refusée par l'appareil »…) ;
+   - pour une source, le dernier envoi reçu, ou une connexion refusée parce qu'elle venait d'une autre adresse que celle déclarée ;
+   - « Nouveau » ou « Modifié » pour un appareil pas encore publié : la box l'essaiera dès qu'elle appliquera le document.
    - Une **source** a le droit d'envoyer à la box. Si vous indiquez son adresse, seul ce poste peut le faire sous cet AET.
    - Une **destination** reçoit les examens restitués par la box.
 3. **Envois** (routes sortantes) : d'une source (ou de toutes) vers une ou plusieurs box, de votre organisation ou d'un partenaire.
@@ -474,8 +479,9 @@ Plutôt que de modifier le fichier `box.env` de chaque box sur place, configurez
    - Les box désignées sont appairées automatiquement.
 4. **Réceptions** (routes entrantes) : d'une box émettrice (ou de toutes) vers un ou plusieurs PACS, avec un filtre. Par exemple, les IRM du CHU Sud vont au PACS IRM et tout le reste au PACS principal. Sans route entrante, la box restitue au PACS de sa configuration locale.
    - En tête de chaque envoi et de chaque réception, une ligne résume la route : de → filtre → vers. Elle suit vos saisies.
+   - **Essayer sur un examen fictif**, avant de signer : choisissez l'origine (un appareil source pour un envoi, une box pour une réception), éventuellement l'AET appelé, et des champs DICOM (`Modality=CT; SeriesDescription=THORAX`). La page indique la route que suivrait l'instance et ses destinations, ou qu'aucune ne la prendrait. C'est le code de routage de la box qui répond, sur la configuration affichée même non publiée ; rien n'est envoyé.
 5. **L'ordre compte** : la première route qui correspond s'applique. Le bouton « Monter » change l'ordre.
-6. **« Vérifier et signer »**, dans la barre du bas qui compte les changements non publiés (« Annuler les modifications » revient à la version en vigueur). La fenêtre liste ce qui change par rapport à cette version : ajouts (+), retraits (−), modifications champ par champ (~) et changements d'ordre (↕). Cochez « J'ai relu ces changements », saisissez la phrase de passe, puis « Signer et publier ». Le document vise cette box seule et garde ses règles de priorité. Une erreur, comme un mot-clé DICOM inconnu dans un filtre, est signalée avant toute application.
+6. **« Vérifier et signer »**, dans la barre du bas qui compte les changements non publiés (« Annuler les modifications » revient à la version en vigueur). La fenêtre liste ce qui change par rapport à cette version : ajouts (+), retraits (−), modifications champ par champ (~) et changements d'ordre (↕). Elle rappelle aussi les destinations pas encore essayées et celles qui ne répondent toujours pas. Cochez « J'ai relu ces changements », saisissez la phrase de passe, puis « Signer et publier ». Le document vise cette box seule et garde ses règles de priorité. Une erreur, comme un mot-clé DICOM inconnu dans un filtre, est signalée avant toute application.
 
 ![Fenêtre de signature : la liste des changements, la case de relecture, la phrase de passe](../images/guide-responsable/24-signature-configuration.png)
 

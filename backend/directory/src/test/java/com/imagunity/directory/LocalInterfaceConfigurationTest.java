@@ -53,11 +53,15 @@ class LocalInterfaceConfigurationTest {
     private final AtomicInteger publishStatus = new AtomicInteger(201);
     private final AtomicInteger configurationsStatus = new AtomicInteger(200);
     private final AtomicInteger stateStatus = new AtomicInteger(200);
+    private final HybridKeyPair nordKeys = HybridKeyPair.generate();
+    private final java.util.concurrent.atomic.AtomicReference<String> nordReport = new java.util.concurrent.atomic
+            .AtomicReference<>();
     private HttpServer directory;
     private LocalInterface ui;
 
     private SignedDocument entry(Organization o, UUID box, String name, List<String> groups) {
-        return o.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), box, name, Map.of(), NOW), NOW,
+        return o.enroll(EnrollmentRequest.create(box.equals(nord) ? nordKeys : HybridKeyPair.generate(), box, name,
+                        Map.of(), NOW), NOW,
                 Duration.ofDays(90), 1, groups, name);
     }
 
@@ -104,6 +108,8 @@ class LocalInterfaceConfigurationTest {
             } else if (path.equals("/directory/v1/configurations")) {
                 status = configurationsStatus.get();
                 body = list("configurations", configurations);
+            } else if (path.equals("/directory/v1/configurations/reports/" + nord) && nordReport.get() != null) {
+                body = nordReport.get();
             } else if (path.equals("/admin/api/state")) {
                 status = stateStatus.get();
                 body = "{\"boxes\":[{\"boxId\":\"" + nord + "\",\"applied\":4,\"refused\":5,\"refusal\":\"règle\"},"
@@ -230,5 +236,87 @@ class LocalInterfaceConfigurationTest {
                 orgKeys.publicKey(), clock);
         assertThat(sudConfiguration.priority()).as("aucun document en vigueur").isNull();
         assertThat(sudConfiguration.comment()).isNull();
+    }
+
+    @Test
+    void eachDeviceShowsWhatTheBoxSeesOfIt() throws Exception {
+        assertThat(call("POST", "/api/configuration", dicomBody(nord, "Modality", PHRASE)).statusCode()).isEqualTo(200);
+        JsonNode before = nordBox();
+        assertThat(before.path("appareils").isEmpty()).as("pas encore de compte rendu").isTrue();
+        nordReport.set(ConfigurationReport.of(nord, 5, NOW, 0, null, NOW).withNodes(List.of(
+                new NodeCheck("pacs-nord", NOW, "connexion refusée", NOW, null, null))).sign(nordKeys).toJson());
+        JsonNode devices = nordBox().path("appareils");
+        assertThat(devices.path("le").asString()).isEqualTo(NOW.toString());
+        assertThat(devices.path("noeuds").path("pacs-nord").path("echoError").asString())
+                .isEqualTo("connexion refusée");
+        assertThat(devices.path("noeuds").path("pacs-nord").has("refusedAt")).isFalse();
+        nordReport.set(ConfigurationReport.of(nord, 5, NOW, 0, null, NOW).withNodes(List.of(
+                new NodeCheck("pacs-nord", NOW, null, null, null, null))).sign(HybridKeyPair.generate()).toJson());
+        assertThat(nordBox().path("appareils").isEmpty()).as("signé par une autre clé : ignoré").isTrue();
+        nordReport.set("pas du json");
+        assertThat(nordBox().path("appareils").isEmpty()).isTrue();
+    }
+
+    @Test
+    void aFictitiousExamShowsTheRouteItWouldFollow() throws Exception {
+        String dicom = "\"dicom\":{\"nodes\":[{\"name\":\"pacs-nord\",\"aet\":\"PACS_NORD\",\"source\":true}]}";
+        JsonNode sent = json(call("POST", "/api/configuration/essai", "{" + dicom + ",\"sens\":\"envoi\","
+                + "\"de\":\"pacs-nord\",\"aetAppele\":\"IU\",\"champs\":\"Modality=CT; SeriesDescription=THORAX ;\"}"));
+        assertThat(sent.path("route").asString()).isEqualTo("ct");
+        assertThat(sent.path("rang").asInt()).isEqualTo(1);
+        assertThat(sent.path("vers").get(0).asString()).isEqualTo("pacs-nord/IU");
+        JsonNode none = json(call("POST", "/api/configuration/essai", "{" + dicom + ",\"de\":\"pacs-nord\","
+                + "\"champs\":\"Modality=MR\"}"));
+        assertThat(none.path("route").isNull()).isTrue();
+        JsonNode received = json(call("POST", "/api/configuration/essai", "{" + dicom + ",\"sens\":\"reception\","
+                + "\"de\":\"" + sud + "\"}"));
+        assertThat(received.path("vers").get(0).asString()).isEqualTo(sud.toString());
+        assertThat(json(call("POST", "/api/configuration/essai", "{" + dicom + ",\"sens\":\"reception\"}"))
+                .path("vers").get(0).asString()).as("toute box").isEqualTo("null");
+        assertThat(call("POST", "/api/configuration/essai", "{" + dicom + ",\"champs\":\"Inconnu=1\"}").body())
+                .contains("mot-clé DICOM inconnu");
+        assertThat(call("POST", "/api/configuration/essai", "{" + dicom + ",\"champs\":\"Modality\"}").body())
+                .contains("Mot-clé=valeur");
+        assertThat(call("POST", "/api/configuration/essai", "{" + dicom + ",\"sens\":\"reception\",\"de\":\"x\"}")
+                .statusCode()).isEqualTo(422);
+        assertThat(call("POST", "/api/configuration/essai", "{\"dicom\":{\"nodes\":\"x\"}}").body())
+                .contains("illisible");
+        assertThat(call("POST", "/api/configuration/essai", "{}").body()).contains("absente");
+    }
+
+    @Test
+    void theOrganisationFolderIsBackedUpAndChangesAreSpotted() throws Exception {
+        JsonNode before = json(call("GET", "/api/etat", null)).path("sauvegarde");
+        assertThat(before.has("le")).as("jamais sauvegardé").isFalse();
+        assertThat(before.path("modifies")).hasSize(2);
+        java.nio.file.Files.writeString(dir.resolve("codes.json"), "{\"codes\":[]}");
+        JsonNode archive = json(call("POST", "/api/sauvegarde", "{}"));
+        assertThat(archive.path("nom").asString()).isEqualTo("imagunity-sauvegarde-chu-exemple-2026-11-17.zip");
+        Map<String, byte[]> files = new java.util.TreeMap<>();
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(
+                java.util.Base64.getDecoder().decode(archive.path("contenu").asString())))) {
+            for (java.util.zip.ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
+                files.put(e.getName(), zip.readAllBytes());
+            }
+        }
+        assertThat(files).containsOnlyKeys("org.json", "org.json.pub.json", "codes.json", "LISEZMOI.txt");
+        assertThat(files.get("org.json")).isEqualTo(java.nio.file.Files.readAllBytes(dir.resolve("org.json")));
+        JsonNode after = json(call("GET", "/api/etat", null)).path("sauvegarde");
+        assertThat(after.path("le").asString()).isEqualTo(NOW.toString());
+        assertThat(after.path("modifies")).isEmpty();
+        java.nio.file.Files.writeString(dir.resolve("codes.json"), "{\"codes\":[1]}");
+        assertThat(json(call("GET", "/api/etat", null)).path("sauvegarde").path("modifies").get(0).asString())
+                .isEqualTo("codes.json");
+        java.nio.file.Files.writeString(dir.resolve("sauvegarde.json"), "illisible");
+        assertThat(json(call("GET", "/api/etat", null)).path("sauvegarde").has("le")).isFalse();
+    }
+
+    private JsonNode nordBox() throws Exception {
+        for (JsonNode b : json(call("GET", "/api/configurations", null)).path("box")) {
+            if (b.path("boxId").asString().equals(nord.toString())) {
+                return b;
+            }
+        }
+        throw new AssertionError("Box Nord absente");
     }
 }

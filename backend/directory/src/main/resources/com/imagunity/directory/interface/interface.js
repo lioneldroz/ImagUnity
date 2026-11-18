@@ -69,6 +69,7 @@ function afficherEtat() {
   document.querySelectorAll("[data-onglet]").forEach((b) => {
     b.disabled = !etat.initialisee && !["demarrage", "aide"].includes(b.dataset.onglet);
   });
+  afficherSauvegarde();
   if (!etat.initialisee) {
     $("bandeau-organisation").textContent = "ImagUnity";
     $("bandeau-empreinte").hidden = true;
@@ -90,6 +91,55 @@ function afficherEtat() {
   };
   $("etat-phrase").textContent = textes[etat.phrase] || "";
   $("oublier").hidden = etat.phrase !== "gardee";
+}
+
+// --- Sauvegarde du dossier de l'organisation ---
+
+/** Jours au-delà desquels une sauvegarde est rappelée, même sans fichier modifié. */
+const SAUVEGARDE_JOURS = 90;
+
+/** Ce qu'il faut rappeler de la sauvegarde : null si elle est à jour, sinon [urgence, titre, détail]. */
+function rappelSauvegarde() {
+  const s = etat && etat.initialisee && etat.sauvegarde;
+  if (!s) return null;
+  if (!s.le) return ["bientot", "Dossier de l'organisation jamais sauvegardé",
+    "Sans copie de la clé sur un support séparé, une panne de ce poste obligerait à réenrôler toutes les box."];
+  if (s.modifies && s.modifies.length) return ["bientot", "Sauvegarde à refaire : " + s.modifies.join(", ") + " modifié depuis",
+    "Dernière copie " + ilYa(s.le) + "."];
+  if (Date.now() - new Date(s.le).getTime() > SAUVEGARDE_JOURS * 86400000) return ["", "Dernière sauvegarde " + ilYa(s.le),
+    "Vérifiez que la copie est toujours lisible, ou refaites-en une."];
+  return null;
+}
+
+function afficherSauvegarde() {
+  const zone = $("sauvegarde");
+  zone.hidden = !(etat && etat.initialisee && etat.sauvegarde);
+  if (zone.hidden) return;
+  const s = etat.sauvegarde;
+  zone.classList.toggle("attention", rappelSauvegarde() !== null);
+  $("sauvegarde-texte").textContent = !s.le ? "Aucune copie du dossier de l'organisation pour l'instant."
+    : "Dernière copie " + ilYa(s.le) + (s.modifies.length ? " ; modifié depuis : " + s.modifies.join(", ") + "." : ".");
+}
+
+/** Archive des fichiers de l'organisation, enregistrée par le navigateur ; à copier sur un support séparé. */
+async function sauvegarder() {
+  try {
+    const r = await api("POST", "/api/sauvegarde", {});
+    const octets = Uint8Array.from(atob(r.contenu), (c) => c.charCodeAt(0));
+    const lien = element("a");
+    lien.href = URL.createObjectURL(new Blob([octets], { type: "application/zip" }));
+    lien.download = r.nom;
+    document.body.append(lien);
+    lien.click();
+    lien.remove();
+    etat.sauvegarde = r.sauvegarde;
+    afficherSauvegarde();
+    if (dernierTableau) afficherTableau(dernierTableau);
+    message("Archive « " + r.nom + " » remise au navigateur : copiez-la sur un support séparé (clé USB rangée au coffre), "
+      + "la phrase de passe ailleurs.", "ok");
+  } catch (e) {
+    message(e.message, "erreur");
+  }
 }
 
 function ongletCourant() {
@@ -850,16 +900,68 @@ function champTexte(valeur, action, options) {
   return input;
 }
 
+/** Temps écoulé depuis une date, en clair : « à l'instant », « il y a 3 min », « il y a 2 h », « il y a 4 j ». */
+function ilYa(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return "il y a " + Math.floor(s / 60) + " min";
+  if (s < 86400) return "il y a " + Math.floor(s / 3600) + " h";
+  return "il y a " + Math.floor(s / 86400) + " j";
+}
+
+const memeAppareil = (a, b) => a && b && a.aet === b.aet && (a.host || "") === (b.host || "")
+  && String(a.port || "") === String(b.port || "") && !!a.source === !!b.source && !!a.destination === !!b.destination;
+
+/**
+ * État d'un appareil tel que la box le constate (dernier compte rendu) : une liste de [texte, genre, détail], une par
+ * constat. Un appareil ajouté ou modifié ici n'a pas encore été essayé : la box l'essaiera à l'application.
+ */
+function etatAppareil(n, b) {
+  const publie = editionOrigine && editionOrigine.nodes.find((x) => x.name === n.name);
+  if (!publie) return [["Nouveau : pas encore essayé", "neutre", "La box essaiera la connexion dès qu'elle appliquera la configuration."]];
+  if (!memeAppareil(publie, n)) return [["Modifié : sera essayé", "neutre", "La box essaiera la connexion dès qu'elle appliquera la configuration."]];
+  const c = b && b.appareils && b.appareils.noeuds && b.appareils.noeuds[n.name];
+  const morceaux = [];
+  if (n.destination) {
+    if (!c || !c.echoAt) morceaux.push(["Pas encore essayé", "neutre", "La box n'a pas encore rendu compte d'un essai de connexion."]);
+    else if (c.echoError) morceaux.push(["C-ECHO en échec " + ilYa(c.echoAt), "refus", c.echoError]);
+    else morceaux.push(["C-ECHO réussi " + ilYa(c.echoAt), "", "Le " + new Date(c.echoAt).toLocaleString("fr-FR")]);
+  }
+  if (n.source) {
+    if (c && c.refusedAt && (!c.receivedAt || c.refusedAt > c.receivedAt)) {
+      morceaux.push(["Connexion refusée " + ilYa(c.refusedAt), "attention", "Venue de " + c.refusedFrom
+        + (n.host ? ", alors que l'adresse déclarée est " + n.host : "") + "."]);
+    } else if (c && c.receivedAt) {
+      morceaux.push(["Envoi reçu " + ilYa(c.receivedAt), "", "Le " + new Date(c.receivedAt).toLocaleString("fr-FR")]);
+    } else if (!n.destination) {
+      morceaux.push(["Aucun envoi reçu", "neutre", "La box n'a encore reçu aucune association de cet appareil."]);
+    }
+  }
+  return morceaux.length ? morceaux : [["—", "neutre", "Ni source ni destination."]];
+}
+
+/** La destination n'a pas encore été essayée par la box (nouvelle, modifiée ou sans compte rendu). */
+const pasEncoreEssaye = (n, b) => n.destination && etatAppareil(n, b).some((m) => m[1] === "neutre");
+
+/** Destinations qui ne répondent pas à l'essai de connexion, d'après le dernier compte rendu de la box. */
+function appareilsEnEchec(b) {
+  const noeuds = (b && b.appareils && b.appareils.noeuds) || {};
+  const declares = (b && b.dicom && b.dicom.nodes) || [];
+  return declares.filter((n) => n.destination && noeuds[n.name] && noeuds[n.name].echoError)
+    .map((n) => [n.name, noeuds[n.name].echoError]);
+}
+
 function rendreNoeuds() {
   const corps = $("config-noeuds");
   corps.replaceChildren();
   if (!edition.nodes.length) {
     const td = element("td", "discret", "Aucun nœud : la configuration locale de la box s'applique tant qu'aucun n'est déclaré.");
-    td.colSpan = 7;
+    td.colSpan = 8;
     const tr = element("tr");
     tr.append(td);
     corps.append(tr);
   }
+  const b = boxChoisie();
   edition.nodes.forEach((n, i) => {
     const tr = element("tr");
     const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
@@ -869,6 +971,14 @@ function rendreNoeuds() {
     cellule(champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104" }));
     cellule(caseACocher("", n.source, (v) => { n.source = v; rendreRoutes(); }));
     cellule(caseACocher("", n.destination, (v) => { n.destination = v; rendreRoutes(); }));
+    const td = element("td", "etat-appareils");
+    for (const [texte, genre, detail] of etatAppareil(n, b)) {
+      const etiquette = element("span", "etiquette etat-appareil " + genre, texte);
+      etiquette.title = detail;
+      td.append(etiquette);
+      if (genre === "refus" || genre === "attention") td.append(element("span", "discret detail-appareil", detail));
+    }
+    tr.append(td);
     cellule(bouton("Retirer", "secondaire petit", () => { edition.nodes.splice(i, 1); modifie(); rendreNoeuds(); rendreRoutes(); }));
     corps.append(tr);
   });
@@ -954,7 +1064,68 @@ function rendreRoute(r, i, sortante) {
   return carte;
 }
 
+// --- Essai sur un examen fictif ---
+
+/** Origines proposées : chaque appareil source (envoi), chaque autre box (réception). */
+function rendreEssai() {
+  const choix = $("essai-de");
+  const avant = choix.value;
+  choix.replaceChildren();
+  const groupe = (libelle) => { const g = element("optgroup"); g.label = libelle; choix.append(g); return g; };
+  const option = (g, valeur, texte) => { const o = element("option", null, texte); o.value = valeur; g.append(o); };
+  const sources = edition.nodes.filter((n) => n.source && n.name);
+  if (sources.length) {
+    const g = groupe("Envoi vers la box, depuis un appareil");
+    sources.forEach((n) => option(g, "envoi:" + n.name, n.name + (n.aet ? " (" + n.aet + ")" : "")));
+  }
+  const g = groupe("Réception, depuis une box");
+  configs.destinations.filter((d) => d.boxId !== boxSelection)
+    .forEach((d) => option(g, "reception:" + d.boxId, nomBox(d.boxId)));
+  option(g, "reception:", "une autre box");
+  if ([...choix.options].some((o) => o.value === avant)) choix.value = avant;
+  majEssai();
+}
+
+function majEssai() {
+  const envoi = $("essai-de").value.startsWith("envoi:");
+  $("essai-aet-label").hidden = !envoi;
+}
+
+async function essayer() {
+  const zone = $("essai-resultat");
+  zone.hidden = false;
+  zone.className = "essai-resultat";
+  let dicom;
+  try {
+    dicom = dicomAPublier();
+  } catch (e) {
+    zone.classList.add("refus");
+    zone.textContent = e.message;
+    return;
+  }
+  const [sens, de] = $("essai-de").value.split(/:(.*)/s);
+  try {
+    const r = await api("POST", "/api/configuration/essai", { dicom, sens, de, aetAppele: $("essai-aet").value.trim(), champs: $("essai-champs").value });
+    if (sens === "envoi") {
+      zone.textContent = r.route
+        ? "Envoi « " + r.route + " » (n° " + r.rang + ") → " + (r.vers.length ? r.vers.map(nomBox).join(", ") : "aucune box") + "."
+        : "Aucun envoi ne correspond : la box refuserait l'instance, et l'appareil la garderait en échec.";
+    } else {
+      zone.textContent = r.route
+        ? "Réception « " + r.route + " » (n° " + r.rang + ") → " + r.vers.join(", ") + "."
+        : dicom.incoming.length
+          ? "Aucune réception ne correspond : la box ne restituerait pas l'instance (signalé dans sa console)."
+          : "Aucune réception déclarée : la box restituerait au PACS de sa configuration locale.";
+    }
+    if (!r.route) zone.classList.add("refus");
+  } catch (e) {
+    zone.classList.add("refus");
+    zone.textContent = e.message;
+  }
+}
+
 function rendreRoutes() {
+  if (configs) rendreEssai();
   $("config-sortantes").replaceChildren(...(edition.outgoing.length ? edition.outgoing.map((r, i) => rendreRoute(r, i, true))
     : [element("p", "discret", "Aucune route sortante.")]));
   $("config-entrantes").replaceChildren(...(edition.incoming.length ? edition.incoming.map((r, i) => rendreRoute(r, i, false))
@@ -996,7 +1167,19 @@ function publierConfiguration() {
   relu.type = "checkbox";
   const lrelu = element("label", "choix");
   lrelu.append(relu, document.createTextNode("J'ai relu ces changements : c'est bien ce que je veux signer"));
-  extra.append(element("p", "discret", "Ce qui change par rapport à la version en vigueur :"), liste, lrelu);
+  extra.append(element("p", "discret", "Ce qui change par rapport à la version en vigueur :"), liste);
+  const aEssayer = edition.nodes.filter((n) => pasEncoreEssaye(n, b)).map((n) => n.name);
+  const enEchec = appareilsEnEchec(b).filter(([nom]) => edition.nodes.some((n) => n.name === nom
+    && memeAppareil(n, editionOrigine.nodes.find((x) => x.name === nom))));
+  if (aEssayer.length) {
+    extra.append(element("p", "remarque", (aEssayer.length > 1 ? aEssayer.join(", ") + " n'ont" : aEssayer[0] + " n'a")
+      + " pas encore répondu à un essai de connexion. La box l'essaiera dès qu'elle appliquera ce document ; le résultat s'affichera dans la colonne État."));
+  }
+  if (enEchec.length) {
+    extra.append(element("p", "remarque refus", "Ne répond toujours pas : " + enEchec.map(([nom, e]) => nom + " (" + e + ")").join(" ; ")
+      + ". Vérifiez son adresse, son port, son AET, et que la box y est autorisée."));
+  }
+  extra.append(lrelu);
   signer({
     titre: "Signer la configuration de « " + b.nom + " »",
     resume: "Document n° " + configs.prochainNumero + " pour cette box seule (" + resume
@@ -1018,7 +1201,11 @@ function publierConfiguration() {
 
 let tableauBox = [];
 
-function afficherTableau({ demandes, boites, partenaires, demarrage }) {
+let dernierTableau = null;
+
+function afficherTableau(donnees) {
+  dernierTableau = donnees;
+  const { demandes, boites, partenaires, demarrage } = donnees;
   const afaire = [];
   const ajouter = (urgence, titre, detail, action, aller) => afaire.push({ urgence, titre, detail, action, aller });
   const a = (demarrage && demarrage.annuaire) || {};
@@ -1051,6 +1238,15 @@ function afficherTableau({ demandes, boites, partenaires, demarrage }) {
       ajouter("urgent", "« " + b.nom + " » a refusé la configuration n° " + b.refusee, b.refus || "", "Corriger", "configuration:" + b.boxId);
     }
   }
+  for (const b of (configs ? configs.box : [])) {
+    const echecs = appareilsEnEchec(b);
+    if (echecs.length) {
+      ajouter("urgent", "« " + b.nom + " » : " + echecs.map(([nom]) => nom).join(", ") + (echecs.length > 1 ? " ne répondent pas" : " ne répond pas"),
+        echecs.map(([nom, e]) => nom + " : " + e).join(" ; "), "Voir", "configuration:" + b.boxId);
+    }
+  }
+  const rappel = rappelSauvegarde();
+  if (rappel) ajouter(rappel[0], rappel[1], rappel[2], "Sauvegarder", "sauvegarder");
   const ordre = { urgent: 0, bientot: 1, "": 2 };
   afaire.sort((x, y) => ordre[x.urgence] - ordre[y.urgence]);
   const zone = $("afaire");
@@ -1089,6 +1285,10 @@ function afficherTableau({ demandes, boites, partenaires, demarrage }) {
 }
 
 function aller(cible) {
+  if (cible === "sauvegarder") {
+    sauvegarder();
+    return;
+  }
   const [onglet, box] = cible.split(":");
   ongletActif(onglet);
   if (box && configs) choisirBox(box);
@@ -1188,6 +1388,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("telecharger-cle").addEventListener("click", telechargerCle);
   $("config-aet").addEventListener("input", modifie);
   $("tableau-recherche").addEventListener("input", rendreTableauBox);
+  $("essai-de").addEventListener("change", majEssai);
+  $("sauvegarder").addEventListener("click", sauvegarder);
+  $("essai-lancer").addEventListener("click", essayer);
+  $("essai-champs").addEventListener("keydown", (e) => { if (e.key === "Enter") essayer(); });
   $("ajouter-noeud").addEventListener("click", () => {
     edition.nodes.push({ name: "", aet: "", host: "", port: 104, source: true, destination: false });
     modifie(); rendreNoeuds(); rendreRoutes();

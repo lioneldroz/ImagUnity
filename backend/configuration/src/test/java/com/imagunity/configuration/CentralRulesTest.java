@@ -188,6 +188,37 @@ class CentralRulesTest {
     }
 
     @Test
+    void reportsCarryTheDevicesStateAndAChangeIsReportedAtOnce() {
+        HybridKeyPair box = HybridKeyPair.generate();
+        CentralRules rules = rules();
+        java.util.concurrent.atomic.AtomicReference<List<com.imagunity.directory.NodeCheck>> checks =
+                new java.util.concurrent.atomic.AtomicReference<>(List.of(new com.imagunity.directory.NodeCheck(
+                        "pacs", clock.instant(), null, null, null, null)));
+        rules.nodeChecks(checks::get);
+        SignedDocument first = rules.reportIfDue(box).orElseThrow();
+        assertThat(ConfigurationReport.verify(first, id -> java.util.Optional.of(box.publicKey())).nodes())
+                .singleElement().satisfies(c -> assertThat(c.echoOk()).isTrue());
+        rules.reported(first);
+        checks.set(List.of(new com.imagunity.directory.NodeCheck("pacs", clock.instant(), "x".repeat(300), null,
+                null, null)));
+        SignedDocument changed = rules.reportIfDue(box).orElseThrow();
+        assertThat(ConfigurationReport.verify(changed, id -> java.util.Optional.of(box.publicKey())).nodes())
+                .singleElement().satisfies(c -> assertThat(c.echoError()).hasSize(200));
+        rules.reported(changed);
+        assertThat(rules.reportIfDue(box)).isEmpty();
+        java.util.List<String> order = new java.util.ArrayList<>();
+        rules.synchronizeWith(new com.imagunity.directory.DirectoryClient(java.net.URI.create("http://127.0.0.1:9"),
+                java.time.Duration.ofMillis(200)), box, () -> order.add("essais"));
+        assertThat(order).as("annuaire injoignable : pas d'essais").isEmpty();
+        assertThat(CentralRules.seen(null)).isEmpty();
+        assertThat(CentralRules.seen(new com.imagunity.directory.NodeCheck("pacs", null, null, clock.instant(),
+                clock.instant(), "10.9.9.9"))).contains("envoi reçu le").contains("connexion refusée depuis 10.9.9.9");
+        assertThat(CentralRules.seen(checks.get().getFirst())).contains("C-ECHO en échec");
+        assertThat(CentralRules.seen(new com.imagunity.directory.NodeCheck("pacs", clock.instant(), null, null,
+                null, null))).contains("C-ECHO réussi");
+    }
+
+    @Test
     void centralPriorityRulesOverrideTheLocalOnes() {
         ReloadablePriority priority = ReloadablePriority.fixed(new PriorityRules(6, List.of()), clock);
         CentralRules rules = rules();
