@@ -9,6 +9,7 @@
 | [Livrer une version](guides/livraison.md) | éditeur : version, registre des numéros, construction, signature hors ligne, publication |
 | [Guide du responsable de l'organisation](guides/guide-responsable.md) | responsable : composants d'ImagUnity, annuaire, enrôlement et révocation des box, interface d'administration |
 | [Notes de version](guides/notes-de-version.md) | tous : ce qu'il faut faire avant une mise à jour |
+| [Déclaration d'accessibilité](guides/declaration-accessibilite.md) | organisation qui déploie ImagUnity : modèle à compléter et à publier (RGAA 4.1.2), résultats de l'audit interne |
 
 ## Référence : comment ça marche
 

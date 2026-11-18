@@ -18,13 +18,15 @@
 - schéma pluriannuel de mise en accessibilité : [lien à compléter] ;
 - plan d'actions de l'année en cours : [lien à compléter].
 
-Cette déclaration d'accessibilité s'applique au **progiciel ImagUnity**, version **[à compléter, 0.15 ou suivante]**, et à ses trois interfaces web :
+Cette déclaration d'accessibilité s'applique au **progiciel ImagUnity**, version **[à compléter]**, et à ses trois interfaces web :
 
 | Interface | Utilisée par | Où |
 |---|---|---|
 | Console de la box | exploitant de l'établissement | sur le réseau de l'établissement, adresse de la box |
 | Interface d'administration de l'annuaire (`/admin/`) | responsable de l'organisation | site central de l'organisation |
 | Interface locale du responsable | responsable de l'organisation | poste du responsable, ouverte par l'outil du responsable |
+
+> *Note de rédaction, à supprimer.* Les corrections d'accessibilité de novembre 2026 ne figurent pas dans la 0.15.0. Elles arrivent avec la version qui la suit : indiquer celle qui est déployée, et pas une version antérieure.
 
 ## État de conformité
 
@@ -53,10 +55,13 @@ L'audit de conformité réalisé par **[auditeur, interne ou externe — à comp
 
 [À compléter d'après l'audit complet.]
 
-L'audit interne du 18 novembre 2026 a relevé 31 non-conformités, réparties sur 18 critères différents, toutes corrigées depuis :
-- 9 sur l'interface d'administration de l'annuaire ;
-- 14 sur l'interface du responsable ;
-- 8 sur la console de la box.
+L'audit interne du 18 novembre 2026 a relevé 31 critères non conformes sur l'ensemble des trois interfaces, soit 15 critères différents. Tous ont été corrigés depuis :
+
+| Interface | Critères non conformes, corrigés |
+|---|---|
+| Interface d'administration de l'annuaire | 9 : 3.2, 3.3, 5.4, 5.7, 7.5, 10.11, 10.12, 11.1, 12.7 |
+| Interface locale du responsable | 14 : 3.1, 3.3, 5.4, 5.7, 7.1, 7.3, 7.5, 10.11, 10.12, 10.13, 11.1, 11.5, 11.10, 12.7 |
+| Console de la box | 8 : 3.3, 5.4, 5.7, 7.1, 7.3, 7.5, 10.12, 11.1 |
 
 Aucune non-conformité connue ne reste ouverte à ce jour. Points relevés sans être retenus comme non-conformes, à soumettre à l'audit complet :
 - console de la box : l'identifiant complet d'une étude et l'empreinte SHA-256 d'un paquet ne s'affichent en entier qu'au survol de la souris (attribut `title`) ;
@@ -89,8 +94,8 @@ Cette déclaration a été établie le **[date de publication — à compléter]
 Audit interne (18 novembre 2026) :
 - navigateur Chromium, en thème clair et en thème sombre ;
 - affichage à 1 280 px et à 320 px de large ;
-- texte agrandi à 200 % ;
-- espacement du texte agrandi (critère 10.12).
+- espacement du texte agrandi (critère 10.12) ;
+- texte agrandi à 200 % : interface d'administration de l'annuaire seulement, à vérifier sur les deux autres lors de l'audit complet.
 
 Les vérifications de restitution par les technologies d'assistance restent à réaliser avec la base de référence du RGAA : [combinaisons lecteur d'écran et navigateur, et leurs versions — à compléter lors de l'audit complet, par exemple NVDA avec Firefox, JAWS avec Firefox, VoiceOver avec Safari].
 
@@ -128,7 +133,7 @@ Cette procédure est à utiliser dans le cas suivant : vous avez signalé au res
 Vous pouvez :
 - écrire un message au Défenseur des droits, par le formulaire en ligne : <https://formulaire.defenseurdesdroits.fr/> ;
 - contacter le délégué du Défenseur des droits dans votre région : <https://www.defenseurdesdroits.fr/saisir/delegues> ;
-- envoyer un courrier par la poste (gratuit, ne pas mettre de timbre) :
-  Défenseur des droits
-  Libre réponse 71120
+- envoyer un courrier par la poste (gratuit, ne pas mettre de timbre) :\
+  Défenseur des droits\
+  Libre réponse 71120\
   75342 Paris CEDEX 07
