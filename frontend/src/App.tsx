@@ -21,6 +21,8 @@ function App() {
 
   return (
     <main className="console">
+      {/* Région de statut des annonces aux lecteurs d'écran (voir announce.ts), toujours présente et vide au départ. */}
+      <div id="annonces" role="status" className="visually-hidden" />
       <header className="console-header">
         <div>
           <h1>ImagUnity</h1>
@@ -31,7 +33,10 @@ function App() {
               : 'Console de la box'}
           </p>
         </div>
-        <span className={`stream stream-${stream}`}>{STREAM_LABELS[stream]}</span>
+        {/* État du flux en direct : annoncé quand il change (RGAA 7.5). */}
+        <span className={`stream stream-${stream}`} role="status">
+          {STREAM_LABELS[stream]}
+        </span>
       </header>
 
       {box.isError && <p className="error">Backend injoignable ({box.error.message})</p>}
@@ -43,7 +48,7 @@ function App() {
 
       <section className="card">
         <h2>Envois</h2>
-        <p className="muted small">Cliquer sur une ligne pour voir ses paquets.</p>
+        <p className="muted small">Choisir l’étude d’un envoi pour afficher ou masquer ses paquets.</p>
         <OutboundTable />
       </section>
 

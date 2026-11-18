@@ -33,12 +33,14 @@ export function PriorityCard() {
       {view.rules.length === 0 ? (
         <p className="muted">Aucune règle : les séries partent dans l’ordre d’arrivée.</p>
       ) : (
-        <table>
+        // Zone qui défile : un tableau large ne fait pas déborder la page (RGAA 10.12).
+        <div className="table-scroll">
+        <table aria-label="Règles de priorité des séries">
           <thead>
             <tr>
-              <th>Règle</th>
-              <th>Priorité</th>
-              <th>Conditions</th>
+              <th scope="col">Règle</th>
+              <th scope="col">Priorité</th>
+              <th scope="col">Conditions</th>
             </tr>
           </thead>
           <tbody>
@@ -51,6 +53,7 @@ export function PriorityCard() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

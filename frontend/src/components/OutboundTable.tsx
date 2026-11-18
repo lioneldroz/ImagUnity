@@ -8,6 +8,7 @@ import {
   type OutboundState,
   type OutboundTransfer,
 } from '../api/transfers'
+import { announce } from '../announce'
 import { formatDate, formatSize, shortUid } from '../format'
 import { StateBadge } from './StateBadge'
 
@@ -22,7 +23,7 @@ function tone(state: OutboundState) {
   }
 }
 
-function Parts({ id }: { id: string }) {
+function Parts({ id, study }: { id: string; study: string }) {
   const detail = useQuery({ queryKey: ['transfer', id], queryFn: () => fetchTransfer(id) })
   if (detail.isError) {
     return <p className="error">Détail indisponible ({detail.error.message})</p>
@@ -34,14 +35,14 @@ function Parts({ id }: { id: string }) {
     return <p className="muted">Pas encore de paquet.</p>
   }
   return (
-    <table className="parts">
+    <table className="parts" aria-label={`Paquets de l’envoi de l’étude ${shortUid(study)}`}>
       <thead>
         <tr>
-          <th>Paquet</th>
-          <th>Fichier</th>
-          <th>Taille</th>
-          <th>SHA-256</th>
-          <th>Dépôt</th>
+          <th scope="col">Paquet</th>
+          <th scope="col">Fichier</th>
+          <th scope="col">Taille</th>
+          <th scope="col">SHA-256</th>
+          <th scope="col">Dépôt</th>
         </tr>
       </thead>
       <tbody>
@@ -67,7 +68,18 @@ function RetryButton({ transfer }: { transfer: OutboundTransfer }) {
   const queryClient = useQueryClient()
   const retry = useMutation({
     mutationFn: () => retryTransfer(transfer.id),
-    onSettled: () => queryClient.invalidateQueries(),
+    onSuccess: () => announce('Envoi relancé.'),
+    onError: (error) => announce(`Relance impossible : ${error.message}`),
+    onSettled: async () => {
+      await queryClient.invalidateQueries()
+      // Relancé, l'envoi n'est plus en échec et ce bouton disparaît : le focus passe à l'étude de la même ligne
+      // au lieu de retomber en haut de la page (RGAA 7.3).
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body || document.activeElement === null) {
+          document.getElementById(`etude-${transfer.id}`)?.focus()
+        }
+      })
+    },
   })
   return (
     <>
@@ -94,16 +106,18 @@ export function OutboundTable() {
   }
   return (
     <div className="table-scroll">
-      <table>
+      <table aria-label="Envois">
         <thead>
           <tr>
-            <th>Étude</th>
-            <th>Destination</th>
-            <th>État</th>
-            <th>Taille</th>
-            <th>Paquets</th>
-            <th>Mis à jour</th>
-            <th />
+            <th scope="col">Étude</th>
+            <th scope="col">Destination</th>
+            <th scope="col">État</th>
+            <th scope="col">Taille</th>
+            <th scope="col">Paquets</th>
+            <th scope="col">Mis à jour</th>
+            <th scope="col">
+              <span className="visually-hidden">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -111,7 +125,20 @@ export function OutboundTable() {
             <Fragment key={t.id}>
               <tr className="clickable" onClick={() => setOpen(open === t.id ? null : t.id)}>
                 <td className="mono" title={t.studyInstanceUid}>
-                  {shortUid(t.studyInstanceUid)}
+                  {/* Le détail s'ouvre aussi au clavier, par ce bouton, qui dit s'il est ouvert (RGAA 7.1, 7.3). */}
+                  <button
+                    type="button"
+                    id={`etude-${t.id}`}
+                    className="row-toggle"
+                    aria-expanded={open === t.id}
+                    aria-controls={`paquets-${t.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpen(open === t.id ? null : t.id)
+                    }}
+                  >
+                    {shortUid(t.studyInstanceUid)}
+                  </button>
                 </td>
                 <td>{t.destination}</td>
                 <td>
@@ -134,9 +161,9 @@ export function OutboundTable() {
                 </tr>
               )}
               {open === t.id && (
-                <tr className="detail-row">
+                <tr className="detail-row" id={`paquets-${t.id}`}>
                   <td colSpan={7}>
-                    <Parts id={t.id} />
+                    <Parts id={t.id} study={t.studyInstanceUid} />
                   </td>
                 </tr>
               )}

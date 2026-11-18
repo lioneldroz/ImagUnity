@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { announce } from '../announce'
 import {
   BOX_STATUS_LABELS,
   ENROLLMENT_REQUEST_URL,
@@ -28,9 +29,15 @@ function suggestedName(displayName: string): string {
 function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(suggestedName(box.displayName))
+  // Cellule qui reste en place quand son contenu change (formulaire, attente, partenaire lié) : elle reçoit le focus
+  // quand le formulaire disparaît, au lieu de le laisser retomber en haut de la page (RGAA 7.3).
+  const zone = useRef<HTMLDivElement>(null)
   const pair = useMutation({
     mutationFn: () => pairWithBox(box.boxId, name),
+    onError: (error) => announce(`Appairage avec ${box.displayName} impossible : ${error.message}`),
     onSuccess: () => {
+      zone.current?.focus()
+      announce(`Appairage avec ${box.displayName} demandé : connexion en cours, vérification…`)
       // La liaison se fait par la poignée de main signée, quelques secondes après la connexion.
       setTimeout(() => void queryClient.invalidateQueries(), 3000)
     },
@@ -44,41 +51,59 @@ function PairCell({ box, own }: { box: DirectoryBox; own: boolean }) {
     const timer = setTimeout(() => {
       resetPair()
       setUnconfirmed(true)
+      announce(`${box.displayName} : pas encore liée après une minute, vérifier la box d’en face, puis réessayer`)
     }, 60_000)
     return () => clearTimeout(timer)
-  }, [pairRequested, resetPair])
+  }, [pairRequested, resetPair, box.displayName])
+  const erreur = `appairage-erreur-${box.boxId}`
+  let content
   if (own) {
-    return <span className="muted small">cette box</span>
-  }
-  if (box.pairedAs) {
-    return <span>{box.pairedAs}</span>
-  }
-  if (box.refusal) {
-    return <span className="muted small">{box.refusal}</span>
-  }
-  if (box.status !== 'ACTIVE' || !box.reachable) {
-    return <span className="muted small">{box.reachable ? '—' : 'pas d’adresse publiée'}</span>
-  }
-  if (pair.isSuccess) {
-    return <span className="muted small">connexion en cours, vérification…</span>
+    content = <span className="muted small">cette box</span>
+  } else if (box.pairedAs) {
+    content = <span>{box.pairedAs}</span>
+  } else if (box.refusal) {
+    content = <span className="muted small">{box.refusal}</span>
+  } else if (box.status !== 'ACTIVE' || !box.reachable) {
+    content = <span className="muted small">{box.reachable ? '—' : 'pas d’adresse publiée'}</span>
+  } else if (pair.isSuccess) {
+    content = <span className="muted small">connexion en cours, vérification…</span>
+  } else {
+    content = (
+      <form
+        className="pair"
+        onSubmit={(e) => {
+          e.preventDefault()
+          pair.mutate()
+        }}
+      >
+        {/* Étiquette visible (RGAA 11.1) ; le nom accessible la reprend, avec la box concernée. */}
+        <label className="pair-label">
+          <span className="small">Nom local</span>
+          <input
+            aria-label={`Nom local pour ${box.displayName}`}
+            aria-describedby={pair.isError ? erreur : undefined}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={pair.isPending || name.length === 0}>
+          Appairer
+        </button>
+        {pair.isError && (
+          <div className="error small" id={erreur}>
+            {pair.error.message}
+          </div>
+        )}
+        {unconfirmed && !pair.isError && (
+          <div className="muted small">pas encore lié après une minute : vérifier la box d’en face, puis réessayer</div>
+        )}
+      </form>
+    )
   }
   return (
-    <form
-      className="pair"
-      onSubmit={(e) => {
-        e.preventDefault()
-        pair.mutate()
-      }}
-    >
-      <input aria-label={`Nom local pour ${box.displayName}`} value={name} onChange={(e) => setName(e.target.value)} />
-      <button type="submit" disabled={pair.isPending || name.length === 0}>
-        Appairer
-      </button>
-      {pair.isError && <div className="error small">{pair.error.message}</div>}
-      {unconfirmed && !pair.isError && (
-        <div className="muted small">pas encore lié après une minute : vérifier la box d’en face, puis réessayer</div>
-      )}
-    </form>
+    <div ref={zone} tabIndex={-1} className="pair-cell">
+      {content}
+    </div>
   )
 }
 
@@ -102,13 +127,13 @@ function scope(groups: string[]): string {
 function PartnersTable({ partners }: { partners: PartnerOrganization[] }) {
   return (
     <div className="table-scroll">
-      <table>
+      <table aria-label="Organisations partenaires">
         <thead>
           <tr>
-            <th>Organisation partenaire</th>
-            <th>Accord</th>
-            <th>Périmètre</th>
-            <th>Dernière lecture</th>
+            <th scope="col">Organisation partenaire</th>
+            <th scope="col">Accord</th>
+            <th scope="col">Périmètre</th>
+            <th scope="col">Dernière lecture</th>
           </tr>
         </thead>
         <tbody>
@@ -202,13 +227,13 @@ export function DirectoryCard() {
       {d.partners.length > 0 && <PartnersTable partners={d.partners} />}
       {d.boxes.length > 0 && (
         <div className="table-scroll">
-          <table>
+          <table aria-label="Box de l’annuaire">
             <thead>
               <tr>
-                <th>Box</th>
-                <th>État</th>
-                <th>Valide jusqu’au</th>
-                <th>Partenaire</th>
+                <th scope="col">Box</th>
+                <th scope="col">État</th>
+                <th scope="col">Valide jusqu’au</th>
+                <th scope="col">Partenaire</th>
               </tr>
             </thead>
             <tbody>
