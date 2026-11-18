@@ -63,7 +63,8 @@ jobs:
     name: Accessibilité (RGAA 4.1.2)
     # Critères vérifiables automatiquement (axe-core, étiquette RGAAv4) et mesures maison : contrastes des champs,
     # messages de statut, 320 px, espacement du texte, focus, lien d'évitement. Ne remplace pas un audit manuel.
-    # Interfaces couvertes : administration de l'annuaire (/admin/), API simulée. Voir accessibilite/README.md.
+    # Interfaces couvertes : administration de l'annuaire (/admin/) et interface du responsable, API simulée.
+    # Voir accessibilite/README.md.
     runs-on: ubuntu-latest
     defaults:
       run:

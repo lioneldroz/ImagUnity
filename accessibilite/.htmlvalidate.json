@@ -1,7 +1,15 @@
 {
-  "extends": ["html-validate:recommended"],
+  "extends": [
+    "html-validate:recommended"
+  ],
   "rules": {
     "doctype-style": "off",
-    "wcag/h63": ["error", { "strict": true }]
+    "wcag/h63": [
+      "error",
+      {
+        "strict": true
+      }
+    ],
+    "autocomplete-password": "off"
   }
 }

@@ -4,7 +4,7 @@
   "description": "Contrôles automatiques d'accessibilité (RGAA 4.1.2) des interfaces web d'ImagUnity",
   "scripts": {
     "test": "npm run html && playwright test",
-    "html": "html-validate --config .htmlvalidate.json ../backend/directory-server/src/main/resources/static/admin/index.html"
+    "html": "html-validate --config .htmlvalidate.json ../backend/directory-server/src/main/resources/static/admin/index.html ../backend/directory/src/main/resources/com/imagunity/directory/interface/index.html"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
