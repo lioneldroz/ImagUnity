@@ -411,16 +411,13 @@
 
       <h3 class="bloc"><span id="titre-appareils">Appareils du site</span>
         <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
-      <div class="actions essai-connexion">
-        <button type="button" class="secondaire" id="config-tester">Tester maintenant</button>
-        <span class="discret" id="config-essai-statut" role="status"></span>
+      <p class="discret sous-titre-section">Qui peut envoyer à la box, et où elle restitue.</p>
+      <div class="verification-appareils">
+        <span class="point-etat neutre" id="verif-point" aria-hidden="true"></span>
+        <span id="verif-texte" role="status"></span>
+        <button type="button" class="lien-verifier" id="config-verifier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 4v5h-5"></path></svg><span id="verif-libelle">Vérifier maintenant</span></button>
       </div>
-      <div class="tableau">
-        <table aria-labelledby="titre-appareils">
-          <thead><tr><th scope="col">Nom</th><th scope="col">AET</th><th scope="col">Adresse</th><th scope="col">Port</th><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">État vu par la box</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
-          <tbody id="config-noeuds"></tbody>
-        </table>
-      </div>
+      <ul class="cartes-appareils" id="config-noeuds" aria-labelledby="titre-appareils"></ul>
       <div class="actions"><button type="button" class="ajouter" id="ajouter-noeud">+ Ajouter un appareil</button></div>
 
       <h3 class="bloc">Envois : d'un appareil vers des box

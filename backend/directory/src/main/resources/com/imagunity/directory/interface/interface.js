@@ -785,7 +785,6 @@ function choisirBox(id) {
   }
   boxSelection = id;
   editionModifiee = false;
-  afficherEssai();
   rendreListeBox();
   afficherEtatBox();
   chargerEdition();
@@ -944,36 +943,102 @@ function ilYa(iso) {
 const memeAppareil = (a, b) => a && b && a.aet === b.aet && (a.host || "") === (b.host || "")
   && String(a.port || "") === String(b.port || "") && !!a.source === !!b.source && !!a.destination === !!b.destination;
 
+/** Date en clair : « il y a 3 min » dans l'heure, sinon « aujourd'hui, 14:02 », « hier, 18:40 », « 12/11, 09:15 ». */
+function quand(iso) {
+  const d = new Date(iso);
+  if (Date.now() - d.getTime() < 3600000) return ilYa(iso);
+  const heure = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const jour = (x) => x.toLocaleDateString("fr-FR");
+  const hier = new Date(Date.now() - 86400000);
+  if (jour(d) === jour(new Date())) return "aujourd'hui, " + heure;
+  if (jour(d) === jour(hier)) return "hier, " + heure;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) + ", " + heure;
+}
+
+const majuscule = (t) => t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+
+/** Vérification en cours pour cette box (demande signée envoyée, compte rendu attendu). */
+const verificationEnCours = (b) => !!(essaiEnCours && b && essaiEnCours.boxId === b.boxId);
+
 /**
  * État d'un appareil tel que la box le constate (dernier compte rendu) : une liste de [texte, genre, détail], une par
- * constat. Un appareil ajouté ou modifié ici n'a pas encore été essayé : la box l'essaiera à l'application.
+ * constat ; genre « » (réussi), « neutre », « attention » ou « refus ». Un appareil ajouté ou modifié ici n'a pas
+ * encore été essayé : la box l'essaiera dès qu'elle appliquera la configuration.
  */
 function etatAppareil(n, b) {
   const publie = editionOrigine && editionOrigine.nodes.find((x) => x.name === n.name);
-  if (!publie) return [["Nouveau : pas encore essayé", "neutre", "La box essaiera la connexion dès qu'elle appliquera la configuration."]];
-  if (!memeAppareil(publie, n)) return [["Modifié : sera essayé", "neutre", "La box essaiera la connexion dès qu'elle appliquera la configuration."]];
+  const plusTard = "La box essaiera la connexion dès qu'elle appliquera la configuration.";
+  if (!publie) return [["Nouveau : pas encore essayé", "attention", plusTard]];
+  if (!memeAppareil(publie, n)) return [["Modifié : pas encore essayé", "attention", plusTard]];
   const c = b && b.appareils && b.appareils.noeuds && b.appareils.noeuds[n.name];
   const morceaux = [];
   if (n.destination) {
-    if (!c || !c.echoAt) morceaux.push(["Pas encore essayé", "neutre", "La box n'a pas encore rendu compte d'un essai de connexion."]);
-    else if (c.echoError) morceaux.push(["C-ECHO en échec " + ilYa(c.echoAt), "refus", c.echoError]);
-    else morceaux.push(["C-ECHO réussi " + ilYa(c.echoAt), "", "Le " + new Date(c.echoAt).toLocaleString("fr-FR")]);
+    if (verificationEnCours(b)) {
+      morceaux.push(["Essai en cours…", "neutre", ""]);
+    } else if (!c || !c.echoAt) {
+      morceaux.push(["Pas encore essayé", "neutre", "La box n'a pas encore rendu compte d'un essai de connexion."]);
+    } else if (c.echoError) {
+      const aetBox = (b.dicom && b.dicom.aet) || "son AET local";
+      morceaux.push(["C-ECHO en échec " + quand(c.echoAt), "refus", majuscule(c.echoError) + ". Vérifiez "
+        + n.host + ":" + n.port + ", l'AET " + n.aet + ", et que le PACS autorise la box (" + aetBox + "). "
+        + (c.echoOkAt ? "Dernier succès : " + quand(c.echoOkAt) + "." : "Aucun succès depuis que cette adresse est déclarée.")]);
+    } else {
+      morceaux.push(["C-ECHO réussi " + quand(c.echoAt), "", ""]);
+    }
   }
   if (n.source) {
     if (c && c.refusedAt && (!c.receivedAt || c.refusedAt > c.receivedAt)) {
-      morceaux.push(["Connexion refusée " + ilYa(c.refusedAt), "attention", "Venue de " + c.refusedFrom
+      morceaux.push(["Connexion refusée " + quand(c.refusedAt), "attention", "Venue de " + c.refusedFrom
         + (n.host ? ", alors que l'adresse déclarée est " + n.host : "") + "."]);
     } else if (c && c.receivedAt) {
-      morceaux.push(["Envoi reçu " + ilYa(c.receivedAt), "", "Le " + new Date(c.receivedAt).toLocaleString("fr-FR")]);
+      morceaux.push(["Envoi reçu " + quand(c.receivedAt), "", ""]);
     } else if (!n.destination) {
       morceaux.push(["Aucun envoi reçu", "neutre", "La box n'a encore reçu aucune association de cet appareil."]);
     }
   }
-  return morceaux.length ? morceaux : [["—", "neutre", "Ni source ni destination."]];
+  return morceaux.length ? morceaux : [["—", "neutre", ""]];
 }
 
 /** La destination n'a pas encore été essayée par la box (nouvelle, modifiée ou sans compte rendu). */
-const pasEncoreEssaye = (n, b) => n.destination && etatAppareil(n, b).some((m) => m[1] === "neutre");
+const pasEncoreEssaye = (n, b) => n.destination && etatAppareil(n, b).some((m) => m[1] === "attention" || m[0] === "Pas encore essayé");
+
+/** Détails dépliés (box/appareil), gardés d'un affichage à l'autre. */
+const detailsOuverts = new Set();
+
+/** Pastille d'état : point de couleur et texte ; un détail se déplie par le bouton « Détail ». */
+function pastillesEtat(td, n, b, rang) {
+  etatAppareil(n, b).forEach(([texte, genre, detail], k) => {
+    const ligne = element("div", "ligne-etat");
+    const pastille = element("span", "etiquette etat-appareil " + genre);
+    pastille.append(element("span", "point-etat " + genre), document.createTextNode(texte));
+    ligne.append(pastille);
+    td.append(ligne);
+    if (!detail || (genre !== "refus" && genre !== "attention")) return;
+    const cle = boxSelection + "/" + n.name + "/" + k;
+    const id = "detail-appareil-" + rang + "-" + k;
+    const texteDetail = element("p", "detail-appareil " + genre, detail);
+    texteDetail.id = id;
+    const deplier = element("button", "deplier " + genre);
+    deplier.type = "button";
+    deplier.setAttribute("aria-controls", id);
+    deplier.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
+      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg><span></span>';
+    const montrer = (ouvert) => {
+      texteDetail.hidden = !ouvert;
+      deplier.setAttribute("aria-expanded", String(ouvert));
+      deplier.lastChild.textContent = ouvert ? "Masquer" : "Détail";
+      deplier.classList.toggle("ouvert", ouvert);
+    };
+    deplier.addEventListener("click", () => {
+      const ouvert = !detailsOuverts.has(cle);
+      if (ouvert) detailsOuverts.add(cle); else detailsOuverts.delete(cle);
+      montrer(ouvert);
+    });
+    montrer(detailsOuverts.has(cle));
+    ligne.append(deplier);
+    td.append(texteDetail);
+  });
+}
 
 /** Destinations qui ne répondent pas à l'essai de connexion, d'après le dernier compte rendu de la box. */
 function appareilsEnEchec(b) {
@@ -983,42 +1048,86 @@ function appareilsEnEchec(b) {
     .map((n) => [n.name, noeuds[n.name].echoError]);
 }
 
-function rendreNoeuds() {
-  const corps = $("config-noeuds");
-  corps.replaceChildren();
-  if (!edition.nodes.length) {
-    const td = element("td", "discret", "Aucun nœud : la configuration locale de la box s'applique tant qu'aucun n'est déclaré.");
-    td.colSpan = 8;
-    const tr = element("tr");
-    tr.append(td);
-    corps.append(tr);
-  }
+/** Appareils dont la carte est ouverte en édition (objets de l'édition en cours). */
+const appareilsEnEdition = new WeakSet();
+
+const crayon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+  + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>';
+
+/** Rôle d'un appareil, sur sa carte : actif, ou barré (et dit « non » aux lecteurs d'écran). */
+function pastilleRole(fleche, libelle, actif, classe) {
+  const p = element("span", "role-appareil " + classe + (actif ? "" : " inactif"));
+  if (!actif) p.append(element("span", "visuellement-cache", "non "));
+  const symbole = element("span", null, fleche);
+  symbole.setAttribute("aria-hidden", "true");
+  p.append(symbole, document.createTextNode(" " + libelle));
+  return p;
+}
+
+/** Cartes des appareils du site : résumé et état vu par la box ; le crayon ouvre les champs de l'appareil. */
+function rendreNoeuds(focaliser) {
+  const zone = $("config-noeuds");
+  zone.replaceChildren();
   const b = boxChoisie();
-  const destinations = b && b.dicom && b.dicom.nodes.some((n) => n.destination);
-  $("config-tester").disabled = !destinations;
-  $("config-tester").title = destinations ? "" : "Aucune destination publiée pour cette box : rien à essayer";
+  afficherVerification();
+  if (!edition.nodes.length) {
+    zone.append(element("li", "discret aucun-appareil", "Aucun appareil : la configuration locale de la box s'applique tant qu'aucun n'est déclaré."));
+  }
   edition.nodes.forEach((n, i) => {
-    const tr = element("tr");
-    const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
-    // Champs sans étiquette visible (en-têtes de colonne) : nommés par la colonne et le rang de l'appareil (RGAA 11.1).
-    const rang = " de l'appareil " + (i + 1);
-    cellule(champTexte(n.name, (v) => { n.name = v; }, { placeholder: "pacs-nord", maxLength: 64, surChangement: rendreRoutes, nom: "Nom" + rang }));
-    cellule(champTexte(n.aet, (v) => { n.aet = v; }, { placeholder: "PACS_NORD", maxLength: 16, nom: "AET" + rang }));
-    cellule(champTexte(n.host, (v) => { n.host = v; }, { placeholder: "10.2.0.15", maxLength: 253, nom: "Adresse" + rang }));
-    cellule(champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104", nom: "Port" + rang }));
-    cellule(caseACocher("", n.source, (v) => { n.source = v; rendreRoutes(); }, "Source" + rang));
-    cellule(caseACocher("", n.destination, (v) => { n.destination = v; rendreRoutes(); }, "Destination" + rang));
-    const td = element("td", "etat-appareils");
-    for (const [texte, genre, detail] of etatAppareil(n, b)) {
-      const etiquette = element("span", "etiquette etat-appareil " + genre, texte);
-      etiquette.title = detail;
-      td.append(etiquette);
-      if (genre === "refus" || genre === "attention") td.append(element("span", "discret detail-appareil", detail));
+    const echec = etatAppareil(n, b).some((m) => m[1] === "refus");
+    const carte = element("li", "carte-appareil" + (echec ? " en-echec" : ""));
+    const tete = element("div", "tete-appareil");
+    const nom = n.name || "(sans nom)";
+    tete.append(element("h4", null, nom));
+    const ouvert = appareilsEnEdition.has(n);
+    const modifier = element("button", "modifier-appareil");
+    modifier.type = "button";
+    modifier.innerHTML = crayon;
+    modifier.setAttribute("aria-label", (ouvert ? "Fermer les champs de l'appareil " : "Modifier l'appareil ") + nom);
+    modifier.setAttribute("aria-expanded", String(ouvert));
+    modifier.dataset.rang = String(i);
+    modifier.addEventListener("click", () => {
+      if (ouvert) appareilsEnEdition.delete(n); else appareilsEnEdition.add(n);
+      rendreNoeuds(ouvert ? { rang: i, cible: "modifier" } : { rang: i, cible: "champ" });
+    });
+    tete.append(modifier);
+    carte.append(tete);
+    if (ouvert) {
+      const champs = element("div", "champs-appareil");
+      const libelle = (texte, input) => { const l = element("label"); l.append(document.createTextNode(texte), input); return l; };
+      champs.append(
+        libelle("Nom", champTexte(n.name, (v) => { n.name = v; }, { placeholder: "pacs-nord", maxLength: 64, surChangement: rendreRoutes })),
+        libelle("AET", champTexte(n.aet, (v) => { n.aet = v; }, { placeholder: "PACS_NORD", maxLength: 16 })),
+        libelle("Adresse", champTexte(n.host, (v) => { n.host = v; }, { placeholder: "10.2.0.15", maxLength: 253 })),
+        libelle("Port", champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104" })));
+      const roles = element("div", "roles-appareil");
+      roles.append(caseACocher("Source : peut envoyer à la box", n.source, (v) => { n.source = v; rendreRoutes(); }),
+        caseACocher("Destination : reçoit les restitutions", n.destination, (v) => { n.destination = v; rendreRoutes(); }));
+      const actions = element("div", "actions");
+      actions.append(bouton("Terminé", "secondaire petit", () => {
+        appareilsEnEdition.delete(n);
+        rendreNoeuds({ rang: i, cible: "modifier" });
+      }), bouton("Retirer l'appareil", "refuser petit", () => {
+        edition.nodes.splice(i, 1); modifie(); rendreNoeuds(); rendreRoutes();
+      }));
+      carte.append(champs, roles, actions);
+    } else {
+      const adresse = n.host ? n.host + (n.port ? ":" + n.port : "") : "toute adresse";
+      carte.append(element("p", "adresse-appareil", (n.aet || "AET ?") + " · " + adresse));
+      const roles = element("div", "roles-pastilles");
+      roles.append(pastilleRole("↗", "source", !!n.source, "source"), pastilleRole("↙", "destination", !!n.destination, "destination"));
+      carte.append(roles);
     }
-    tr.append(td);
-    cellule(bouton("Retirer", "secondaire petit", () => { edition.nodes.splice(i, 1); modifie(); rendreNoeuds(); rendreRoutes(); }));
-    corps.append(tr);
+    const etatZone = element("div", "etat-appareils");
+    pastillesEtat(etatZone, n, b, i + 1);
+    carte.append(etatZone);
+    zone.append(carte);
   });
+  if (focaliser) {
+    const carte = zone.children[focaliser.rang];
+    const cible = carte && (focaliser.cible === "champ" ? carte.querySelector("input") : carte.querySelector(".modifier-appareil"));
+    if (cible) cible.focus();
+  }
 }
 
 function nomBox(id) {
@@ -1102,88 +1211,104 @@ function rendreRoute(r, i, sortante) {
   return carte;
 }
 
-// --- Tester maintenant : essai de connexion demandé à la box ---
+// --- Vérifier les connexions : essai de connexion demandé à la box ---
 
-/** Essai en cours de suivi : box, identifiant de la demande, date, minuterie. */
+/** Vérification en cours de suivi : box, identifiant de la demande, date, minuterie. */
 let essaiEnCours = null;
+/** Box sans réponse à la dernière vérification demandée (attente dépassée). */
+let essaiSansReponse = null;
+/** Box vérifiées depuis l'ouverture de la page (le lien devient « Vérifier de nouveau »). */
+const verifieesIci = new Set();
 /** Au-delà, la box n'a pas répondu par son flux de réveil : elle le fera à sa lecture périodique (5 min au plus). */
 const ESSAI_ATTENTE_MS = 6 * 60 * 1000;
 
-function testerMaintenant() {
+/** Demande signée à la box d'essayer tout de suite la connexion de ses destinations. */
+function verifierMaintenant() {
   const b = boxChoisie();
-  if (!b) return;
+  if (!b || verificationEnCours(b)) return;
+  const demander = async (phrase, garder) => {
+    const r = await api("POST", "/api/essai-connexion", { boxId: b.boxId, phrase, garder });
+    suivreEssai(b.boxId, r.id, r.le);
+    return r;
+  };
+  if (etat.phrase !== "requise") {
+    demander("", false).catch((e) => message(e.message, "erreur"));
+    return;
+  }
   signer({
-    titre: "Tester maintenant « " + b.nom + " »",
+    titre: "Vérifier les connexions de « " + b.nom + " »",
     resume: "La box essaiera tout de suite la connexion (C-ECHO) de chacune de ses destinations, puis rendra compte. "
       + "Aucune donnée d'examen n'est envoyée. La demande est signée avec la clé de l'organisation : la box ne suit "
       + "que celles-là.",
-    libelle: "Demander l'essai",
-    action: async (phrase, garder) => {
-      const r = await api("POST", "/api/essai-connexion", { boxId: b.boxId, phrase, garder });
-      suivreEssai(b.boxId, r.id, r.le);
-      return r;
-    },
+    libelle: "Demander la vérification",
+    action: demander,
   });
 }
 
 function suivreEssai(boxId, id, le) {
   if (essaiEnCours) clearTimeout(essaiEnCours.minuterie);
   essaiEnCours = { boxId, id, le: new Date(le), minuterie: null };
-  afficherEssai();
-  essaiEnCours.minuterie = setTimeout(verifierEssai, 2000);
+  essaiSansReponse = null;
+  if (boxSelection === boxId && edition) rendreNoeuds();
+  essaiEnCours.minuterie = setTimeout(verifierEssai, 1500);
 }
 
 /** Relit l'état des appareils de la box jusqu'au compte rendu qui répond à la demande. */
 async function verifierEssai() {
   const e = essaiEnCours;
   if (!e) return;
+  let fini = false;
   try {
     const c = await api("GET", "/api/configurations");
     const neuf = c.box.find((x) => x.boxId === e.boxId);
     const ancien = configs && configs.box.find((x) => x.boxId === e.boxId);
-    if (neuf && ancien) {
-      ancien.appareils = neuf.appareils;
-      if (boxSelection === e.boxId && edition) rendreNoeuds();
-    }
-    if (neuf && neuf.appareils && neuf.appareils.essai === e.id) {
-      e.fini = new Date(neuf.appareils.le);
-      afficherEssai();
-      essaiEnCours = null;
-      if (dernierTableau) afficherTableau(dernierTableau);
-      return;
-    }
+    if (neuf && ancien) ancien.appareils = neuf.appareils;
+    fini = !!(neuf && neuf.appareils && neuf.appareils.essai === e.id);
   } catch (err) {
     // annuaire momentanément illisible : nouvel essai au tour suivant
   }
-  if (Date.now() - e.le.getTime() > ESSAI_ATTENTE_MS) {
-    e.perdu = true;
-    afficherEssai();
+  if (fini || Date.now() - e.le.getTime() > ESSAI_ATTENTE_MS) {
     essaiEnCours = null;
+    if (fini) verifieesIci.add(e.boxId); else essaiSansReponse = e.boxId;
+    if (boxSelection === e.boxId && edition) rendreNoeuds();
+    if (dernierTableau) afficherTableau(dernierTableau);
     return;
   }
-  e.minuterie = setTimeout(verifierEssai, 3000);
-  afficherEssai();
+  e.minuterie = setTimeout(verifierEssai, 1500);
 }
 
-let dernierEssai = null;
-
-function afficherEssai() {
-  const e = essaiEnCours || dernierEssai;
-  dernierEssai = e;
-  const zone = $("config-essai-statut");
-  if (!e || e.boxId !== boxSelection) {
-    zone.textContent = "";
-    return;
-  }
-  const heure = (d) => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  if (e.fini) {
-    zone.textContent = "Essai terminé à " + heure(e.fini) + " : résultat dans la colonne « État vu par la box ».";
-  } else if (e.perdu) {
-    zone.textContent = "Pas encore de réponse de la box : elle essaiera à sa prochaine lecture de l'annuaire. "
-      + "Si cela dure, vérifiez qu'elle est en marche et à jour.";
+/** Ligne d'état sous « Appareils du site » : point de couleur, résumé, lien « Vérifier maintenant ». */
+function afficherVerification() {
+  const b = boxChoisie();
+  if (!b) return;
+  const destinations = ((b.dicom && b.dicom.nodes) || []).filter((n) => n.destination);
+  const noeuds = (b.appareils && b.appareils.noeuds) || {};
+  const enCours = verificationEnCours(b);
+  let ton = "neutre";
+  let texte;
+  if (!destinations.length) {
+    texte = "Aucune destination publiée : rien à vérifier.";
+  } else if (enCours) {
+    texte = "Demande signée envoyée : la box essaie ses destinations…";
+  } else if (essaiSansReponse === b.boxId) {
+    ton = "attention";
+    texte = "Pas encore de réponse de la box : elle vérifiera à sa prochaine lecture de l'annuaire.";
   } else {
-    zone.textContent = "Essai demandé à " + heure(e.le) + " : en attente de la box…";
+    const dates = destinations.map((n) => noeuds[n.name] && noeuds[n.name].echoAt).filter(Boolean).sort();
+    if (!dates.length) {
+      texte = "Pas encore vérifié par la box.";
+    } else {
+      const echecs = appareilsEnEchec(b).length;
+      const moment = ilYa(dates[dates.length - 1]);
+      ton = echecs ? "refus" : "";
+      texte = echecs ? "Vérifié par la box " + moment + " : " + echecs + " destination"
+        + (echecs > 1 ? "s ne répondent pas." : " ne répond pas.") : "Connexions vérifiées par la box " + moment + ".";
+    }
   }
+  $("verif-point").className = "point-etat " + ton;
+  $("verif-texte").textContent = texte;
+  $("verif-libelle").textContent = enCours ? "Vérification…" : verifieesIci.has(b.boxId) ? "Vérifier de nouveau" : "Vérifier maintenant";
+  $("config-verifier").disabled = !destinations.length || enCours;
 }
 
 // --- Essai sur un examen fictif ---
@@ -1518,11 +1643,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("essai-de").addEventListener("change", majEssai);
   $("sauvegarder").addEventListener("click", sauvegarder);
   $("essai-lancer").addEventListener("click", essayer);
-  $("config-tester").addEventListener("click", testerMaintenant);
+  $("config-verifier").addEventListener("click", verifierMaintenant);
   $("essai-champs").addEventListener("keydown", (e) => { if (e.key === "Enter") essayer(); });
   $("ajouter-noeud").addEventListener("click", () => {
-    edition.nodes.push({ name: "", aet: "", host: "", port: 104, source: true, destination: false });
-    modifie(); rendreNoeuds(); rendreRoutes();
+    const nouveau = { name: "", aet: "", host: "", port: 104, source: true, destination: false };
+    edition.nodes.push(nouveau);
+    appareilsEnEdition.add(nouveau);
+    modifie(); rendreNoeuds({ rang: edition.nodes.length - 1, cible: "champ" }); rendreRoutes();
   });
   $("ajouter-sortante").addEventListener("click", () => {
     edition.outgoing.push({ name: "route-" + (edition.outgoing.length + 1), from: [], calledAet: "", and: "", or: "", to: [] });

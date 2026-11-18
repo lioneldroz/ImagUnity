@@ -161,6 +161,22 @@ test.describe('axe-core (critères RGAA détectables automatiquement)', () => {
   });
 });
 
+test('appareils : détail d\'un échec déplié et carte en édition, au clavier', async ({ page }, testInfo) => {
+  await ouvrir(page);
+  await onglet(page, 'configuration');
+  const deplier = page.locator('.carte-appareil.en-echec .deplier');
+  await expect(deplier).toHaveAttribute('aria-expanded', 'false');
+  await deplier.focus();
+  await page.keyboard.press('Enter');
+  await expect(deplier).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.carte-appareil.en-echec .detail-appareil')).toBeVisible();
+  await page.locator('.carte-appareil').first().getByRole('button', { name: /Modifier l'appareil/ }).click();
+  await expect(page.locator('.carte-appareil').first().getByRole('textbox', { name: 'Nom' })).toBeFocused();
+  await axe(page, testInfo, 'appareils : détail et édition');
+  await page.locator('.carte-appareil').first().getByRole('button', { name: 'Terminé' }).click();
+  await expect(page.locator('.carte-appareil').first().getByRole('button', { name: /Modifier l'appareil/ })).toBeFocused();
+});
+
 test('11.1 : chaque champ a un nom, autre que son texte d\'exemple', async ({ page }) => {
   await ouvrir(page);
   for (const nom of ONGLETS) {

@@ -119,8 +119,6 @@ textarea { width: 100%; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas
 dt .info .bulle { left: 0; transform: none; }
 select { font: inherit; color: inherit; background: var(--fond); border: 1px solid var(--bord-champ); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .config-aet { max-width: 520px; margin-top: 12px; }
-#config-noeuds input[type=text] { min-width: 110px; }
-#config-noeuds input[type=number] { min-width: 70px; max-width: 90px; }
 .route { border: 1px solid var(--bord); border-radius: 8px; padding: 10px 12px; margin-top: 8px; display: grid; gap: 8px; }
 .route-ligne { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 fieldset.choix-groupe { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -183,9 +181,6 @@ button.ajouter { background: transparent; color: var(--accent); border: 1px dash
 .flux .titre-route { font-weight: 600; min-width: 140px; }
 /* Petit écran : la bulle s'affiche en bas de l'écran, en entier, au lieu de déborder à côté du bouton (RGAA 10.11). */
 @media (max-width: 760px) { .info .bulle, h3 .info .bulle, dt .info .bulle { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; width: auto; transform: none; } .config-detail { flex-basis: 100%; } }
-.etat-appareils { min-width: 170px; max-width: 230px; }
-.etat-appareils .etiquette { white-space: normal; display: block; width: fit-content; margin-bottom: 4px; }
-.detail-appareil { font-size: 12px; margin-bottom: 4px; }
 .remarque { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--attention-fond); color: var(--attention); font-size: 13px; line-height: 1.5; }
 .remarque.refus { background: var(--alerte-fond); color: var(--alerte); }
 .essai { border: 1px solid var(--bord); border-radius: 10px; padding: 12px 16px; background: var(--fond); }
@@ -207,5 +202,42 @@ button.ajouter { background: transparent; color: var(--accent); border: 1px dash
 .evitement:focus { top: 8px; }
 .visuellement-cache { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 main:focus, main > section h2:focus { outline: none; }
-.essai-connexion { margin: 8px 0; }
-.essai-connexion .discret:empty { display: none; }
+.sous-titre-section { margin: 2px 0 0; font-size: 13px; }
+.verification-appareils { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; font-size: 13px; color: var(--discret); }
+.lien-verifier { font: inherit; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; min-height: 32px; border-radius: 999px; background: transparent; border: 1px solid var(--bord-fort); color: var(--accent); }
+.lien-verifier:disabled { background: transparent; border-color: var(--bord-fort); color: #48625E; }
+/* Points et pastilles d'état (maquette « Configuration des box ») */
+.point-etat { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: #0F766E; }
+.point-etat.neutre { background: #6f8d88; }
+.point-etat.attention { background: #8a5a00; }
+.point-etat.refus { background: #b3261e; }
+.etat-appareils .etiquette { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; margin: 0; white-space: normal; }
+.etiquette.attention { background: #fff6e5; color: #8a5a00; }
+.etiquette.refus { background: #fdecea; color: #a1251c; }
+.ligne-etat { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.deplier { font: inherit; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px; padding: 2px 8px 2px 4px; min-height: 28px; border-radius: 999px; background: transparent; border: 1px solid transparent; color: #a1251c; }
+.deplier.attention { color: #8a5a00; }
+.deplier svg { transition: transform .15s; }
+.deplier.ouvert svg { transform: rotate(90deg); }
+.detail-appareil { margin: 0 0 4px; font-size: 12px; line-height: 1.5; color: #7a1f17; }
+.detail-appareil.attention { color: #6b4600; }
+/* Cartes des appareils (maquette « Configuration des box ») */
+.cartes-appareils { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.cartes-appareils .aucun-appareil { grid-column: 1 / -1; }
+.carte-appareil { border: 1px solid #d7e9e2; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #f6fbf9; }
+.carte-appareil.en-echec { border-color: #f3b8b3; background: #fffafa; }
+.tete-appareil { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tete-appareil h4 { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.modifier-appareil { border: 0; background: transparent; color: var(--discret); padding: 6px; min-width: 32px; min-height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
+.modifier-appareil:hover, .modifier-appareil[aria-expanded=true] { background: var(--clair); color: var(--accent); }
+.adresse-appareil { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.roles-pastilles { display: flex; gap: 6px; flex-wrap: wrap; }
+.role-appareil { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.role-appareil.source { background: #E6F2EF; color: #0F766E; }
+.role-appareil.destination { background: #B7E4D0; color: #083D3D; }
+.role-appareil.inactif { background: #f0f5f3; color: #4f6b67; text-decoration: line-through; }
+.champs-appareil { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.champs-appareil label { font-size: 13px; color: var(--discret); }
+.roles-appareil { display: grid; gap: 4px; font-size: 13px; }
+.roles-appareil label { display: flex; align-items: center; gap: 8px; }
+.etat-appareils { display: flex; flex-direction: column; }

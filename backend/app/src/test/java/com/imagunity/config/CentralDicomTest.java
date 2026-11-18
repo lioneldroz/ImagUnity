@@ -209,11 +209,12 @@ class CentralDicomTest {
     void devicesAreTestedAndWhatTheBoxSeesIsReported() throws Exception {
         AtomicReference<Optional<DicomRouting>> current = new AtomicReference<>(Optional.empty());
         List<String> echoes = new ArrayList<>();
+        Set<String> failing = new java.util.HashSet<>(Set.of("PACS_IRM"));
         CentralDicom dicom = new CentralDicom(current::get, repository, directory(), SELF,
                 new PairingService(repository, new DisabledTransport(), clock, Duration.ofMinutes(5)), "iu", "LOCAL",
                 clock, (host, port, called, calling) -> {
                     echoes.add(called + "@" + host + ":" + port + " par " + calling);
-                    return called.equals("PACS_IRM") ? Optional.of("connexion refusée") : Optional.empty();
+                    return failing.contains(called) ? Optional.of("connexion refusée") : Optional.empty();
                 });
         assertThat(dicom.checkDestinations()).isZero();
         assertThat(dicom.checks()).isEmpty();
@@ -236,10 +237,26 @@ class CentralDicomTest {
         assertThat(checks.get("pacs-nord").refusedFrom()).isEqualTo("10.9.9.9");
         assertThat(checks.get("pacs-nord").receivedAt()).isNull();
         assertThat(checks.get("pacs-irm").echoError()).isEqualTo("connexion refusée");
+        assertThat(checks.get("pacs-irm").echoOkAt()).as("jamais réussi").isNull();
+        assertThat(checks.get("pacs-nord").echoOkAt()).isEqualTo(checks.get("pacs-nord").echoAt());
         assertThat(checks.get("pacs-irm").receivedAt()).as("pas une source").isNull();
         assertThat(checks.get("ct-urg").echoAt()).as("pas une destination").isNull();
         assertThat(checks.get("ct-urg").receivedAt()).isEqualTo(clock.now);
         String before = checks.get("pacs-irm").state();
+
+        // pacs-nord tombe : l'échec est daté, le dernier succès reste celui d'avant.
+        java.time.Instant success = checks.get("pacs-nord").echoOkAt();
+        failing.add("PACS_NORD");
+        clock.now = clock.now.plusSeconds(60);
+        dicom.checkDestinations(true);
+        com.imagunity.directory.NodeCheck down = dicom.checks().stream().filter(c -> c.node().equals("pacs-nord"))
+                .findFirst().orElseThrow();
+        assertThat(down.echoError()).isEqualTo("connexion refusée");
+        assertThat(down.echoAt()).isEqualTo(clock.now);
+        assertThat(down.echoOkAt()).as("dernier succès gardé").isEqualTo(success);
+        failing.remove("PACS_NORD");
+        assertThat(new com.imagunity.directory.NodeCheck("x", clock.now, null, null, null, null).echoOkAt())
+                .as("compte rendu d'une box antérieure : succès = dernier essai").isEqualTo(clock.now);
 
         clock.now = clock.now.plus(CentralDicom.ECHO_EVERY);
         echoes.clear();
