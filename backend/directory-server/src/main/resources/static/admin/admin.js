@@ -8,11 +8,18 @@ let etat = null;
 const $ = (id) => document.getElementById(id);
 const date = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR") : "—");
 
+// Région de statut toujours présente : vidée puis remplie, pour qu'un même message répété soit annoncé de nouveau.
+const minuteries = new Map();
+function annoncer(region, texte) {
+  clearTimeout(minuteries.get(region));
+  region.textContent = "";
+  if (texte) minuteries.set(region, setTimeout(() => { region.textContent = texte; }, 50));
+}
+
 function message(texte, genre) {
   const m = $("message");
-  m.textContent = texte;
   m.className = "message " + (genre || "");
-  m.hidden = !texte;
+  annoncer(m, texte);
 }
 
 async function api(methode, chemin, corps) {
@@ -226,8 +233,7 @@ async function essayer() {
     if (r.priority) morceaux.push("Priorité " + r.priority + (r.priorityRule ? " (règle « " + r.priorityRule + " »)" : " (par défaut)"));
     if (r.routingRule) morceaux.push("routage vers " + r.destinations.join(", ") + " (règle « " + r.routingRule + " »)");
     else morceaux.push("aucune règle de routage ne correspond");
-    p.textContent = morceaux.join(" ; ") + ".";
-    p.hidden = false;
+    annoncer(p, morceaux.join(" ; ") + ".");
     message("", "");
   } catch (e) {
     message("Essai impossible : " + e.message, "erreur");

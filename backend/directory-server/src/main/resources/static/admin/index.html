@@ -8,6 +8,7 @@
   <script src="admin.js" defer></script>
 </head>
 <body>
+<a class="evitement" href="#contenu">Aller au contenu</a>
 <header class="bandeau">
   <div>
     <h1>Configuration des box</h1>
@@ -16,28 +17,28 @@
   <button type="button" id="rafraichir" class="secondaire">Actualiser</button>
 </header>
 
-<main>
-  <p id="message" class="message" role="status" hidden></p>
+<main id="contenu" tabindex="-1">
+  <p id="message" class="message" role="status"></p>
 
   <section>
-    <h2>Box de l'annuaire</h2>
+    <h2 id="titre-box">Box de l'annuaire</h2>
     <p class="aide">Version appliquée : remontée par chaque box après lecture de l'annuaire (compte rendu signé par la box). Groupes : fixés par le responsable dans l'entrée d'annuaire de chaque box (<code>enroler --groupes</code>).</p>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Box</th><th>Groupes</th><th>Statut</th><th>Version appliquée</th><th>Dernier refus</th><th>Compte rendu</th></tr></thead>
+      <table aria-labelledby="titre-box">
+        <thead><tr><th scope="col">Box</th><th scope="col">Groupes</th><th scope="col">Statut</th><th scope="col">Version appliquée</th><th scope="col">Dernier refus</th><th scope="col">Compte rendu</th></tr></thead>
         <tbody id="box"></tbody>
       </table>
     </div>
   </section>
 
   <section>
-    <h2>Demandes d'enrôlement en attente</h2>
+    <h2 id="titre-demandes">Demandes d'enrôlement en attente</h2>
     <p class="aide">Envoyées par les box qui ne sont pas encore enrôlées. Elles se signent sur le poste du responsable, hors ligne :
       <code>admin enroler-attente --cles organisation.json --codes codes.json --annuaire …</code>. L'outil reconnaît les box
       à leur code d'enrôlement ; une demande sans code se traite à la main, après comparaison de l'empreinte avec l'installateur.</p>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Box</th><th>Empreinte</th><th>Code d'enrôlement</th><th>Reçue le</th></tr></thead>
+      <table aria-labelledby="titre-demandes">
+        <thead><tr><th scope="col">Box</th><th scope="col">Empreinte</th><th scope="col">Code d'enrôlement</th><th scope="col">Reçue le</th></tr></thead>
         <tbody id="demandes"></tbody>
       </table>
     </div>
@@ -76,7 +77,7 @@
       <p>Document n° <strong id="numero"></strong> prêt à signer. Le télécharger, puis, sur le poste du responsable :</p>
       <pre id="commandes"></pre>
       <div class="actions">
-        <a id="telecharger" class="bouton" download>Télécharger le brouillon</a>
+        <a id="telecharger" class="bouton">Télécharger le brouillon</a>
       </div>
     </div>
   </section>
@@ -84,18 +85,22 @@
   <section>
     <h2>Essayer les règles</h2>
     <p class="aide">En-tête DICOM <strong>synthétique</strong>, un champ par ligne (<code>Modality=CT</code> ; plusieurs valeurs séparées par <code>\</code>). Jamais de données de patient.</p>
-    <textarea id="entete" rows="5" spellcheck="false">Modality=CT
+    <label class="bloc">En-tête DICOM synthétique (un champ par ligne)
+      <textarea id="entete" rows="5" spellcheck="false">Modality=CT
 SeriesDescription=THORAX 1.25
 InstitutionName=CHU NORD</textarea>
+    </label>
     <div class="actions"><button type="button" id="essayer" class="secondaire">Essayer le brouillon</button></div>
-    <p id="resultat" class="resultat" hidden></p>
+    <p id="resultat" class="resultat" role="status"></p>
   </section>
 
   <section>
     <h2>Publier un document signé</h2>
     <p class="aide">Document produit par <code>configuration-signer</code>. Le service revérifie la signature du responsable et refuse un numéro de version déjà dépassé.</p>
     <div class="actions">
-      <input type="file" id="fichier" accept=".json,application/json">
+      <label>Document signé (JSON)
+        <input type="file" id="fichier" accept=".json,application/json">
+      </label>
       <button type="button" id="publier">Publier</button>
     </div>
   </section>
