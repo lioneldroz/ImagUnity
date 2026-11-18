@@ -36,6 +36,11 @@
   <button type="button" data-onglet="codes">Codes d'enrôlement <span class="compteur" id="compte-codes"></span></button>
   <button type="button" data-onglet="partenaires">Partenaires <span class="compteur" id="compte-partenaires"></span></button>
   <button type="button" data-onglet="aide">Aide</button>
+  <div class="sauvegarde" id="sauvegarde" hidden>
+    <strong>Sauvegarde</strong>
+    <span id="sauvegarde-texte"></span>
+    <button type="button" class="secondaire petit" id="sauvegarder">Sauvegarder maintenant</button>
+  </div>
 </nav>
 <main>
   <p class="message" id="message" hidden></p>
@@ -222,6 +227,9 @@
           <tr><td><code>codes.json</code></td><td>Les codes d'enrôlement tirés, avec le nom et les groupes prévus</td>
             <td>Vérifier qu'une box qui se présente est bien celle prévue, et l'enrôler sous le bon nom.</td>
             <td>Sur ce poste, à côté de la clé. À sauvegarder avec elle.</td></tr>
+          <tr><td><code>sauvegarde.json</code></td><td>Date de la dernière sauvegarde et empreinte des fichiers copiés</td>
+            <td>Rappeler la sauvegarde quand un fichier a changé depuis (« Sauvegarder maintenant », sous le menu).</td>
+            <td>Sur ce poste, à côté de la clé. Rien de secret.</td></tr>
           <tr><td><code>fraicheur.json</code></td><td>Clé de fraîcheur, <strong>en clair</strong></td>
             <td>Laisser l'annuaire dater lui-même son état sans vous déranger. Elle ne peut rien signer d'autre.</td>
             <td>Sur le service d'annuaire (<code>config/fraicheur/</code>). Remplacée chaque mois.</td></tr>
@@ -402,7 +410,7 @@
         <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
       <div class="tableau">
         <table>
-          <thead><tr><th>Nom</th><th>AET</th><th>Adresse</th><th>Port</th><th>Source</th><th>Destination</th><th></th></tr></thead>
+          <thead><tr><th>Nom</th><th>AET</th><th>Adresse</th><th>Port</th><th>Source</th><th>Destination</th><th>État vu par la box</th><th></th></tr></thead>
           <tbody id="config-noeuds"></tbody>
         </table>
       </div>
@@ -417,6 +425,24 @@
         <span class="info"><button type="button" class="info-bouton" aria-label="Routes entrantes" aria-describedby="bulle-entrantes">?</button><span class="bulle" role="tooltip" id="bulle-entrantes">Pour chaque instance reçue, la première route qui correspond (box émettrice et filtres) désigne le ou les PACS qui la reçoivent. Sans aucune route entrante, la box restitue au PACS de sa configuration locale.</span></span></h3>
       <div id="config-entrantes"></div>
       <div class="actions"><button type="button" class="ajouter" id="ajouter-entrante">+ Ajouter une réception</button></div>
+
+      <div class="essai bloc">
+        <h3>Essayer sur un examen fictif
+          <span class="info"><button type="button" class="info-bouton" aria-label="Essai" aria-describedby="bulle-essai">?</button><span class="bulle" role="tooltip" id="bulle-essai">Avant de signer, vérifiez quelle route suivrait une instance : la configuration affichée ici, même non publiée, est passée au code de routage de la box. Rien n'est envoyé ni publié.</span></span></h3>
+        <div class="essai-champs">
+          <label>Envoyé par
+            <select id="essai-de"></select>
+          </label>
+          <label id="essai-aet-label">AET appelé (facultatif)
+            <input type="text" id="essai-aet" maxlength="16" placeholder="AET de la box">
+          </label>
+          <label class="essai-large">Champs DICOM
+            <input type="text" id="essai-champs" maxlength="500" placeholder="Modality=CT; SeriesDescription=THORAX">
+          </label>
+          <button type="button" id="essai-lancer">Essayer</button>
+        </div>
+        <p id="essai-resultat" class="essai-resultat" role="status" hidden></p>
+      </div>
 
       <p class="discret bloc" id="config-regles"></p>
       <div class="formulaire-config bloc">

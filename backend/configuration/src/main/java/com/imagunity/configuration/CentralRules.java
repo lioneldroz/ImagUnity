@@ -10,6 +10,7 @@ import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.DirectoryException;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.HybridPublicKey;
+import com.imagunity.directory.NodeCheck;
 import com.imagunity.directory.SignedDocument;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
@@ -122,6 +124,7 @@ public final class CentralRules implements CentralConfigurationStatus {
     private volatile String error;
     private Instant reportedAt;
     private String reportedState;
+    private volatile Supplier<List<NodeCheck>> nodeChecks = List::of;
 
     /** Groupes de cette box, d'après son entrée d'annuaire vérifiée. */
     private final java.util.function.Supplier<java.util.Collection<String>> groups;
@@ -361,6 +364,33 @@ public final class CentralRules implements CentralConfigurationStatus {
 
     /** Lignes lisibles de la configuration DICOM centrale (console). */
     static List<String> describe(DicomRouting d) {
+        return describe(d, java.util.Map.of());
+    }
+
+    private static final java.time.format.DateTimeFormatter SEEN = java.time.format.DateTimeFormatter
+            .ofPattern("dd/MM HH:mm").withZone(java.time.ZoneId.systemDefault());
+
+    /** Ce que la box a constaté d'un nœud : essai de connexion, envoi reçu, connexion refusée. */
+    static String seen(NodeCheck c) {
+        if (c == null) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
+        if (c.echoAt() != null) {
+            text.append(c.echoError() == null ? " — C-ECHO réussi le " + SEEN.format(c.echoAt())
+                    : " — C-ECHO en échec le " + SEEN.format(c.echoAt()) + " : " + c.echoError());
+        }
+        if (c.receivedAt() != null) {
+            text.append(" — envoi reçu le ").append(SEEN.format(c.receivedAt()));
+        }
+        if (c.refusedAt() != null) {
+            text.append(" — connexion refusée depuis ").append(c.refusedFrom()).append(" le ")
+                    .append(SEEN.format(c.refusedAt()));
+        }
+        return text.toString();
+    }
+
+    static List<String> describe(DicomRouting d, java.util.Map<String, NodeCheck> checks) {
         List<String> lines = new java.util.ArrayList<>();
         if (d.aet() != null) {
             lines.add("AET de la box : " + d.aet());
@@ -368,7 +398,7 @@ public final class CentralRules implements CentralConfigurationStatus {
         d.nodes().values().stream().sorted(Comparator.comparing(DicomRouting.Node::name)).forEach(n -> lines.add(
                 "Nœud " + n.name() + " (" + n.aet() + (n.host() == null ? "" : ", " + n.host()
                         + (n.port() == null ? "" : ":" + n.port())) + ") : " + (n.source() && n.destination()
-                        ? "source et destination" : n.source() ? "source" : "destination")));
+                        ? "source et destination" : n.source() ? "source" : "destination") + seen(checks.get(n.name()))));
         d.outgoing().forEach(r -> lines.add("Route sortante " + r.name() + " : " + (r.fromAets().isEmpty()
                 ? "toute source" : String.join(", ", r.fromAets())) + (r.calledAet() == null ? ""
                 : " vers " + r.calledAet()) + (r.condition().and().isEmpty() && r.condition().or().isEmpty() ? ""
@@ -396,7 +426,8 @@ public final class CentralRules implements CentralConfigurationStatus {
                 + String.join(", ", r.destinations())).toList()).orElse(List.of());
         return new View(true, s.sequence(), s.issuedAt(), s.author(), s.comment(), s.appliedAt(), s.priority(),
                 s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error(),
-                List.copyOf(groups.get()), dicom().map(CentralRules::describe).orElse(List.of()));
+                List.copyOf(groups.get()), dicom().map(d -> describe(d, nodeChecks.get().stream().collect(
+                        java.util.stream.Collectors.toMap(NodeCheck::node, c -> c, (a, b) -> a)))).orElse(List.of()));
     }
 
     /**
@@ -404,12 +435,25 @@ public final class CentralRules implements CentralConfigurationStatus {
      * l'annuaire si c'est dû. Une erreur de lecture est gardée pour la console ; les règles en vigueur restent.
      */
     public void synchronizeWith(DirectoryClient client, HybridKeyPair boxKeys) {
+        synchronizeWith(client, boxKeys, () -> { });
+    }
+
+    /**
+     * Comme {@link #synchronizeWith(DirectoryClient, HybridKeyPair)}, avec une étape entre l'application et le compte
+     * rendu (essais de connexion des appareils d'une configuration tout juste appliquée).
+     */
+    public void synchronizeWith(DirectoryClient client, HybridKeyPair boxKeys, Runnable beforeReport) {
         try {
             synchronize(client.fetchConfigurations());
         } catch (DirectoryException e) {
             failed(e.getMessage());
             LOG.debug("Configuration centrale non lue : {}", e.getMessage());
             return;
+        }
+        try {
+            beforeReport.run();
+        } catch (RuntimeException e) {
+            LOG.warn("Essais des appareils DICOM en échec : {}", e.getMessage());
         }
         reportIfDue(boxKeys).ifPresent(report -> {
             try {
@@ -425,20 +469,31 @@ public final class CentralRules implements CentralConfigurationStatus {
      * Compte rendu à envoyer à l'annuaire : à chaque changement d'état, et au moins une fois par heure ; vide sinon.
      */
     public synchronized Optional<SignedDocument> reportIfDue(HybridKeyPair boxKeys) {
-        Snapshot s = snapshot();
-        String state = s.sequence() + "/" + s.refused();
+        String state = state();
         Instant now = clock.instant();
         if (state.equals(reportedState) && reportedAt != null && now.isBefore(reportedAt.plus(REPORT_EVERY))) {
             return Optional.empty();
         }
+        Snapshot s = snapshot();
         return Optional.of(ConfigurationReport.of(boxId, s.sequence(), s.appliedAt(), s.refused(), s.refusal(), now)
-                .sign(boxKeys));
+                .withNodes(nodeChecks.get()).sign(boxKeys));
+    }
+
+    /** État des appareils DICOM du site, joint au compte rendu (essais de connexion, envois reçus). */
+    public void nodeChecks(Supplier<List<NodeCheck>> checks) {
+        this.nodeChecks = checks;
+    }
+
+    private String state() {
+        Snapshot s = snapshot();
+        StringBuilder state = new StringBuilder(s.sequence() + "/" + s.refused());
+        nodeChecks.get().forEach(c -> state.append('|').append(c.state()));
+        return state.toString();
     }
 
     /** Le compte rendu a été reçu par l'annuaire. */
     public synchronized void reported(SignedDocument report) {
         reportedAt = clock.instant();
-        Snapshot s = snapshot();
-        reportedState = s.sequence() + "/" + s.refused();
+        reportedState = state();
     }
 }

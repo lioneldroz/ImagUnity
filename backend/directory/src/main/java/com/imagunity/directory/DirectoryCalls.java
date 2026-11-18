@@ -67,17 +67,24 @@ final class DirectoryCalls {
      * son entrée) ; {@code null} sans compte rendu lisible ou sans versions : l'entrée garde alors les siennes.
      */
     java.util.List<String> reportedProtocols(BoxEntry entry) throws IOException {
+        return report(entry).filter(r -> !r.protocols().isEmpty()).map(ConfigurationReport::protocols).orElse(null);
+    }
+
+    /**
+     * Dernier compte rendu de cette box, vérifié avec la clé de son entrée ; vide s'il n'y en a pas, ou s'il est altéré
+     * ou signé par une autre box.
+     */
+    java.util.Optional<ConfigurationReport> report(BoxEntry entry) throws IOException {
         HttpResponse<String> response = get("/directory/v1/configurations/reports/" + entry.boxId(), true);
         if (response.statusCode() != 200) {
-            return null;
+            return java.util.Optional.empty();
         }
         try {
-            ConfigurationReport report = ConfigurationReport.verify(SignedDocument.fromJson(response.body()),
+            return java.util.Optional.of(ConfigurationReport.verify(SignedDocument.fromJson(response.body()),
                     id -> id.equals(entry.boxId()) ? java.util.Optional.of(entry.signingKey())
-                            : java.util.Optional.empty());
-            return report.protocols().isEmpty() ? null : report.protocols();
+                            : java.util.Optional.empty()));
         } catch (RuntimeException e) {
-            return null; // compte rendu altéré ou d'une autre box : ignoré
+            return java.util.Optional.empty(); // compte rendu altéré ou d'une autre box : ignoré
         }
     }
 

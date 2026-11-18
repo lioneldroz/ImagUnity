@@ -104,10 +104,15 @@ public class ConfigurationService {
         if (dicom == null) {
             return;
         }
+        compile(dicom);
+    }
+
+    /** Configuration DICOM compilée comme la box le fera. */
+    static com.imagunity.rules.DicomRouting compile(CentralConfiguration.Dicom dicom) {
         java.util.function.Function<List<CentralConfiguration.Route>, List<com.imagunity.rules.DicomRouting.RouteSpec>>
                 routes = list -> list.stream().map(r -> new com.imagunity.rules.DicomRouting.RouteSpec(r.name(),
                 r.from(), r.calledAet(), r.and(), r.or(), r.to())).toList();
-        com.imagunity.rules.DicomRouting.compile(dicom.aet(), dicom.nodes().stream().map(n ->
+        return com.imagunity.rules.DicomRouting.compile(dicom.aet(), dicom.nodes().stream().map(n ->
                 new com.imagunity.rules.DicomRouting.NodeSpec(n.name(), n.aet(), n.host(), n.port(), n.source(),
                         n.destination())).toList(), routes.apply(dicom.outgoing()), routes.apply(dicom.incoming()));
     }

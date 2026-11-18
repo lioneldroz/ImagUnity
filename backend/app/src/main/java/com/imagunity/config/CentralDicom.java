@@ -54,6 +54,27 @@ public final class CentralDicom {
     private final String localAet;
     private final Clock clock;
     private final Map<UUID, Instant> attempts = new ConcurrentHashMap<>();
+    private final Echo echo;
+    /** Ce que la box a constaté de chaque appareil, par nom de nœud. */
+    private final Map<String, Seen> seen = new ConcurrentHashMap<>();
+
+    /** Intervalle entre deux essais de connexion d'une même destination inchangée. */
+    static final Duration ECHO_EVERY = Duration.ofMinutes(30);
+
+    /** Essai de connexion DICOM : vide si l'appareil répond, sinon la raison. */
+    @FunctionalInterface
+    public interface Echo {
+        Optional<String> echo(String host, int port, String calledAet, String callingAet);
+    }
+
+    /**
+     * Constat sur un appareil : dernier essai (pour quelle définition : AET, adresse, port), dernier envoi reçu, dernière
+     * connexion refusée.
+     */
+    private record Seen(String tested, Instant echoAt, String echoError, Instant receivedAt, Instant refusedAt,
+                        String refusedFrom) {
+        static final Seen NONE = new Seen(null, null, null, null, null, null);
+    }
 
     /**
      * @param routing     configuration DICOM centrale en vigueur
@@ -62,6 +83,14 @@ public final class CentralDicom {
      */
     public CentralDicom(Supplier<Optional<DicomRouting>> routing, PeerRepository peers, LocalDirectory directory,
                         UUID self, PairingService pairing, String addressKind, String localAet, Clock clock) {
+        this(routing, peers, directory, self, pairing, addressKind, localAet, clock,
+                (host, port, called, calling) -> com.imagunity.dicom.DicomEcho.echo(host, port, called, calling,
+                        com.imagunity.dicom.DicomEcho.TIMEOUT));
+    }
+
+    CentralDicom(Supplier<Optional<DicomRouting>> routing, PeerRepository peers, LocalDirectory directory,
+                 UUID self, PairingService pairing, String addressKind, String localAet, Clock clock, Echo echo) {
+        this.echo = echo;
         this.routing = routing;
         this.peers = peers;
         this.directory = directory;
@@ -97,12 +126,15 @@ public final class CentralDicom {
                 return false;
             }
             String host = node.get().host();
+            String name = node.get().name();
             if (host == null) {
+                received(name);
                 return true;
             }
             try {
                 for (InetAddress address : InetAddress.getAllByName(host)) {
                     if (address.equals(from)) {
+                        received(name);
                         return true;
                     }
                 }
@@ -111,6 +143,7 @@ public final class CentralDicom {
             } catch (UnknownHostException e) {
                 LOG.warn("Source {} : adresse {} introuvable", callingAet, host);
             }
+            refused(name, from == null ? "?" : from.getHostAddress());
             return false;
         }
 
@@ -165,6 +198,75 @@ public final class CentralDicom {
             }
             return targets;
         }
+    }
+
+    private void received(String node) {
+        Instant now = clock.instant();
+        seen.compute(node, (k, v) -> {
+            Seen o = v == null ? Seen.NONE : v;
+            return new Seen(o.tested(), o.echoAt(), o.echoError(), now, o.refusedAt(), o.refusedFrom());
+        });
+    }
+
+    private void refused(String node, String from) {
+        Instant now = clock.instant();
+        seen.compute(node, (k, v) -> {
+            Seen o = v == null ? Seen.NONE : v;
+            return new Seen(o.tested(), o.echoAt(), o.echoError(), o.receivedAt(), now, from);
+        });
+    }
+
+    /**
+     * Essaie la connexion (C-ECHO) de chaque destination de la configuration en vigueur : une destination nouvelle ou
+     * modifiée tout de suite, les autres toutes les {@link #ECHO_EVERY}. La box se présente sous son AET.
+     *
+     * @return nombre d'essais faits
+     */
+    public int checkDestinations() {
+        Optional<DicomRouting> d = routing.get();
+        if (d.isEmpty()) {
+            return 0;
+        }
+        String aet = d.get().aet() != null ? d.get().aet() : localAet;
+        Instant now = clock.instant();
+        int done = 0;
+        for (DicomRouting.Node node : d.get().nodes().values()) {
+            if (!node.destination() || node.host() == null || node.port() == null) {
+                continue;
+            }
+            String definition = node.aet() + "@" + node.host() + ":" + node.port() + " par " + aet;
+            Seen o = seen.getOrDefault(node.name(), Seen.NONE);
+            if (definition.equals(o.tested()) && o.echoAt() != null && now.isBefore(o.echoAt().plus(ECHO_EVERY))) {
+                continue;
+            }
+            Optional<String> error = echo.echo(node.host(), node.port(), node.aet(), aet);
+            error.ifPresentOrElse(e -> LOG.warn("Appareil « {} » ({}) : essai de connexion en échec : {}", node.name(),
+                    definition, e), () -> LOG.debug("Appareil « {} » : C-ECHO réussi", node.name()));
+            Instant at = clock.instant();
+            seen.compute(node.name(), (k, v) -> {
+                Seen p = v == null ? Seen.NONE : v;
+                return new Seen(definition, at, error.orElse(null), p.receivedAt(), p.refusedAt(), p.refusedFrom());
+            });
+            done++;
+        }
+        return done;
+    }
+
+    /** État des appareils de la configuration en vigueur, pour le compte rendu à l'annuaire. */
+    public List<com.imagunity.directory.NodeCheck> checks() {
+        Optional<DicomRouting> d = routing.get();
+        if (d.isEmpty()) {
+            return List.of();
+        }
+        List<com.imagunity.directory.NodeCheck> list = new ArrayList<>();
+        for (DicomRouting.Node node : d.get().nodes().values()) {
+            Seen o = seen.getOrDefault(node.name(), Seen.NONE);
+            boolean tested = node.destination() && o.tested() != null;
+            list.add(new com.imagunity.directory.NodeCheck(node.name(), tested ? o.echoAt() : null,
+                    tested ? o.echoError() : null, node.source() ? o.receivedAt() : null,
+                    node.source() ? o.refusedAt() : null, node.source() ? o.refusedFrom() : null));
+        }
+        return list;
     }
 
     private String label(UUID box) {
