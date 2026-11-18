@@ -210,6 +210,43 @@ class IuFileReplicasTest {
     }
 
     @Test
+    void aDownloadInterruptedWhileWaitingStopsAtOnce() throws Exception {
+        IuFileUploader.UploadState first = uploader().prepare(packet("paquet.iu1", 5), 256 * ChunkLayout.KIB,
+                Duration.ofHours(1));
+        IuFileDownloader interrupted = new IuFileDownloader(http, Clock.systemUTC(),
+                new Retry(Duration.ofSeconds(3), Duration.ofSeconds(1), d -> {
+                    throw new InterruptedException("arrêt de la box");
+                }));
+        try {
+            assertThatThrownBy(() -> interrupted.download(IuFileUploader.description(List.of(elsewhere(first, DEAD)),
+                    false), dir.resolve("recu.iu1"), Set.of(), n -> { }, n -> { }))
+                    .isInstanceOf(TransportException.class).hasMessageContaining("interrompu");
+            assertThat(Thread.currentThread().isInterrupted()).as("statut d'interruption gardé").isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void anInterruptedRequestFailsAtOnce() throws Exception {
+        // Relais qui accepte la connexion sans jamais répondre : seule l'interruption arrête la requête.
+        try (java.net.ServerSocket silent = new java.net.ServerSocket(0)) {
+            IuFileClient client = new IuFileClient(URI.create("http://127.0.0.1:" + silent.getLocalPort()), http,
+                    Clock.systemUTC());
+            java.security.PrivateKey key = java.security.KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+                    .getPrivate();
+            Thread.currentThread().interrupt();
+            try {
+                assertThatThrownBy(() -> client.state("envoi", key)).isInstanceOf(IOException.class)
+                        .hasMessageContaining("interrompue");
+                assertThat(Thread.currentThread().isInterrupted()).isTrue();
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    @Test
     void settingsCheckTheRelaysAndCountTheCopies() {
         Path state = dir.resolve("etat");
         Duration hour = Duration.ofHours(1);
