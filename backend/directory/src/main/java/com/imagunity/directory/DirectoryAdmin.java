@@ -111,6 +111,7 @@ public final class DirectoryAdmin {
                 case "proteger" -> protect(options);
                 case "configuration-signer" -> signConfiguration(options);
                 case "configuration-publier" -> publishConfiguration(options);
+                case "essai-connexion" -> requestTest(options);
                 case "code-creer" -> createCode(options);
                 case "enroler-attente" -> enrollPending(options);
                 case "renouveler" -> renewAll(options);
@@ -303,6 +304,24 @@ public final class DirectoryAdmin {
                 return 1;
             }
         }
+        return 0;
+    }
+
+    /**
+     * « Tester maintenant » en ligne de commande : demande signée à une box d'essayer tout de suite la connexion de ses
+     * destinations DICOM ; la box répond par son compte rendu (identifiant de la demande affiché).
+     */
+    private int requestTest(Map<String, String> o) throws IOException {
+        Organization organization = organization(o);
+        java.util.UUID box = java.util.UUID.fromString(require(o, "box-id"));
+        SignedDocument request = organization.signTestRequest(box, clock.instant());
+        HttpResponse<String> response = post(o, "/directory/v1/test-requests", request);
+        if (response.statusCode() != 201 && response.statusCode() != 200) {
+            err.println("Demande d'essai refusée (HTTP " + response.statusCode() + ") : " + response.body());
+            return 1;
+        }
+        out.println("Essai de connexion demandé à la box " + box + " : demande "
+                + Json.read(request.payload(), TestRequest.class, "Demande d'essai").id());
         return 0;
     }
 
@@ -835,6 +854,8 @@ public final class DirectoryAdmin {
                   proteger           --cles <fichier> [--box]
                   configuration-signer  --cles <clé organisation> --brouillon <fichier> --sortie <fichier> [--confirmer]
                   configuration-publier --annuaire <url> --configuration <fichier> [--compte <utilisateur:mot de passe>]
+                  essai-connexion    --cles <clé organisation> --annuaire <url> --box-id <uuid>
+                                     [--compte <utilisateur:mot de passe>]
                   code-creer         --codes <fichier> --nom <nom de la box> [--groupes a,b] [--validite-jours 30]
                   enroler-attente    --cles <clé organisation> --codes <fichier> --annuaire <url> [--validite-jours 90]
                                      [--confirmer]

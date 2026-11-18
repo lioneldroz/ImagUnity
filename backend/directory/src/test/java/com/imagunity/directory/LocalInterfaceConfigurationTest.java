@@ -56,6 +56,8 @@ class LocalInterfaceConfigurationTest {
     private final HybridKeyPair nordKeys = HybridKeyPair.generate();
     private final java.util.concurrent.atomic.AtomicReference<String> nordReport = new java.util.concurrent.atomic
             .AtomicReference<>();
+    private final List<String> testRequests = new CopyOnWriteArrayList<>();
+    private final AtomicInteger testStatus = new AtomicInteger(201);
     private HttpServer directory;
     private LocalInterface ui;
 
@@ -108,6 +110,10 @@ class LocalInterfaceConfigurationTest {
             } else if (path.equals("/directory/v1/configurations")) {
                 status = configurationsStatus.get();
                 body = list("configurations", configurations);
+            } else if (path.equals("/directory/v1/test-requests") && method.equals("POST")) {
+                status = testStatus.get();
+                testRequests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                body = "";
             } else if (path.equals("/directory/v1/configurations/reports/" + nord) && nordReport.get() != null) {
                 body = nordReport.get();
             } else if (path.equals("/admin/api/state")) {
@@ -309,6 +315,35 @@ class LocalInterfaceConfigurationTest {
                 .isEqualTo("codes.json");
         java.nio.file.Files.writeString(dir.resolve("sauvegarde.json"), "illisible");
         assertThat(json(call("GET", "/api/etat", null)).path("sauvegarde").has("le")).isFalse();
+    }
+
+    @Test
+    void testNowIsSignedForTheBoxAndItsAnswerIsShown() throws Exception {
+        HttpResponse<String> asked = call("POST", "/api/essai-connexion", "{\"boxId\":\"" + nord + "\",\"phrase\":\""
+                + PHRASE + "\"}");
+        assertThat(asked.statusCode()).as(asked.body()).isEqualTo(200);
+        String id = json(asked).path("id").asString();
+        assertThat(json(asked).path("message").asString()).contains("« Box Nord »");
+        TestRequest sent = TestRequest.verify(SignedDocument.fromJson(testRequests.getLast()), org.id(),
+                orgKeys.publicKey(), NOW);
+        assertThat(sent.boxId()).isEqualTo(nord);
+        assertThat(sent.id()).isEqualTo(id);
+
+        assertThat(call("POST", "/api/configuration", dicomBody(nord, "Modality", PHRASE)).statusCode()).isEqualTo(200);
+        nordReport.set(ConfigurationReport.of(nord, 5, NOW, 0, null, NOW).withNodes(List.of(new NodeCheck("pacs-nord",
+                NOW, null, null, null, null))).withAnswered(id).sign(nordKeys).toJson());
+        assertThat(nordBox().path("appareils").path("essai").asString()).isEqualTo(id);
+
+        assertThat(call("POST", "/api/essai-connexion", "{\"boxId\":\"" + nord + "\",\"phrase\":\"fausse\"}")
+                .statusCode()).isEqualTo(403);
+        assertThat(call("POST", "/api/essai-connexion", "{\"boxId\":\"" + revoked + "\",\"phrase\":\"" + PHRASE
+                + "\"}").statusCode()).as("box révoquée").isEqualTo(404);
+        testStatus.set(404);
+        assertThat(call("POST", "/api/essai-connexion", "{\"boxId\":\"" + nord + "\",\"phrase\":\"" + PHRASE
+                + "\"}").body()).contains("mettez-le à jour");
+        testStatus.set(500);
+        assertThat(call("POST", "/api/essai-connexion", "{\"boxId\":\"" + nord + "\",\"phrase\":\"" + PHRASE
+                + "\"}").body()).contains("HTTP 500");
     }
 
     private JsonNode nordBox() throws Exception {

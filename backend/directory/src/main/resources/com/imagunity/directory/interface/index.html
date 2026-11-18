@@ -411,6 +411,10 @@
 
       <h3 class="bloc"><span id="titre-appareils">Appareils du site</span>
         <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
+      <div class="actions essai-connexion">
+        <button type="button" class="secondaire" id="config-tester">Tester maintenant</button>
+        <span class="discret" id="config-essai-statut" role="status"></span>
+      </div>
       <div class="tableau">
         <table aria-labelledby="titre-appareils">
           <thead><tr><th scope="col">Nom</th><th scope="col">AET</th><th scope="col">Adresse</th><th scope="col">Port</th><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">État vu par la box</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>

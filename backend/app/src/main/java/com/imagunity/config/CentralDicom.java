@@ -223,6 +223,14 @@ public final class CentralDicom {
      * @return nombre d'essais faits
      */
     public int checkDestinations() {
+        return checkDestinations(false);
+    }
+
+    /**
+     * Comme {@link #checkDestinations()} ; avec {@code force}, toutes les destinations sont essayées tout de suite
+     * (demande d'essai du responsable).
+     */
+    public int checkDestinations(boolean force) {
         Optional<DicomRouting> d = routing.get();
         if (d.isEmpty()) {
             return 0;
@@ -236,7 +244,8 @@ public final class CentralDicom {
             }
             String definition = node.aet() + "@" + node.host() + ":" + node.port() + " par " + aet;
             Seen o = seen.getOrDefault(node.name(), Seen.NONE);
-            if (definition.equals(o.tested()) && o.echoAt() != null && now.isBefore(o.echoAt().plus(ECHO_EVERY))) {
+            if (!force && definition.equals(o.tested()) && o.echoAt() != null
+                    && now.isBefore(o.echoAt().plus(ECHO_EVERY))) {
                 continue;
             }
             Optional<String> error = echo.echo(node.host(), node.port(), node.aet(), aet);

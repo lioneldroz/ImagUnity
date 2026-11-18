@@ -207,3 +207,5 @@ button.ajouter { background: transparent; color: var(--accent); border: 1px dash
 .evitement:focus { top: 8px; }
 .visuellement-cache { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 main:focus, main > section h2:focus { outline: none; }
+.essai-connexion { margin: 8px 0; }
+.essai-connexion .discret:empty { display: none; }

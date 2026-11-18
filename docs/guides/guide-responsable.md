@@ -471,6 +471,7 @@ Plutôt que de modifier le fichier `box.env` de chaque box sur place, configurez
    - pour une destination, le dernier essai de connexion (C-ECHO), réussi ou en échec avec sa raison (« pas de réponse dans le délai », « association refusée par l'appareil »…) ;
    - pour une source, le dernier envoi reçu, ou une connexion refusée parce qu'elle venait d'une autre adresse que celle déclarée ;
    - « Nouveau » ou « Modifié » pour un appareil pas encore publié : la box l'essaiera dès qu'elle appliquera le document.
+   - **« Tester maintenant »** : la box essaie tout de suite toutes ses destinations publiées. La demande est signée avec la clé de l'organisation (phrase de passe, si la clé n'est pas déverrouillée) et déposée dans l'annuaire, qui réveille la box ; la réponse arrive en quelques secondes, et la ligne sous le bouton l'annonce (« Essai terminé à 14:02:07 »). Une box éteinte ou injoignable répond à sa prochaine lecture de l'annuaire. En ligne de commande : `essai-connexion --cles organisation.json --annuaire <url> --box-id <uuid>`.
    - Une **source** a le droit d'envoyer à la box. Si vous indiquez son adresse, seul ce poste peut le faire sous cet AET.
    - Une **destination** reçoit les examens restitués par la box.
 3. **Envois** (routes sortantes) : d'une source (ou de toutes) vers une ou plusieurs box, de votre organisation ou d'un partenaire.
