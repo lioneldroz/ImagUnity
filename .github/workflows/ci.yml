@@ -63,8 +63,8 @@ jobs:
     name: Accessibilité (RGAA 4.1.2)
     # Critères vérifiables automatiquement (axe-core, étiquette RGAAv4) et mesures maison : contrastes des champs,
     # messages de statut, 320 px, espacement du texte, focus, lien d'évitement. Ne remplace pas un audit manuel.
-    # Interfaces couvertes : administration de l'annuaire (/admin/) et interface du responsable, API simulée.
-    # Voir accessibilite/README.md.
+    # Interfaces couvertes : administration de l'annuaire (/admin/), interface du responsable et console de la box,
+    # API simulée. Voir accessibilite/README.md.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,7 +75,12 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: accessibilite/package-lock.json
+          cache-dependency-path: |
+            accessibilite/package-lock.json
+            frontend/package-lock.json
+      - name: Construction de la console de la box (testée telle qu'elle est livrée)
+        working-directory: frontend
+        run: npm ci && npm run build
       - run: npm ci
       - run: npx playwright install --with-deps chromium   # Navigateur de la version de Playwright du lockfile
       - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright, thèmes clair et sombre
