@@ -5,17 +5,8 @@
   --ok: #0F766E; --alerte: #b3261e; --alerte-fond: #fdecea; --code: #E6F2EF; --attention: #8a5a00; --attention-fond: #fff6e5;
   --bandeau: #083D3D; --bandeau-texte: #ffffff; --bandeau-discret: #B7E4D0;
   --inactif-fond: #cfe3dc; --inactif-texte: #48625E;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --inactif-fond: #1d5753; --inactif-texte: #B7E4D0;
-    --fond: #062727; --carte: #0b3535; --texte: #E6F2EF; --discret: #9cc9bb; --bord: #1d5753; --bord-fort: #2f6f69;
-    --accent: #35B7A5; --accent-texte: #062727; --accent-vif: #35B7A5; --menthe: #1d5753; --clair: #0f4441;
-    --ok: #7fdcc0; --alerte: #ff8a80; --alerte-fond: #3a1513; --code: #0f4441; --attention: #f0c060; --attention-fond: #3a2c0c;
-    --bandeau: #041f1f; --bandeau-texte: #ffffff; --bandeau-discret: #B7E4D0;
-  }
+  /* Mode clair seulement, même si le navigateur ou le système est réglé en sombre. */
+  color-scheme: light only;
 }
 * { box-sizing: border-box; }
 body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--fond); color: var(--texte); overflow-x: clip; }
@@ -205,7 +196,3 @@ button.ajouter { background: transparent; color: var(--accent); border: 1px dash
 .sauvegarde.attention { border-color: var(--attention); background: var(--attention-fond); color: var(--attention); }
 .sauvegarde button { justify-self: start; }
 @media (max-width: 760px) { .sauvegarde { width: 100%; margin-top: 4px; } }
-@media (prefers-color-scheme: dark) {
-  .flux .de { color: var(--texte); }
-  .flux .vers { color: var(--texte); }
-}
