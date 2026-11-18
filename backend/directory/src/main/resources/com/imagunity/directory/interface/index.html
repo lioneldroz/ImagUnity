@@ -8,6 +8,7 @@
   <script src="interface.js" defer></script>
 </head>
 <body>
+<a class="evitement" href="#contenu">Aller au contenu</a>
 <header class="bandeau">
   <div class="identite">
     <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path><path d="M9 12l2 2 4-4"></path></svg></span>
@@ -42,13 +43,13 @@
     <button type="button" class="secondaire petit" id="sauvegarder">Sauvegarder maintenant</button>
   </div>
 </nav>
-<main>
-  <p class="message" id="message" hidden></p>
+<main id="contenu" tabindex="-1">
+  <p class="message" id="message" role="status"></p>
 
-  <section id="onglet-tableau" role="region" aria-labelledby="titre-tableau" hidden>
+  <section id="onglet-tableau" aria-labelledby="titre-tableau" hidden>
     <div class="entete-page">
       <div>
-        <h2 id="titre-tableau">Tableau de bord</h2>
+        <h2 id="titre-tableau" tabindex="-1">Tableau de bord</h2>
         <p class="aide" id="tableau-resume">Chargement…</p>
       </div>
       <button type="button" data-aller="codes">Tirer un code d'enrôlement</button>
@@ -57,19 +58,19 @@
     <ul class="afaire" id="afaire"></ul>
     <div class="indicateurs" id="indicateurs"></div>
     <div class="entete-page bloc">
-      <h3>Box de l'organisation</h3>
+      <h3 id="titre-tableau-box">Box de l'organisation</h3>
       <label class="recherche">Rechercher <input type="search" id="tableau-recherche" placeholder="nom ou groupe"></label>
     </div>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Box</th><th>État</th><th>Groupes</th><th>Configuration</th><th>Valide jusqu'au</th></tr></thead>
+      <table aria-labelledby="titre-tableau-box">
+        <thead><tr><th scope="col">Box</th><th scope="col">État</th><th scope="col">Groupes</th><th scope="col">Configuration</th><th scope="col">Valide jusqu'au</th></tr></thead>
         <tbody id="tableau-box"></tbody>
       </table>
     </div>
   </section>
 
-  <section id="onglet-demarrage" role="tabpanel" hidden>
-    <h2>Démarrer et faire vivre l'organisation</h2>
+  <section id="onglet-demarrage" aria-labelledby="titre-demarrage" hidden>
+    <h2 id="titre-demarrage" tabindex="-1">Démarrer et faire vivre l'organisation</h2>
     <p class="aide">Les étapes dans l'ordre. Chacune est vérifiée à l'instant : une coche verte veut dire que c'est
       fait. Vous pouvez revenir ici à tout moment. Les explications détaillées sont dans l'onglet « Aide ».</p>
     <ol class="etapes">
@@ -81,6 +82,7 @@
             les partenaires, les règles communes. Elle se crée <strong>une seule fois</strong>, ici, sur ce poste, et
             ne le quitte jamais.</p>
           <form id="formulaire-organisation" class="formulaire-organisation">
+            <p class="discret">Tous les champs sont obligatoires.</p>
             <label>Identifiant de l'organisation (minuscules, chiffres et tirets ; il ne changera plus)
               <input type="text" id="org-id" required pattern="[a-z0-9][a-z0-9-]{0,63}" maxlength="64" placeholder="chu-exemple" autocomplete="off">
             </label>
@@ -112,12 +114,12 @@
       </li>
 
       <li class="etape" id="etape-site">
-        <div class="entete"><h3>2. Installer la clé publique et l'empreinte sur le site central</h3><span class="badge" id="statut-site"></span></div>
+        <div class="entete"><h3 id="titre-etape-site">2. Installer la clé publique et l'empreinte sur le site central</h3><span class="badge" id="statut-site"></span></div>
         <p>L'annuaire et le relais doivent connaître la clé publique de l'organisation, et son empreinte pour la
           vérifier. Remettez-les à l'exploitant du site central (ou faites-le vous-même) :</p>
         <div class="tableau">
-          <table>
-            <thead><tr><th>Quoi</th><th>Site central (Docker, Linux)</th><th>Station d'essai Windows</th></tr></thead>
+          <table aria-labelledby="titre-etape-site">
+            <thead><tr><th scope="col">Quoi</th><th scope="col">Site central (Docker, Linux)</th><th scope="col">Station d'essai Windows</th></tr></thead>
             <tbody>
               <tr><td>Clé publique</td>
                 <td>copier le fichier téléchargé à l'étape 1 sous le nom <code>deploy/site-central/config/organisation.pub.json</code></td>
@@ -190,9 +192,9 @@
     </ol>
   </section>
 
-  <section id="onglet-aide" role="tabpanel" hidden>
-    <h2>Aide</h2>
-    <nav class="sommaire">
+  <section id="onglet-aide" aria-labelledby="titre-aide" hidden>
+    <h2 id="titre-aide" tabindex="-1">Aide</h2>
+    <nav class="sommaire" aria-label="Sommaire de l'aide">
       <a href="#aide-principe">Le principe</a> · <a href="#aide-fichiers">Les fichiers</a> ·
       <a href="#aide-empreinte">L'empreinte</a> · <a href="#aide-phrase">La phrase de passe</a> ·
       <a href="#aide-groupes">Les groupes</a> · <a href="#aide-enrolement">L'enrôlement</a> ·
@@ -211,8 +213,8 @@
 
     <h3 id="aide-fichiers">Les fichiers et leur raison d'être</h3>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Fichier</th><th>Ce que c'est</th><th>Pourquoi</th><th>Où il va</th></tr></thead>
+      <table aria-labelledby="aide-fichiers">
+        <thead><tr><th scope="col">Fichier</th><th scope="col">Ce que c'est</th><th scope="col">Pourquoi</th><th scope="col">Où il va</th></tr></thead>
         <tbody>
           <tr><td><code>organisation.json</code></td><td><strong>Clé privée</strong> du responsable, chiffrée par la phrase de passe</td>
             <td>Signe les entrées des box, les révocations, les accords et la délégation de fraîcheur. Qui la détient
@@ -329,22 +331,22 @@
     </dl>
   </section>
 
-  <section id="onglet-demandes" role="tabpanel" hidden>
-    <h2>Demandes en attente</h2>
+  <section id="onglet-demandes" aria-labelledby="titre-demandes" hidden>
+    <h2 id="titre-demandes" tabindex="-1">Demandes en attente</h2>
     <p class="aide">Chaque box non enrôlée dépose sa demande dans l'annuaire. Valider signe son entrée ici, sur ce
       poste, avec la clé de l'organisation, puis la publie. Une demande sans code d'enrôlement ne se valide
       qu'après avoir comparé son empreinte avec celle que l'installateur lit sur la box.</p>
     <div id="demandes"><p class="discret">Chargement…</p></div>
   </section>
 
-  <section id="onglet-box" role="tabpanel" hidden>
-    <h2>Box de l'organisation</h2>
+  <section id="onglet-box" aria-labelledby="titre-box" hidden>
+    <h2 id="titre-box" tabindex="-1">Box de l'organisation</h2>
     <p class="aide">Les entrées publiées dans l'annuaire, revérifiées avec la clé de l'organisation. Une entrée
       expirée rend la box injoignable : renouvelez-la avant. Les entrées qui expirent bientôt sont cochées
       d'office.</p>
     <div class="tableau">
-      <table>
-        <thead><tr><th></th><th>Box</th><th>Statut</th><th>Groupes</th><th>Valide jusqu'au</th><th>N°</th><th></th></tr></thead>
+      <table aria-labelledby="titre-box">
+        <thead><tr><th scope="col"><span class="visuellement-cache">Renouveler</span></th><th scope="col">Box</th><th scope="col">Statut</th><th scope="col">Groupes</th><th scope="col">Valide jusqu'au</th><th scope="col">N°</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
         <tbody id="box"></tbody>
       </table>
     </div>
@@ -354,19 +356,19 @@
     </div>
   </section>
 
-  <section id="onglet-codes" role="tabpanel" hidden>
-    <h2>Tirer un code d'enrôlement</h2>
+  <section id="onglet-codes" aria-labelledby="titre-codes" hidden>
+    <h2 id="titre-codes" tabindex="-1">Tirer un code d'enrôlement</h2>
     <p class="aide">Un code par box à venir, à transmettre hors bande (téléphone, courrier, en personne) à son
       installateur, qui le recopie dans la configuration de la box. La box est alors enrôlée avec le nom et les
       groupes fixés ici. Usage unique.</p>
     <form id="formulaire-code" class="grille-code">
-      <label>Nom de la box dans l'annuaire
+      <label>Nom de la box dans l'annuaire (obligatoire)
         <input type="text" id="code-nom" maxlength="256" required placeholder="CHU Exemple — imagerie Nord">
       </label>
       <label>Groupes (séparés par des virgules, facultatif)
         <input type="text" id="code-groupes" placeholder="imagerie-nord, urgences">
       </label>
-      <label>Valable (jours)
+      <label>Valable (jours, obligatoire)
         <input type="number" id="code-jours" min="1" max="365" value="30" required>
       </label>
       <div class="actions"><button type="submit">Tirer le code</button></div>
@@ -377,28 +379,28 @@
       <p class="discret">Ligne à recopier dans <code>box.env</code> :</p>
       <div class="actions"><code id="nouveau-ligne"></code><button type="button" class="secondaire" id="copier">Copier</button></div>
     </div>
-    <h2 class="bloc">Codes tirés</h2>
+    <h2 class="bloc" id="titre-codes-tires">Codes tirés</h2>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Box prévue</th><th>Groupes</th><th>Statut</th><th>Code</th><th></th></tr></thead>
+      <table aria-labelledby="titre-codes-tires">
+        <thead><tr><th scope="col">Box prévue</th><th scope="col">Groupes</th><th scope="col">Statut</th><th scope="col">Code</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
         <tbody id="codes"></tbody>
       </table>
     </div>
   </section>
-  <section id="onglet-configuration" role="tabpanel" hidden>
-    <h2>Configuration des box</h2>
+  <section id="onglet-configuration" aria-labelledby="titre-configuration" hidden>
+    <h2 id="titre-configuration" tabindex="-1">Configuration des box</h2>
     <p class="aide">Les nœuds DICOM du site de chaque box (PACS, modalités, stations) et ses routes : d'une source
       vers des box, et d'une box émettrice vers des PACS. Signée ici avec la clé de l'organisation, publiée par
       l'annuaire, la configuration est appliquée par la box à sa lecture suivante, sans redémarrage. Elle remplace les
       émetteurs autorisés, les destinations et le PACS de restitution de sa configuration locale.</p>
     <div class="config-disposition">
-    <div class="config-liste" id="config-liste" aria-label="Box à configurer"></div>
+    <div class="config-liste" id="config-liste" role="group" aria-label="Box à configurer"></div>
     <div class="config-detail">
     <p class="discret" id="config-vide" hidden></p>
     <div id="config-editeur" hidden>
       <div class="config-entete">
         <div>
-          <h3 id="config-titre"></h3>
+          <h3 id="config-titre">Box choisie</h3>
           <p class="discret" id="config-etat"></p>
         </div>
         <label class="config-aet">AET de la box
@@ -406,11 +408,11 @@
         </label>
       </div>
 
-      <h3 class="bloc">Appareils du site
+      <h3 class="bloc"><span id="titre-appareils">Appareils du site</span>
         <span class="info"><button type="button" class="info-bouton" aria-label="Qu'est-ce qu'un nœud ?" aria-describedby="bulle-noeuds">?</button><span class="bulle" role="tooltip" id="bulle-noeuds">Un nœud est un appareil DICOM du site de la box. Une <strong>source</strong> peut envoyer à la box : son AET est contrôlé, et son adresse aussi si elle est indiquée. Une <strong>destination</strong> reçoit les examens que la box restitue : il lui faut une adresse et un port.</span></span></h3>
       <div class="tableau">
-        <table>
-          <thead><tr><th>Nom</th><th>AET</th><th>Adresse</th><th>Port</th><th>Source</th><th>Destination</th><th>État vu par la box</th><th></th></tr></thead>
+        <table aria-labelledby="titre-appareils">
+          <thead><tr><th scope="col">Nom</th><th scope="col">AET</th><th scope="col">Adresse</th><th scope="col">Port</th><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">État vu par la box</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
           <tbody id="config-noeuds"></tbody>
         </table>
       </div>
@@ -441,7 +443,7 @@
           </label>
           <button type="button" id="essai-lancer">Essayer</button>
         </div>
-        <p id="essai-resultat" class="essai-resultat" role="status" hidden></p>
+        <p id="essai-resultat" class="essai-resultat" role="status"></p>
       </div>
 
       <p class="discret bloc" id="config-regles"></p>
@@ -465,28 +467,28 @@
     </div>
   </section>
 
-  <section id="onglet-partenaires" role="tabpanel" hidden>
-    <h2>Organisations partenaires</h2>
+  <section id="onglet-partenaires" aria-labelledby="titre-partenaires" hidden>
+    <h2 id="titre-partenaires" tabindex="-1">Organisations partenaires</h2>
     <p class="aide">Pour échanger avec les box d'une autre organisation, chaque responsable reconnaît l'autre : il
       signe un accord qui fixe la clé du partenaire, ses relais autorisés et les groupes qui peuvent échanger. Un
       échange ne marche que lorsque les deux responsables ont signé. Sans groupes désignés, aucun échange.</p>
     <div class="tableau">
-      <table>
-        <thead><tr><th>Organisation</th><th>Accord</th><th>Périmètre</th><th>Relais autorisés</th><th></th></tr></thead>
+      <table aria-labelledby="titre-partenaires">
+        <thead><tr><th scope="col">Organisation</th><th scope="col">Accord</th><th scope="col">Périmètre</th><th scope="col">Relais autorisés</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
         <tbody id="partenaires"></tbody>
       </table>
     </div>
     <h2 class="bloc">Reconnaître une organisation</h2>
     <form id="formulaire-partenaire" class="formulaire-partenaire">
-      <label>Clé publique du partenaire : contenu de son fichier <code>organisation.json.pub.json</code>
+      <label>Clé publique du partenaire (obligatoire) : contenu de son fichier <code>organisation.json.pub.json</code>
         <textarea id="partenaire-cle" rows="4" required spellcheck="false" placeholder='{"suite":"IU1","organization":"…","signingKeys":{…}}'></textarea>
       </label>
       <div class="actions"><button type="button" class="secondaire" id="partenaire-lire">Lire la clé</button>
         <span id="partenaire-empreinte" class="discret"></span></div>
-      <label>Adresse de l'annuaire du partenaire
+      <label>Adresse de l'annuaire du partenaire (obligatoire)
         <input type="text" id="partenaire-annuaire" required placeholder="https://annuaire.partenaire.example">
       </label>
-      <label>Relais autorisés du partenaire (séparés par des virgules)
+      <label>Relais autorisés du partenaire (obligatoire, séparés par des virgules)
         <input type="text" id="partenaire-relais" required placeholder="https://relais.partenaire.example">
       </label>
       <label>Groupes locaux autorisés à échanger avec lui (* : tous ; vide : aucun)
@@ -503,9 +505,9 @@
 </main>
 </div>
 
-<dialog id="dialogue-signer">
+<dialog id="dialogue-signer" aria-labelledby="signer-titre">
   <form method="dialog" id="formulaire-signer">
-    <h2 id="signer-titre"></h2>
+    <h2 id="signer-titre">Signer</h2>
     <p id="signer-resume"></p>
     <div id="signer-extra"></div>
     <label id="bloc-phrase">Phrase de passe de la clé du responsable
@@ -514,22 +516,22 @@
     <label class="choix" id="bloc-garder"><input type="checkbox" id="garder">
       Garder la clé déverrouillée pendant cette session (oubliée après 15 minutes sans usage)</label>
     <div class="actions">
-      <button type="submit" id="confirmer-signer"></button>
+      <button type="submit" id="confirmer-signer">Signer</button>
       <button type="button" class="secondaire" id="annuler-signer">Annuler</button>
     </div>
   </form>
 </dialog>
 
-<dialog id="dialogue-confirmer">
-  <form method="dialog">
-    <h2 id="confirmer-titre"></h2>
+<dialog id="dialogue-confirmer" aria-labelledby="confirmer-titre">
+  <div class="dialogue-contenu">
+    <h2 id="confirmer-titre">Confirmer</h2>
     <p id="confirmer-resume"></p>
     <p class="discret" id="confirmer-detail"></p>
     <div class="actions">
-      <button type="button" class="danger" id="confirmer-oui"></button>
+      <button type="button" class="danger" id="confirmer-oui">Confirmer</button>
       <button type="button" class="secondaire" id="confirmer-non">Annuler</button>
     </div>
-  </form>
+  </div>
 </dialog>
 </body>
 </html>

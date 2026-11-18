@@ -2,7 +2,11 @@
 
 Tests automatiques des interfaces web d'ImagUnity au regard du [RGAA 4.1.2](https://accessibilite.numerique.gouv.fr/methode/), lancés par le job **Accessibilité (RGAA 4.1.2)** de la CI (`.github/workflows/ci.yml`).
 
-**Interface couverte** : administration du service d'annuaire (`/admin/`, fichiers de `backend/directory-server/src/main/resources/static/admin/`). L'interface du responsable et la console de la box ne sont pas encore couvertes : elles n'ont pas été auditées.
+**Interfaces couvertes** :
+- administration du service d'annuaire (`/admin/`, fichiers de `backend/directory-server/src/main/resources/static/admin/`) : `tests/admin.spec.js` ;
+- interface locale du responsable (outil du poste du responsable, fichiers de `backend/directory/src/main/resources/com/imagunity/directory/interface/`) : `tests/responsable.spec.js`, dans chacun des huit onglets, sans organisation et avec, et dans les fenêtres de signature et de confirmation.
+
+La console de la box n'est pas encore couverte : elle n'a pas été auditée.
 
 ## Ce qui est contrôlé
 
@@ -17,6 +21,9 @@ Chaque test tourne en thème clair et en thème sombre, avec une API simulée : 
 | Messages de statut en `role="status"`, jamais masqués, et annoncés de nouveau quand ils se répètent | 7.5 | mesure maison |
 | Page lisible à 320 px de large, puis avec l'espacement du texte agrandi, sans défilement horizontal (hors tableaux et code) | 10.11, 10.12 | mesure maison |
 | Lien d'évitement en premier, qui mène au contenu ; indicateur de focus sur chaque élément atteint au clavier | 12.7, 10.7 | Playwright |
+| *Interface du responsable* : chaque champ nommé autrement que par son texte d'exemple ; cases des routes groupées sous une légende ; champs obligatoires signalés | 11.1, 11.5, 11.10 | mesure maison |
+| *Interface du responsable* : urgence des tâches écrite, fenêtres de dialogue nommées, focus conservé par l'actualisation automatique (toutes les 30 s) | 3.1, 7.1, 7.3 | Playwright |
+| *Interface du responsable* : bulles d'aide fermées par Échap, et entières dans l'écran à 320 px | 10.13, 10.11 | Playwright |
 
 La taille des cibles (WCAG 2.2) n'est pas contrôlée : elle ne fait pas partie du RGAA 4.1.2.
 
@@ -35,7 +42,9 @@ npx playwright install chromium
 npm test
 ```
 
-Pour éprouver une autre version de l'interface (par exemple une ancienne) : `ADMIN_STATIQUE=/chemin/vers/admin npx playwright test`.
+Pour éprouver une autre version d'une interface (par exemple une ancienne) : `ADMIN_STATIQUE=/chemin/vers/admin` ou `RESPONSABLE_STATIQUE=/chemin/vers/interface`, puis `npx playwright test`.
+
+La règle `autocomplete-password` du validateur est désactivée : la phrase de passe de la clé du responsable porte volontairement `autocomplete="off"`, pour qu'un gestionnaire de mots de passe ne la mémorise pas (le RGAA, critère 11.13, ne vise que les données personnelles de l'utilisateur).
 
 En cas d'échec, la CI joint le rapport Playwright (`rapport-accessibilite`) : il contient les résultats complets d'axe-core de chaque état testé.
 
