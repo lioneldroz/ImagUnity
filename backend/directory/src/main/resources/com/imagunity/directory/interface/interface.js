@@ -28,11 +28,18 @@ async function api(methode, chemin, corps) {
   return donnees;
 }
 
+// Régions de statut (RGAA 7.5) : toujours présentes, vidées puis remplies pour qu'un même message répété soit annoncé.
+const minuteries = new Map();
+function annoncer(region, texte) {
+  clearTimeout(minuteries.get(region));
+  region.textContent = "";
+  if (texte) minuteries.set(region, setTimeout(() => { region.textContent = texte; }, 50));
+}
+
 function message(texte, genre) {
   const m = $("message");
-  m.textContent = texte;
   m.className = "message " + (genre || "");
-  m.hidden = !texte;
+  annoncer(m, texte);
 }
 
 function element(nom, classe, texte) {
@@ -42,10 +49,11 @@ function element(nom, classe, texte) {
   return e;
 }
 
-function bouton(texte, classe, action) {
+function bouton(texte, classe, action, cle) {
   const b = element("button", classe, texte);
   b.type = "button";
   b.addEventListener("click", action);
+  if (cle) b.dataset.cle = cle;
   return b;
 }
 
@@ -62,6 +70,25 @@ function champ(libelle, valeur, options) {
 
 const jour = (iso) => new Date(iso).toLocaleDateString("fr-FR");
 const listeGroupes = (texte) => texte.split(",").map((g) => g.trim()).filter(Boolean);
+
+// --- Focus conservé quand les listes sont redessinées (actualisation automatique, RGAA 7.3) ---
+
+/** Ce qui permet de retrouver l'élément qui a le focus après un nouveau rendu : sa clé, son id, ou sa section. */
+function reperFocus() {
+  const e = document.activeElement;
+  if (!e || e === document.body) return null;
+  const section = e.closest("main > section");
+  return { cle: e.dataset.cle || null, id: e.id || null, section: section ? section.id : null };
+}
+
+/** Rend le focus perdu pendant le rendu : au même élément s'il existe encore, sinon au titre de la section. */
+function restaurerFocus(repere) {
+  if (!repere || (document.activeElement && document.activeElement !== document.body)) return;
+  const cible = (repere.cle && document.querySelector('[data-cle="' + CSS.escape(repere.cle) + '"]'))
+    || (repere.id && $(repere.id))
+    || (repere.section && $(repere.section).querySelector("h2"));
+  if (cible) cible.focus({ preventScroll: true });
+}
 
 // --- En-tête et onglets ---
 
@@ -253,7 +280,7 @@ function carte(d) {
   c.append(dl);
 
   const choix = {};
-  const valider = bouton("Valider", null, () => validerDemande(d, choix));
+  const valider = bouton("Valider", null, () => validerDemande(d, choix), "demande:" + d.boxId + ":valider");
   valider.disabled = !(d.statut === "code-verifie" || d.statut === "sans-code");
 
   if (d.statut === "sans-code") {
@@ -272,7 +299,7 @@ function carte(d) {
   }
 
   const actions = element("div", "actions");
-  actions.append(valider, bouton("Refuser", "refuser", () => refuserDemande(d)));
+  actions.append(valider, bouton("Refuser", "refuser", () => refuserDemande(d), "demande:" + d.boxId + ":refuser"));
   c.append(actions);
   return c;
 }
@@ -343,6 +370,7 @@ function afficherBox(boites) {
       c.checked = b.aRenouveler;
       c.dataset.nom = b.nom;
       c.setAttribute("aria-label", "Renouveler " + b.nom);
+      c.dataset.cle = "box:" + b.boxId + ":choix";
       c.addEventListener("change", majSelection);
       choix.append(c);
     }
@@ -354,7 +382,7 @@ function afficherBox(boites) {
     const fin = element("td", b.aRenouveler && b.statut === "ACTIVE" ? "bientot" : null, jour(b.valideJusquau));
     if (b.aRenouveler && b.statut === "ACTIVE") fin.append(element("span", "discret", "expire bientôt"));
     const action = element("td");
-    if (b.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquer(b)));
+    if (b.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquer(b), "box:" + b.boxId + ":revoquer"));
     tr.append(choix, nom, statut, element("td", null, b.groupes.length ? b.groupes.join(", ") : "—"), fin,
       element("td", null, String(b.serie)), action);
     corps.append(tr);
@@ -414,7 +442,7 @@ function afficherCodes(codes) {
     statut.append(element("span", "discret", c.statut === "utilise"
       ? "le " + jour(c.utiliseLe) + ", box " + c.boxId : (c.statut === "libre" ? "jusqu'au " : "le ") + jour(c.expireLe)));
     const action = element("td");
-    if (c.statut !== "utilise") action.append(bouton("Retirer", "secondaire petit", () => retirerCode(c)));
+    if (c.statut !== "utilise") action.append(bouton("Retirer", "secondaire petit", () => retirerCode(c), "code:" + c.id + ":retirer"));
     const tr = element("tr");
     tr.append(element("td", null, c.nom), element("td", null, c.groupes.length ? c.groupes.join(", ") : "—"), statut,
       element("td", "mono", c.code || ""), action);
@@ -484,8 +512,8 @@ function afficherPartenaires(partenaires) {
     perimetre.append(element("span", null, "locaux : " + portee(p.groupesLocaux)),
       element("span", "discret", "partenaire : " + portee(p.groupesPartenaire)));
     const action = element("td");
-    action.append(bouton("Renouveler", "secondaire petit", () => renouvelerAccord(p)));
-    if (p.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquerAccord(p)));
+    action.append(bouton("Renouveler", "secondaire petit", () => renouvelerAccord(p), "partenaire:" + p.empreinte + ":renouveler"));
+    if (p.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquerAccord(p), "partenaire:" + p.empreinte + ":revoquer"));
     tr.append(nom, accord, perimetre, element("td", "small", p.relais.join(", ")), action);
     corps.append(tr);
   }
@@ -579,7 +607,7 @@ function statut(id, fait, texteFait, texteAFaire, genre) {
 function copiable(id, texte) {
   const conteneur = $(id);
   const code = element("code", null, texte);
-  conteneur.replaceChildren(code, bouton("Copier", "secondaire petit", () => copier(texte)));
+  conteneur.replaceChildren(code, bouton("Copier", "secondaire petit", () => copier(texte), "copier:" + id));
 }
 
 async function copier(texte) {
@@ -767,6 +795,7 @@ function rendreListeBox() {
     const bt = element("button");
     bt.type = "button";
     bt.setAttribute("aria-pressed", String(b.boxId === boxSelection));
+    bt.dataset.cle = "config:" + b.boxId;
     const textes = element("span");
     textes.append(element("span", "nom", b.nom), element("span", "groupes", b.groupes && b.groupes.length ? b.groupes.join(", ") : "sans groupe"));
     const [libelle, genre] = etiquetteConfig(b);
@@ -879,10 +908,11 @@ function afficherChangements() {
   $("config-publier").disabled = n === 0;
 }
 
-function caseACocher(libelle, coche, action) {
+function caseACocher(libelle, coche, action, nom) {
   const input = element("input");
   input.type = "checkbox";
   input.checked = coche;
+  if (nom) input.setAttribute("aria-label", nom);
   input.addEventListener("change", () => { action(input.checked); modifie(); });
   const label = element("label");
   label.append(input, document.createTextNode(libelle));
@@ -895,6 +925,7 @@ function champTexte(valeur, action, options) {
   input.value = valeur === null || valeur === undefined ? "" : valeur;
   if (options && options.placeholder) input.placeholder = options.placeholder;
   if (options && options.maxLength) input.maxLength = options.maxLength;
+  if (options && options.nom) input.setAttribute("aria-label", options.nom);
   input.addEventListener("input", () => { action(input.value); modifie(); });
   if (options && options.surChangement) input.addEventListener("change", options.surChangement);
   return input;
@@ -965,12 +996,14 @@ function rendreNoeuds() {
   edition.nodes.forEach((n, i) => {
     const tr = element("tr");
     const cellule = (contenu) => { const td = element("td"); td.append(contenu); tr.append(td); };
-    cellule(champTexte(n.name, (v) => { n.name = v; }, { placeholder: "pacs-nord", maxLength: 64, surChangement: rendreRoutes }));
-    cellule(champTexte(n.aet, (v) => { n.aet = v; }, { placeholder: "PACS_NORD", maxLength: 16 }));
-    cellule(champTexte(n.host, (v) => { n.host = v; }, { placeholder: "10.2.0.15", maxLength: 253 }));
-    cellule(champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104" }));
-    cellule(caseACocher("", n.source, (v) => { n.source = v; rendreRoutes(); }));
-    cellule(caseACocher("", n.destination, (v) => { n.destination = v; rendreRoutes(); }));
+    // Champs sans étiquette visible (en-têtes de colonne) : nommés par la colonne et le rang de l'appareil (RGAA 11.1).
+    const rang = " de l'appareil " + (i + 1);
+    cellule(champTexte(n.name, (v) => { n.name = v; }, { placeholder: "pacs-nord", maxLength: 64, surChangement: rendreRoutes, nom: "Nom" + rang }));
+    cellule(champTexte(n.aet, (v) => { n.aet = v; }, { placeholder: "PACS_NORD", maxLength: 16, nom: "AET" + rang }));
+    cellule(champTexte(n.host, (v) => { n.host = v; }, { placeholder: "10.2.0.15", maxLength: 253, nom: "Adresse" + rang }));
+    cellule(champTexte(n.port, (v) => { n.port = v; }, { type: "number", placeholder: "104", nom: "Port" + rang }));
+    cellule(caseACocher("", n.source, (v) => { n.source = v; rendreRoutes(); }, "Source" + rang));
+    cellule(caseACocher("", n.destination, (v) => { n.destination = v; rendreRoutes(); }, "Destination" + rang));
     const td = element("td", "etat-appareils");
     for (const [texte, genre, detail] of etatAppareil(n, b)) {
       const etiquette = element("span", "etiquette etat-appareil " + genre, texte);
@@ -990,8 +1023,9 @@ function nomBox(id) {
 }
 
 function listeChoix(titre, options, choisis, vide) {
-  const bloc = element("div");
-  bloc.append(element("div", "discret", titre));
+  // Cases liées regroupées sous leur titre (RGAA 11.5).
+  const bloc = element("fieldset", "choix-groupe");
+  bloc.append(element("legend", "discret", titre));
   const liste = element("div", "choix-liste");
   if (!options.length) liste.append(element("span", "discret", vide));
   options.forEach(([valeur, libelle]) => liste.append(caseACocher(libelle, choisis.includes(valeur), (c) => {
@@ -1093,34 +1127,35 @@ function majEssai() {
 
 async function essayer() {
   const zone = $("essai-resultat");
-  zone.hidden = false;
   zone.className = "essai-resultat";
   let dicom;
   try {
     dicom = dicomAPublier();
   } catch (e) {
     zone.classList.add("refus");
-    zone.textContent = e.message;
+    annoncer(zone, e.message);
     return;
   }
   const [sens, de] = $("essai-de").value.split(/:(.*)/s);
   try {
     const r = await api("POST", "/api/configuration/essai", { dicom, sens, de, aetAppele: $("essai-aet").value.trim(), champs: $("essai-champs").value });
+    let texte;
     if (sens === "envoi") {
-      zone.textContent = r.route
+      texte = r.route
         ? "Envoi « " + r.route + " » (n° " + r.rang + ") → " + (r.vers.length ? r.vers.map(nomBox).join(", ") : "aucune box") + "."
         : "Aucun envoi ne correspond : la box refuserait l'instance, et l'appareil la garderait en échec.";
     } else {
-      zone.textContent = r.route
+      texte = r.route
         ? "Réception « " + r.route + " » (n° " + r.rang + ") → " + r.vers.join(", ") + "."
         : dicom.incoming.length
           ? "Aucune réception ne correspond : la box ne restituerait pas l'instance (signalé dans sa console)."
           : "Aucune réception déclarée : la box restituerait au PACS de sa configuration locale.";
     }
     if (!r.route) zone.classList.add("refus");
+    annoncer(zone, texte);
   } catch (e) {
     zone.classList.add("refus");
-    zone.textContent = e.message;
+    annoncer(zone, e.message);
   }
 }
 
@@ -1256,7 +1291,11 @@ function afficherTableau(donnees) {
     const li = element("li");
     const texte = element("div", "texte");
     texte.append(element("div", "titre", t.titre), element("div", "discret", t.detail));
-    li.append(element("span", "point " + t.urgence), texte, bouton(t.action, "secondaire", () => aller(t.aller)));
+    // L'urgence est écrite, pas seulement signalée par une couleur (RGAA 3.1).
+    const urgence = { urgent: ["Urgent", "refus"], bientot: ["Bientôt", "attention"] }[t.urgence];
+    const repere = urgence ? element("span", "etiquette urgence " + urgence[1], urgence[0]) : element("span", "point");
+    if (!urgence) repere.setAttribute("aria-hidden", "true");
+    li.append(repere, texte, bouton(t.action, "secondaire", () => aller(t.aller), "afaire:" + t.aller + ":" + t.titre));
     zone.append(li);
   }
   $("tableau-resume").textContent = afaire.length
@@ -1414,6 +1453,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelectorAll("[data-copier]").forEach((b) => b.addEventListener("click", () => copier($(b.dataset.copier).textContent)));
   document.querySelectorAll("[data-aller]").forEach((b) => b.addEventListener("click", () => ongletActif(b.dataset.aller)));
+  // Bulles d'aide : Échap les ferme sans déplacer le pointeur ni le focus (RGAA 10.13).
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") document.querySelectorAll(".info:hover, .info:focus-within").forEach((i) => i.classList.add("ferme"));
+  });
+  document.querySelectorAll(".info").forEach((i) => {
+    i.addEventListener("mouseleave", () => i.classList.remove("ferme"));
+    i.addEventListener("focusout", () => i.classList.remove("ferme"));
+  });
   $("formulaire-signer").addEventListener("submit", soumettreSignature);
   $("annuler-signer").addEventListener("click", () => { $("phrase").value = ""; $("dialogue-signer").close(); });
   $("confirmer-oui").addEventListener("click", soumettreConfirmation);
@@ -1469,6 +1516,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const actif = document.activeElement;
     const saisie = document.querySelector("dialog[open], .verification input:checked")
       || (actif && actif.closest(".verification, #formulaire-code, #box, #formulaire-partenaire, #formulaire-organisation, #formulaire-compte, #config-editeur"));
-    if (!saisie) charger();
+    if (!saisie) {
+      const repere = reperFocus();
+      charger().then(() => restaurerFocus(repere));
+    }
   }, 30000);
 });
