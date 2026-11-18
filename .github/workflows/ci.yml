@@ -83,7 +83,7 @@ jobs:
         run: npm ci && npm run build
       - run: npm ci
       - run: npx playwright install --with-deps chromium   # Navigateur de la version de Playwright du lockfile
-      - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright, thèmes clair et sombre
+      - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright (thème clair ; système sombre vérifié)
         env:
           CI: 'true'
       - uses: actions/upload-artifact@v4   # Rapport détaillé (résultats axe-core joints à chaque test)
