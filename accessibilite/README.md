@@ -4,9 +4,8 @@ Tests automatiques des interfaces web d'ImagUnity au regard du [RGAA 4.1.2](http
 
 **Interfaces couvertes** :
 - administration du service d'annuaire (`/admin/`, fichiers de `backend/directory-server/src/main/resources/static/admin/`) : `tests/admin.spec.js` ;
-- interface locale du responsable (outil du poste du responsable, fichiers de `backend/directory/src/main/resources/com/imagunity/directory/interface/`) : `tests/responsable.spec.js`, dans chacun des huit onglets, sans organisation et avec, et dans les fenêtres de signature et de confirmation.
-
-La console de la box n'est pas encore couverte : elle n'a pas été auditée.
+- interface locale du responsable (outil du poste du responsable, fichiers de `backend/directory/src/main/resources/com/imagunity/directory/interface/`) : `tests/responsable.spec.js`, dans chacun des huit onglets, sans organisation et avec, et dans les fenêtres de signature et de confirmation ;
+- console de la box (React, `frontend/`), **telle qu'elle est construite** (`frontend/dist`) : `tests/console.spec.js`, flux d'événements de la box simulé lui aussi.
 
 ## Ce qui est contrôlé
 
@@ -24,6 +23,8 @@ Chaque test tourne en thème clair et en thème sombre, avec une API simulée : 
 | *Interface du responsable* : chaque champ nommé autrement que par son texte d'exemple ; cases des routes groupées sous une légende ; champs obligatoires signalés | 11.1, 11.5, 11.10 | mesure maison |
 | *Interface du responsable* : urgence des tâches écrite, fenêtres de dialogue nommées, focus conservé par l'actualisation automatique (toutes les 30 s) | 3.1, 7.1, 7.3 | Playwright |
 | *Interface du responsable* : bulles d'aide fermées par Échap, et entières dans l'écran à 320 px | 10.13, 10.11 | Playwright |
+| *Console* : détail des paquets d'un envoi ouvert et fermé au clavier (`aria-expanded`), focus conservé après une relance et un appairage | 7.1, 7.3 | Playwright |
+| *Console* : état du flux et résultats (appairage, relance) annoncés ; champ d'appairage avec étiquette visible et contour contrasté ; tableaux titrés, en-têtes déclarés | 7.5, 11.1, 3.3, 5.4, 5.7 | mesure maison |
 
 La taille des cibles (WCAG 2.2) n'est pas contrôlée : elle ne fait pas partie du RGAA 4.1.2.
 
@@ -33,16 +34,17 @@ Ces tests évitent les régressions sur ce qui se mesure. Ils **ne suffisent pas
 
 ## En local
 
-Prérequis : Node.js 24.
+Prérequis : Node.js 24. La console de la box se construit d'abord (`tests/console.spec.js` le rappelle sinon) :
 
 ```bash
+(cd frontend && npm ci && npm run build)
 cd accessibilite
 npm ci
 npx playwright install chromium
 npm test
 ```
 
-Pour éprouver une autre version d'une interface (par exemple une ancienne) : `ADMIN_STATIQUE=/chemin/vers/admin` ou `RESPONSABLE_STATIQUE=/chemin/vers/interface`, puis `npx playwright test`.
+Pour éprouver une autre version d'une interface (par exemple une ancienne) : `ADMIN_STATIQUE=/chemin/vers/admin`, `RESPONSABLE_STATIQUE=/chemin/vers/interface` ou `CONSOLE_STATIQUE=/chemin/vers/dist` (console construite), puis `npx playwright test`.
 
 La règle `autocomplete-password` du validateur est désactivée : la phrase de passe de la clé du responsable porte volontairement `autocomplete="off"`, pour qu'un gestionnaire de mots de passe ne la mémorise pas (le RGAA, critère 11.13, ne vise que les données personnelles de l'utilisateur).
 

@@ -91,7 +91,7 @@ Liste des scénarios et des autres tests : [backend/scenarios/README.md](backend
 
 ### Accessibilité (RGAA 4.1.2)
 
-Le job **Accessibilité (RGAA 4.1.2)** de la CI contrôle l'interface d'administration de l'annuaire (`/admin/`) et l'interface locale du responsable : validation HTML, axe-core limité aux règles du RGAA, et mesures que les outils ne font pas (contrastes des champs, messages de statut, affichage à 320 px, espacement du texte, focus, lien d'évitement), en thème clair et sombre. Il couvre une partie seulement des critères : il évite les régressions, il ne remplace pas un audit. Détails et lancement en local : [accessibilite/README.md](accessibilite/README.md).
+Le job **Accessibilité (RGAA 4.1.2)** de la CI contrôle l'interface d'administration de l'annuaire (`/admin/`), l'interface locale du responsable et la console de la box : validation HTML, axe-core limité aux règles du RGAA, et mesures que les outils ne font pas (contrastes des champs, messages de statut, affichage à 320 px, espacement du texte, focus, lien d'évitement), en thème clair et sombre. Il couvre une partie seulement des critères : il évite les régressions, il ne remplace pas un audit. Détails et lancement en local : [accessibilite/README.md](accessibilite/README.md).
 
 ### Vulnérabilités des dépendances
 

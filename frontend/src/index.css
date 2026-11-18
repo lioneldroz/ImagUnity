@@ -4,6 +4,8 @@
   --text: #1c2430;
   --muted: #5f6b7a;
   --border: #dde2e8;
+  /* Contour des champs : 3:1 au moins sur leurs fonds (RGAA 3.3). */
+  --field-border: #7d8796;
   --error: #b42318;
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -19,6 +21,7 @@
     --text: #e6eaf0;
     --muted: #9aa5b3;
     --border: #2c3440;
+    --field-border: #6b7686;
     --error: #f97066;
   }
 }
@@ -103,6 +106,7 @@ dd {
 
 .console-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
@@ -176,6 +180,8 @@ dd {
 
 .table-scroll {
   overflow-x: auto;
+  /* Positionnée : un texte réservé aux lecteurs d'écran (en absolu) reste dans la zone qui défile. */
+  position: relative;
 }
 
 table {
@@ -295,9 +301,45 @@ form.pair input {
   font-size: 0.85rem;
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--field-border);
   background: var(--surface);
   color: var(--text);
   width: 200px;
   max-width: 100%;
+}
+
+.pair-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+}
+
+.pair-cell:focus {
+  outline: none;
+}
+
+/* Étude d'un envoi : bouton qui ouvre ou ferme le détail de ses paquets, présenté comme le texte de la cellule. */
+.row-toggle {
+  font: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--progress);
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Texte réservé aux lecteurs d'écran. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }

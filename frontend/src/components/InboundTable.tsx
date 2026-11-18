@@ -29,15 +29,15 @@ export function InboundTable() {
   }
   return (
     <div className="table-scroll">
-      <table>
+      <table aria-label="Réceptions">
         <thead>
           <tr>
-            <th>Étude</th>
-            <th>Émetteur</th>
-            <th>État</th>
-            <th>Instances</th>
-            <th>Accusé</th>
-            <th>Mis à jour</th>
+            <th scope="col">Étude</th>
+            <th scope="col">Émetteur</th>
+            <th scope="col">État</th>
+            <th scope="col">Instances</th>
+            <th scope="col">Accusé</th>
+            <th scope="col">Mis à jour</th>
           </tr>
         </thead>
         <tbody>
