@@ -4,112 +4,157 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light only">
-  <title>Configuration des box</title>
+  <title>Configuration des box — administration de l'annuaire</title>
   <link rel="stylesheet" href="admin.css">
   <script src="admin.js" defer></script>
 </head>
 <body>
 <a class="evitement" href="#contenu">Aller au contenu</a>
 <header class="bandeau">
-  <div>
-    <h1>Configuration des box</h1>
-    <p class="sous-titre">Organisation <strong id="organisation">…</strong> · prochaine version <strong id="prochaine">…</strong></p>
+  <div class="identite">
+    <span class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></svg></span>
+    <div>
+      <h1>Service d'annuaire · <span id="organisation">…</span></h1>
+      <p class="sous-titre">Administration du site central</p>
+    </div>
+    <span class="version-bandeau">prochaine version <span id="prochaine">…</span></span>
   </div>
-  <button type="button" id="rafraichir" class="secondaire">Actualiser</button>
+  <button type="button" id="rafraichir" class="bandeau-bouton">Actualiser</button>
 </header>
+
+<div class="disposition">
+<nav class="menu" aria-label="Sections">
+  <button type="button" data-onglet="box">Box et demandes <span class="compteur" id="compte-demandes"></span></button>
+  <button type="button" data-onglet="brouillon">Brouillon et essai</button>
+  <button type="button" data-onglet="versions">Publier et versions <span class="compteur" id="compte-versions"></span></button>
+  <div class="encart">
+    <strong>Rôle de cette page</strong>
+    Le service publie ce que le responsable a signé sur son poste. Ici, on prépare et on publie ; rien ne se signe.
+  </div>
+</nav>
 
 <main id="contenu" tabindex="-1">
   <p id="message" class="message" role="status"></p>
 
-  <section>
-    <h2 id="titre-box">Box de l'annuaire</h2>
-    <p class="aide">Version appliquée : remontée par chaque box après lecture de l'annuaire (compte rendu signé par la box). Groupes : fixés par le responsable dans l'entrée d'annuaire de chaque box (<code>enroler --groupes</code>).</p>
-    <div class="tableau">
-      <table aria-labelledby="titre-box">
-        <thead><tr><th scope="col">Box</th><th scope="col">Groupes</th><th scope="col">Statut</th><th scope="col">Version appliquée</th><th scope="col">Dernier refus</th><th scope="col">Compte rendu</th></tr></thead>
-        <tbody id="box"></tbody>
-      </table>
+  <!-- 1. Box et demandes -->
+  <section id="onglet-box" class="page" aria-labelledby="titre-box" hidden>
+    <div>
+      <h2 id="titre-box" tabindex="-1">Box et demandes</h2>
+      <p class="aide">Ce que l'annuaire publie, et ce que chaque box en fait. Les groupes sont fixés par le responsable dans
+        l'entrée de chaque box ; la version appliquée est remontée par la box dans son compte rendu signé.</p>
     </div>
-  </section>
-
-  <section>
-    <h2 id="titre-demandes">Demandes d'enrôlement en attente</h2>
-    <p class="aide">Envoyées par les box qui ne sont pas encore enrôlées. Elles se signent sur le poste du responsable, hors ligne :
-      <code>admin enroler-attente --cles organisation.json --codes codes.json --annuaire …</code>. L'outil reconnaît les box
-      à leur code d'enrôlement ; une demande sans code se traite à la main, après comparaison de l'empreinte avec l'installateur.</p>
-    <div class="tableau">
-      <table aria-labelledby="titre-demandes">
-        <thead><tr><th scope="col">Box</th><th scope="col">Empreinte</th><th scope="col">Code d'enrôlement</th><th scope="col">Reçue le</th></tr></thead>
-        <tbody id="demandes"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section>
-    <h2>Brouillon</h2>
-    <p class="aide">Les règles suivent la syntaxe de la configuration locale : <code>and</code> (tous les champs), <code>or</code> (un champ suffit), valeurs exactes, <code>*</code>, <code>?</code>, alternatives <code>|</code>, négation <code>!</code>. Laisser un bloc vide pour garder la configuration locale des box.</p>
-    <div class="grille">
-      <fieldset>
-        <legend>Box visées</legend>
-        <label><input type="radio" name="cible" value="toutes" checked> Toute l'organisation</label>
-        <label><input type="radio" name="cible" value="liste"> Groupes et box choisis :</label>
-        <div id="choix-groupes" class="choix"></div>
-        <div id="choix-box" class="choix"></div>
-      </fieldset>
-      <fieldset>
-        <legend>Audit</legend>
-        <label>Auteur <input type="text" id="auteur" maxlength="100" autocomplete="name"></label>
-        <label>Motif <input type="text" id="motif" maxlength="300"></label>
-      </fieldset>
-    </div>
-    <label class="bloc">Priorité des séries (JSON)
-      <textarea id="priorite" rows="9" spellcheck="false" placeholder='{ "default": 5, "rules": [ { "name": "scanner-thorax", "priority": 1, "and": { "Modality": "CT", "SeriesDescription": "*THORAX*|*POUMON*" } } ] }'></textarea>
-    </label>
-    <label class="bloc">Routage par champ DICOM (JSON)
-      <textarea id="routage" rows="7" spellcheck="false" placeholder='{ "rules": [ { "name": "chu-nord", "and": { "InstitutionName": "CHU NORD*" }, "to": ["box-b"] } ] }'></textarea>
-    </label>
-    <label class="bloc">Nœuds et routes DICOM (JSON ; plus simple depuis l'interface du responsable, onglet « Configuration des box »)
-      <textarea id="dicom" rows="7" spellcheck="false" placeholder='{ "nodes": [ { "name": "pacs-nord", "aet": "PACS_NORD", "host": "10.2.0.15", "port": 104, "source": true, "destination": true } ], "outgoing": [ { "name": "vers-chu-b", "from": ["pacs-nord"], "to": ["&lt;identifiant de box&gt;"] } ], "incoming": [ { "name": "tout-au-pacs", "to": ["pacs-nord"] } ] }'></textarea>
-    </label>
-    <div class="actions">
-      <button type="button" id="preparer">Vérifier et préparer le document</button>
-    </div>
-    <div id="prepare" hidden>
-      <p>Document n° <strong id="numero"></strong> prêt à signer. Le télécharger, puis, sur le poste du responsable :</p>
-      <pre id="commandes"></pre>
-      <div class="actions">
-        <a id="telecharger" class="bouton">Télécharger le brouillon</a>
+    <ul class="indicateurs" id="indicateurs" aria-label="Indicateurs"></ul>
+    <section class="carte" aria-labelledby="titre-liste-box">
+      <div class="entete">
+        <h3 id="titre-liste-box">Box de l'annuaire</h3>
+        <label class="recherche">Rechercher <input type="search" id="recherche" placeholder="nom, groupe…"></label>
       </div>
-    </div>
+      <div class="tableau">
+        <table aria-labelledby="titre-liste-box">
+          <thead><tr><th scope="col">Box</th><th scope="col">Groupes</th><th scope="col">État</th><th scope="col">Version appliquée</th><th scope="col">Dernier refus</th><th scope="col">Compte rendu</th></tr></thead>
+          <tbody id="box"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="carte" aria-labelledby="titre-demandes">
+      <h3 id="titre-demandes">Demandes d'enrôlement en attente</h3>
+      <ul class="grille-cartes" id="demandes"></ul>
+      <p class="discret">Ces demandes se signent sur le poste du responsable, hors ligne : dans son interface
+        (« Demandes »), ou avec <code>admin enroler-attente --cles organisation.json --codes codes.json --annuaire …</code>.</p>
+    </section>
   </section>
 
-  <section>
-    <h2>Essayer les règles</h2>
-    <p class="aide">En-tête DICOM <strong>synthétique</strong>, un champ par ligne (<code>Modality=CT</code> ; plusieurs valeurs séparées par <code>\</code>). Jamais de données de patient.</p>
-    <label class="bloc">En-tête DICOM synthétique (un champ par ligne)
-      <textarea id="entete" rows="5" spellcheck="false">Modality=CT
+  <!-- 2. Brouillon et essai -->
+  <section id="onglet-brouillon" class="page" aria-labelledby="titre-brouillon" hidden>
+    <div>
+      <h2 id="titre-brouillon" tabindex="-1">Brouillon et essai</h2>
+      <p class="aide">Préparer le prochain document de configuration, l'essayer sur un en-tête synthétique, puis le faire
+        signer sur le poste du responsable. Un bloc laissé vide garde la configuration locale des box.</p>
+    </div>
+    <section class="carte" aria-labelledby="titre-cible">
+      <h3 id="titre-cible">1. Box visées et audit</h3>
+      <div class="grille">
+        <fieldset>
+          <legend>Box visées</legend>
+          <label><input type="radio" name="cible" value="toutes" checked> Toute l'organisation</label>
+          <label><input type="radio" name="cible" value="liste"> Groupes et box choisis :</label>
+          <div class="choix" id="choix-cibles">
+            <div id="choix-groupes" class="choix-liste"></div>
+            <div id="choix-box" class="choix-liste"></div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Audit</legend>
+          <label>Auteur <input type="text" id="auteur" maxlength="100" autocomplete="name"></label>
+          <label>Motif <input type="text" id="motif" maxlength="300"></label>
+        </fieldset>
+      </div>
+    </section>
+    <section class="carte" aria-labelledby="titre-regles">
+      <h3 id="titre-regles">2. Règles</h3>
+      <label>Priorité des séries (JSON)
+        <textarea id="priorite" rows="6" spellcheck="false" placeholder='{ "default": 5, "rules": [ { "name": "scanner-thorax", "priority": 1, "and": { "Modality": "CT", "SeriesDescription": "*THORAX*|*POUMON*" } } ] }'></textarea>
+      </label>
+      <label>Routage par champ DICOM (JSON)
+        <textarea id="routage" rows="4" spellcheck="false" placeholder='{ "rules": [ { "name": "chu-nord", "and": { "InstitutionName": "CHU NORD*" }, "to": ["box-b"] } ] }'></textarea>
+      </label>
+      <label>Nœuds et routes DICOM (JSON) <span class="indication">plus simple depuis l'interface du responsable, onglet « Configuration des box »</span>
+        <textarea id="dicom" rows="4" spellcheck="false" placeholder='{ "nodes": [ { "name": "pacs-nord", "aet": "PACS_NORD", "host": "10.2.0.15", "port": 104, "source": true, "destination": true } ], "outgoing": [ { "name": "vers-chu-b", "from": ["pacs-nord"], "to": ["&lt;identifiant de box&gt;"] } ], "incoming": [ { "name": "tout-au-pacs", "to": ["pacs-nord"] } ] }'></textarea>
+      </label>
+      <p class="discret">Syntaxe de la configuration locale : <code>and</code> (tous les champs), <code>or</code> (un champ
+        suffit), valeurs exactes, <code>*</code>, <code>?</code>, alternatives <code>|</code>, négation <code>!</code>.</p>
+      <div class="actions"><button type="button" id="preparer">Vérifier et préparer le document</button></div>
+      <div id="prepare" class="prepare" hidden>
+        <p class="ligne-titre"><strong>Document n° <span id="numero"></span> prêt à signer</strong> <span class="etat">vérifié par le service</span></p>
+        <p>Le télécharger, puis, sur le poste du responsable :</p>
+        <pre id="commandes"></pre>
+        <div class="actions">
+          <a id="telecharger" class="bouton">Télécharger le brouillon</a>
+          <button type="button" class="secondaire" id="copier-commandes">Copier les commandes</button>
+        </div>
+      </div>
+    </section>
+    <section class="carte" aria-labelledby="titre-essai">
+      <h3 id="titre-essai">3. Essayer les règles</h3>
+      <label>En-tête DICOM synthétique <span class="indication">un champ par ligne (<code>Modality=CT</code> ; plusieurs valeurs séparées par <code>\</code>). Jamais de données de patient.</span>
+        <textarea id="entete" rows="4" spellcheck="false">Modality=CT
 SeriesDescription=THORAX 1.25
 InstitutionName=CHU NORD</textarea>
-    </label>
-    <div class="actions"><button type="button" id="essayer" class="secondaire">Essayer le brouillon</button></div>
-    <p id="resultat" class="resultat" role="status"></p>
-  </section>
-
-  <section>
-    <h2>Publier un document signé</h2>
-    <p class="aide">Document produit par <code>configuration-signer</code>. Le service revérifie la signature du responsable et refuse un numéro de version déjà dépassé.</p>
-    <div class="actions">
-      <label>Document signé (JSON)
-        <input type="file" id="fichier" accept=".json,application/json">
       </label>
-      <button type="button" id="publier">Publier</button>
-    </div>
+      <div class="actions"><button type="button" id="essayer" class="secondaire">Essayer le brouillon</button></div>
+      <p id="resultat" class="resultat" role="status"></p>
+    </section>
   </section>
 
-  <section>
-    <h2>Versions publiées</h2>
-    <div id="versions"></div>
+  <!-- 3. Publier et versions -->
+  <section id="onglet-versions" class="page" aria-labelledby="titre-versions" hidden>
+    <div>
+      <h2 id="titre-versions" tabindex="-1">Publier et versions</h2>
+      <p class="aide">Publier un document signé par le responsable, et retrouver les versions déjà publiées. Le service
+        revérifie la signature et refuse un numéro de version déjà dépassé.</p>
+    </div>
+    <section class="carte" aria-labelledby="titre-publier">
+      <h3 id="titre-publier">Publier un document signé</h3>
+      <div class="depot">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>
+        <div class="depot-fichier">
+          <span class="depot-nom" id="fichier-nom">Aucun document choisi</span>
+          <span class="discret" id="fichier-detail">Document signé (JSON), produit par <code>configuration-signer</code>.</span>
+        </div>
+        <label class="choisir-fichier"><span class="visuellement-cache">Document signé (JSON)</span>
+          <input type="file" id="fichier" accept=".json,application/json">
+        </label>
+        <button type="button" id="publier">Publier</button>
+      </div>
+      <p class="discret">Document produit par <code>configuration-signer</code>, sur le poste du responsable. L'interface du
+        responsable publie aussi d'elle-même ce qu'elle signe.</p>
+    </section>
+    <section class="carte" aria-labelledby="titre-liste-versions">
+      <h3 id="titre-liste-versions">Versions publiées</h3>
+      <ol class="versions" id="versions"></ol>
+    </section>
   </section>
 </main>
+</div>
 </body>
 </html>
