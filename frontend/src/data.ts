@@ -6,7 +6,8 @@ import { fetchPriority } from './api/priority'
 import { fetchInboundTransfers, fetchOverview, fetchPeers, fetchTransfers } from './api/transfers'
 
 /** Requêtes de la console : mêmes clés partout, rafraîchies par le flux en direct (api/events.ts). */
-export const useBox = () => useQuery({ queryKey: ['box'], queryFn: fetchBoxInfo, refetchInterval: 60_000 })
+/** Une seule nouvelle tentative : un serveur de la box injoignable est signalé en quelques secondes. */
+export const useBox = () => useQuery({ queryKey: ['box'], queryFn: fetchBoxInfo, refetchInterval: 60_000, retry: 1 })
 export const useOverview = () => useQuery({ queryKey: ['overview'], queryFn: fetchOverview, refetchInterval: 30_000 })
 export const useTransfers = () => useQuery({ queryKey: ['transfers'], queryFn: fetchTransfers, refetchInterval: 30_000 })
 export const useInbound = () => useQuery({ queryKey: ['inbound'], queryFn: fetchInboundTransfers, refetchInterval: 30_000 })

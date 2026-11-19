@@ -31,7 +31,7 @@ export function outSteps(t: OutboundTransfer, parts: TransferPart[] | undefined,
     let at: string | null = null
     if (i === 0) at = quand(t.createdAt, now)
     else if (state === 'fail') at = `échec ${quand(t.updatedAt, now)}`
-    else if (i === reached - 1) at = quand(t.updatedAt, now)
+    else if (i === reached - 1 && failedAt < 0) at = quand(t.updatedAt, now)
     return { label, state, at }
   })
 }
@@ -60,7 +60,7 @@ export function inSteps(t: InboundTransfer, now: number): Etape[] {
     let at: string | null = null
     if (i === 0) at = quand(t.createdAt, now)
     else if (state === 'fail') at = `échec ${quand(t.updatedAt, now)}`
-    else if (i === reached - 1) at = quand(t.updatedAt, now)
+    else if (i === reached - 1 && failedAt < 0) at = quand(t.updatedAt, now)
     else if (i === 1 && state === 'progress') at = `${t.restoredParts} / ${t.partCount}`
     return { label, state, at }
   })
