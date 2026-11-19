@@ -382,14 +382,24 @@ class DirectoryConfiguration {
         return dicom;
     }
 
+    /** Mise en service de la box, montrée par la console : organisation, annuaire, demande d'enrôlement. */
+    @Bean
+    com.imagunity.api.EnrollmentProgress enrollmentProgress(KeyFiles.OrganizationPublicKey key,
+                                                            DirectoryProperties properties) {
+        return new com.imagunity.api.EnrollmentProgress(key.organization(), key.key().shortCode(),
+                String.valueOf(properties.url()), properties.enrollmentCode() != null
+                && !properties.enrollmentCode().isBlank());
+    }
+
     /** Envoi automatique de la demande d'enrôlement, tant que la box n'est pas dans l'annuaire. */
     @Bean
     AutomaticEnrollment automaticEnrollment(LocalDirectory directory, DirectoryClient client, BoxIdentity identity,
                                             TransportPort transport, com.imagunity.api.BoxProperties box,
-                                            DirectoryProperties properties, Clock clock) {
+                                            DirectoryProperties properties, Clock clock,
+                                            com.imagunity.api.EnrollmentProgress progress) {
         try {
             return new AutomaticEnrollment(directory, client, identity, transport, box.name(),
-                    properties.enrollmentCode(), clock);
+                    properties.enrollmentCode(), clock, progress);
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE : " + e.getMessage(), e);
         }

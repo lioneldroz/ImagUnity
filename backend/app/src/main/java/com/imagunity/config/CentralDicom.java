@@ -59,7 +59,7 @@ public final class CentralDicom {
     private final Map<String, Seen> seen = new ConcurrentHashMap<>();
 
     /** Intervalle entre deux essais de connexion d'une même destination inchangée. */
-    static final Duration ECHO_EVERY = Duration.ofMinutes(30);
+    static final Duration ECHO_EVERY = com.imagunity.directory.NodeCheck.ECHO_EVERY;
 
     /** Essai de connexion DICOM : vide si l'appareil répond, sinon la raison. */
     @FunctionalInterface

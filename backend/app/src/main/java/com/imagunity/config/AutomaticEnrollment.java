@@ -30,6 +30,7 @@ final class AutomaticEnrollment {
     private final String displayName;
     private final String code;
     private final Clock clock;
+    private final com.imagunity.api.EnrollmentProgress progress;
     private boolean announced;
     private boolean warned;
 
@@ -39,6 +40,13 @@ final class AutomaticEnrollment {
      */
     AutomaticEnrollment(LocalDirectory directory, DirectoryClient client, BoxIdentity identity, TransportPort transport,
                         String displayName, String code, Clock clock) {
+        this(directory, client, identity, transport, displayName, code, clock, null);
+    }
+
+    /** @param progress état de la demande, montré par la console ({@code null} : aucun) */
+    AutomaticEnrollment(LocalDirectory directory, DirectoryClient client, BoxIdentity identity, TransportPort transport,
+                        String displayName, String code, Clock clock, com.imagunity.api.EnrollmentProgress progress) {
+        this.progress = progress;
         this.directory = directory;
         this.client = client;
         this.identity = identity;
@@ -60,6 +68,10 @@ final class AutomaticEnrollment {
                 DirectoryController.enrollmentRequest(identity, transport, displayName, clock), code);
         try {
             if (!client.submitEnrollment(submission)) {
+                if (progress != null) {
+                    progress.failed(clock.instant(), "demande écartée par l'annuaire : box déjà enrôlée, ou demande "
+                            + "refusée par le responsable");
+                }
                 if (!warned) {
                     LOG.warn("Demande d'enrôlement écartée par l'annuaire : box déjà enrôlée, ou demande refusée par "
                             + "le responsable ; nouvel essai à la lecture suivante");
@@ -68,12 +80,18 @@ final class AutomaticEnrollment {
                 return false;
             }
         } catch (DirectoryException e) {
+            if (progress != null) {
+                progress.failed(clock.instant(), e.getMessage());
+            }
             if (!warned) {
                 LOG.warn("Demande d'enrôlement non transmise à l'annuaire, nouvel essai à la lecture suivante : {}",
                         e.getMessage());
                 warned = true;
             }
             return false;
+        }
+        if (progress != null) {
+            progress.submitted(clock.instant());
         }
         if (!announced) {
             LOG.info("Demande d'enrôlement transmise à l'annuaire ({}) : en attente de la signature du responsable",

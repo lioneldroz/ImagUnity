@@ -428,8 +428,30 @@ public final class CentralRules implements CentralConfigurationStatus {
                 + String.join(", ", r.destinations())).toList()).orElse(List.of());
         return new View(true, s.sequence(), s.issuedAt(), s.author(), s.comment(), s.appliedAt(), s.priority(),
                 s.routing(), routingRules, s.refused(), s.refusal(), s.checkedAt(), s.error(),
-                List.copyOf(groups.get()), dicom().map(d -> describe(d, nodeChecks.get().stream().collect(
-                        java.util.stream.Collectors.toMap(NodeCheck::node, c -> c, (a, b) -> a)))).orElse(List.of()));
+                List.copyOf(groups.get()), dicom().map(d -> describe(d, checksByNode())).orElse(List.of()),
+                dicom().map(d -> devices(d, checksByNode())).orElse(null));
+    }
+
+    private java.util.Map<String, NodeCheck> checksByNode() {
+        return nodeChecks.get().stream().collect(java.util.stream.Collectors.toMap(NodeCheck::node, c -> c,
+                (a, b) -> a));
+    }
+
+    /** Configuration DICOM centrale structurée pour la console : appareils (avec leur état), envois, réceptions. */
+    static CentralConfigurationStatus.Dicom devices(DicomRouting d, java.util.Map<String, NodeCheck> checks) {
+        java.util.Map<String, String> nameByAet = new java.util.HashMap<>();
+        d.nodes().values().forEach(n -> nameByAet.putIfAbsent(n.aet(), n.name()));
+        java.util.function.Function<com.imagunity.rules.DicomCondition, String> filter = c ->
+                c.and().isEmpty() && c.or().isEmpty() ? null : c.describe();
+        return new CentralConfigurationStatus.Dicom(d.aet(),
+                d.nodes().values().stream().map(n -> new CentralConfigurationStatus.Node(n.name(), n.aet(), n.host(),
+                        n.port(), n.source(), n.destination(), checks.get(n.name()))).toList(),
+                d.outgoing().stream().map(r -> new CentralConfigurationStatus.Route(r.name(), r.fromAets().stream()
+                        .map(aet -> nameByAet.getOrDefault(aet, aet)).sorted().toList(), r.calledAet(),
+                        filter.apply(r.condition()), r.to().stream().map(UUID::toString).toList())).toList(),
+                d.incoming().stream().map(r -> new CentralConfigurationStatus.Route(r.name(), r.from().stream()
+                        .map(UUID::toString).sorted().toList(), null, filter.apply(r.condition()), r.to())).toList(),
+                NodeCheck.ECHO_EVERY.toMinutes());
     }
 
     /**

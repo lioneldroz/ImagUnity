@@ -24,6 +24,46 @@ export interface CentralConfigurationView {
   groups: string[]
   /** Nœuds et routes DICOM centraux, une ligne chacun (vide : configuration DICOM locale). */
   dicom?: string[]
+  /** Les mêmes, structurés (null : configuration DICOM locale). */
+  devices?: DicomDevices | null
+}
+
+/** Ce que la box constate d'un appareil : essais de connexion (destination), envois reçus (source). */
+export interface NodeCheck {
+  node: string
+  echoAt?: string | null
+  echoError?: string | null
+  echoOkAt?: string | null
+  receivedAt?: string | null
+  refusedAt?: string | null
+  refusedFrom?: string | null
+}
+
+export interface DicomNode {
+  name: string
+  aet: string
+  host: string | null
+  port: number | null
+  source: boolean
+  destination: boolean
+  check: NodeCheck | null
+}
+
+/** Envoi (from : appareils, to : identifiants de box) ou réception (from : identifiants de box, to : PACS). */
+export interface DicomRoute {
+  name: string
+  from: string[]
+  calledAet: string | null
+  filter: string | null
+  to: string[]
+}
+
+export interface DicomDevices {
+  aet: string | null
+  nodes: DicomNode[]
+  outgoing: DicomRoute[]
+  incoming: DicomRoute[]
+  echoEveryMinutes: number
 }
 
 export const fetchCentralConfiguration = () => getJson<CentralConfigurationView>('/api/v1/configuration')

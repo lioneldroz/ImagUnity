@@ -102,8 +102,10 @@ public class DirectoryController {
     }
 
     /** Réponse de {@code GET /api/v1/directory}. */
+    /** @param setup organisation, annuaire et demande d'enrôlement de la box (mise en service), ou {@code null} */
     public record DirectoryView(boolean enabled, UUID boxId, String shortCode, SyncView lastSync, List<BoxView> boxes,
-                                List<PartnerView> partners, List<CollisionView> collisions, FreshnessView freshness) {
+                                List<PartnerView> partners, List<CollisionView> collisions, FreshnessView freshness,
+                                EnrollmentProgress.View setup) {
     }
 
     private static FreshnessView freshness(LocalDirectory local, String fingerprint) {
@@ -124,6 +126,21 @@ public class DirectoryController {
     private final TransportPort transport;
     private final PairingService pairing;
     private final PeerRepository peers;
+    private final ObjectProvider<EnrollmentProgress> progress;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DirectoryController(ObjectProvider<BoxIdentity> identity, ObjectProvider<LocalDirectory> directory,
+                               BoxProperties box, Clock clock, TransportPort transport, PairingService pairing,
+                               PeerRepository peers, ObjectProvider<EnrollmentProgress> progress) {
+        this.identity = identity;
+        this.directory = directory;
+        this.box = box;
+        this.clock = clock;
+        this.transport = transport;
+        this.pairing = pairing;
+        this.peers = peers;
+        this.progress = progress;
+    }
 
     public DirectoryController(ObjectProvider<BoxIdentity> identity, ObjectProvider<LocalDirectory> directory,
                                BoxProperties box, Clock clock, TransportPort transport, PairingService pairing,
@@ -135,6 +152,7 @@ public class DirectoryController {
         this.transport = transport;
         this.pairing = pairing;
         this.peers = peers;
+        this.progress = null;
     }
 
     @GetMapping
@@ -142,7 +160,7 @@ public class DirectoryController {
         BoxIdentity me = identity.getIfAvailable();
         LocalDirectory local = directory.getIfAvailable();
         if (me == null || local == null) {
-            return new DirectoryView(false, null, null, null, List.of(), List.of(), List.of(), null);
+            return new DirectoryView(false, null, null, null, List.of(), List.of(), List.of(), null, null);
         }
         LocalDirectory.SyncStatus sync = local.lastSync();
         Instant now = clock.instant();
@@ -180,7 +198,9 @@ public class DirectoryController {
                 .toList();
         return new DirectoryView(true, me.boxId(), me.keys().publicKey().shortCode(),
                 new SyncView(sync.at(), sync.accepted(), sync.rejected(), sync.error()), boxes, partners, collisions,
-                freshness(local, local.localFingerprint().orElse(null)));
+                freshness(local, local.localFingerprint().orElse(null)),
+                progress == null ? null : java.util.Optional.ofNullable(progress.getIfAvailable())
+                        .map(EnrollmentProgress::view).orElse(null));
     }
 
     /** @param name nom proposé pour la box (par défaut, le nom de la box) */

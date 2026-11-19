@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.imagunity.directory.CentralConfiguration;
 import com.imagunity.directory.ConfigurationReport;
+import com.imagunity.directory.NodeCheck;
 import com.imagunity.directory.DirectoryClient;
 import com.imagunity.directory.HybridKeyPair;
 import com.imagunity.directory.Organization;
@@ -390,6 +391,32 @@ class CentralRulesTest {
                 "Nœud ct-urg (CT_URG) : source", "Nœud pacs-nord (PACS_NORD, 10.2.0.15:104) : source et destination",
                 "Route sortante ct-vers-b : CT_URG vers IU_TO_B [Modality=CT] → 1 box",
                 "Route entrante tout : 1 box [ou (Modality=MR)] → pacs-nord");
+        rules.nodeChecks(() -> List.of(new NodeCheck("pacs-nord", clock.instant(), "connexion refusée", null, null,
+                null, null)));
+        CentralConfigurationStatus.Dicom devices = rules.status().devices();
+        assertThat(devices.aet()).isEqualTo("IMAGUNITY_NORD");
+        assertThat(devices.echoEveryMinutes()).isEqualTo(30);
+        assertThat(devices.nodes()).extracting(CentralConfigurationStatus.Node::name)
+                .containsExactlyInAnyOrder("ct-urg", "pacs-nord");
+        assertThat(devices.nodes()).filteredOn(n -> n.name().equals("pacs-nord")).singleElement()
+                .satisfies(n -> {
+                    assertThat(n.destination()).isTrue();
+                    assertThat(n.check().echoError()).isEqualTo("connexion refusée");
+                });
+        assertThat(devices.outgoing()).singleElement().satisfies(r -> {
+            assertThat(r.from()).as("AET des sources en noms d'appareils").containsExactly("ct-urg");
+            assertThat(r.calledAet()).isEqualTo("IU_TO_B");
+            assertThat(r.filter()).isEqualTo("Modality=CT");
+            assertThat(r.to()).hasSize(1);
+        });
+        assertThat(devices.incoming()).singleElement().satisfies(r -> {
+            assertThat(r.filter()).contains("Modality=MR");
+            assertThat(r.to()).containsExactly("pacs-nord");
+        });
+        assertThat(CentralRules.devices(com.imagunity.rules.DicomRouting.compile(null, List.of(), List.of(new com
+                .imagunity.rules.DicomRouting.RouteSpec("r", List.of(), null, Map.of(), Map.of(), List.of(UUID
+                .randomUUID().toString()))), List.of()), Map.of()).outgoing()).singleElement()
+                .satisfies(r -> assertThat(r.filter()).as("sans filtre").isNull());
 
         // Filtre au mot-clé inconnu : refusé, la version en vigueur reste.
         assertThat(rules.synchronize(List.of(dicomDocument(2, "Modalite")))).isFalse();
