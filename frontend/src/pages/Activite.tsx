@@ -49,13 +49,20 @@ export function Activite({ now }: { now: number }) {
   const conf = useConfiguration()
   const dir = useDirectory()
   const points = aSurveiller(out.data, inb.data, conf.data, dir.data, now)
+  // « Tout fonctionne » ne se dit qu'avec toutes les informations en main.
+  const requetes = [overview, out, inb, conf, dir]
+  const incomplet = requetes.some((q) => !q.isSuccess || q.isError)
 
   return (
     <>
       <p className="sous-titre">
-        {points.length === 0
-          ? 'Rien à signaler : tout fonctionne.'
-          : `${points.length} point${points.length > 1 ? 's' : ''} à surveiller. Le reste fonctionne.`}
+        {points.length > 0
+          ? `${points.length} point${points.length > 1 ? 's' : ''} à surveiller.${incomplet ? '' : ' Le reste fonctionne.'}`
+          : incomplet
+            ? requetes.some((q) => q.isError)
+              ? 'Une partie des informations est indisponible : impossible de dire si tout fonctionne.'
+              : 'Chargement…'
+            : 'Rien à signaler : tout fonctionne.'}
       </p>
 
       {points.length > 0 && (

@@ -359,3 +359,18 @@ test.describe('thème clair seulement', () => {
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light only');
   });
 });
+
+test('serveur de la box injoignable : signalé en quelques secondes, sans annoncer que tout fonctionne', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      constructor() { super(); this.readyState = 2; setTimeout(() => this.onerror && this.onerror(), 10); }
+      close() {}
+    };
+    window.EventSource.CLOSED = 2;
+  });
+  await servir(page, { racine: RACINE, prefixe: '/', api: (c) => (c.startsWith('/api/') ? { statut: 502, corps: {} } : undefined) });
+  await page.goto(ORIGINE + '/');
+  await expect(page.getByText('Le serveur de la box ne répond pas (HTTP 502)', { exact: false })).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('.bandeau [role=status]')).toHaveText('Hors ligne, reconnexion…');
+  await expect(page.getByText('tout fonctionne', { exact: false })).toHaveCount(0);
+});
