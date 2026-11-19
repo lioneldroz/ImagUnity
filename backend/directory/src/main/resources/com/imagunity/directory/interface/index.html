@@ -47,7 +47,7 @@
 <main id="contenu" tabindex="-1">
   <p class="message" id="message" role="status"></p>
 
-  <section id="onglet-tableau" aria-labelledby="titre-tableau" hidden>
+  <section id="onglet-tableau" class="page" aria-labelledby="titre-tableau" hidden>
     <div class="entete-page">
       <div>
         <h2 id="titre-tableau" tabindex="-1">Tableau de bord</h2>
@@ -55,10 +55,13 @@
       </div>
       <button type="button" data-aller="codes">Tirer un code d'enrôlement</button>
     </div>
-    <h3>À faire</h3>
-    <ul class="afaire" id="afaire"></ul>
+    <section class="carte" aria-labelledby="titre-afaire">
+      <h3 id="titre-afaire">À faire</h3>
+      <ul class="afaire" id="afaire"></ul>
+    </section>
     <div class="indicateurs" id="indicateurs"></div>
-    <div class="entete-page bloc">
+    <section class="carte" aria-labelledby="titre-tableau-box">
+    <div class="entete-page">
       <h3 id="titre-tableau-box">Box de l'organisation</h3>
       <label class="recherche">Rechercher <input type="search" id="tableau-recherche" placeholder="nom ou groupe"></label>
     </div>
@@ -68,36 +71,40 @@
         <tbody id="tableau-box"></tbody>
       </table>
     </div>
+    </section>
   </section>
 
-  <section id="onglet-demarrage" aria-labelledby="titre-demarrage" hidden>
-    <h2 id="titre-demarrage" tabindex="-1">Démarrer et faire vivre l'organisation</h2>
-    <p class="aide">Les étapes dans l'ordre. Chacune est vérifiée à l'instant : une coche verte veut dire que c'est
-      fait. Vous pouvez revenir ici à tout moment. Les explications détaillées sont dans l'onglet « Aide ».</p>
+  <section id="onglet-demarrage" class="page" aria-labelledby="titre-demarrage" hidden>
+    <div>
+      <h2 id="titre-demarrage" tabindex="-1">Démarrage</h2>
+      <p class="aide" id="demarrage-resume">Les étapes dans l'ordre. Chacune est vérifiée à l'instant ; les explications détaillées sont dans l'Aide.</p>
+    </div>
+    <div class="progression" id="demarrage-progression" role="img" aria-label="Étapes faites"><span id="demarrage-barre"></span></div>
     <ol class="etapes">
       <li class="etape" id="etape-organisation">
         <div class="entete"><h3>1. Créer l'organisation et sa clé
-          <span class="info"><button type="button" class="info-bouton" aria-label="Pourquoi une empreinte ?" aria-describedby="bulle-empreinte">?</button><span class="bulle" role="tooltip" id="bulle-empreinte">Le relais, l'annuaire et la box ne font pas confiance au fichier de clé publique qu'on leur installe. Ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après vérification de vive voix. Une clé remplacée en chemin, ou celle d'une autre organisation, est refusée dès le démarrage.</span></span></h3><span class="badge" id="statut-organisation"></span></div>
+          <span class="info"><button type="button" class="info-bouton" aria-label="Pourquoi une empreinte ?" aria-describedby="bulle-empreinte">?</button><span class="bulle" role="tooltip" id="bulle-empreinte">Le relais, l'annuaire et la box ne font pas confiance au fichier de clé publique qu'on leur installe. Ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après vérification de vive voix. Une clé remplacée en chemin, ou celle d'une autre organisation, est refusée dès le démarrage.</span></span></h3><span class="etat" id="statut-organisation"></span></div>
         <div id="organisation-a-creer" hidden>
-          <p>La clé du responsable signe tout ce que publie l'organisation : l'entrée de chaque box, les accords avec
-            les partenaires, les règles communes. Elle se crée <strong>une seule fois</strong>, ici, sur ce poste, et
-            ne le quitte jamais.</p>
+          <p>La clé du responsable signe l'entrée de chaque box, les accords avec les partenaires et les règles
+            communes. Elle se crée <strong>une seule fois</strong>, ici, sur ce poste, et ne le quitte jamais.</p>
           <form id="formulaire-organisation" class="formulaire-organisation">
             <p class="discret">Tous les champs sont obligatoires.</p>
-            <label>Identifiant de l'organisation (minuscules, chiffres et tirets ; il ne changera plus)
+            <label>Identifiant de l'organisation <span class="indication">minuscules, chiffres et tirets ; il ne changera plus</span>
               <input type="text" id="org-id" required pattern="[a-z0-9][a-z0-9-]{0,63}" maxlength="64" placeholder="chu-exemple" autocomplete="off">
             </label>
-            <label>Phrase de passe de la clé (16 caractères au moins ; une phrase de plusieurs mots est plus facile à retenir)
-              <input type="password" id="org-phrase" required minlength="16" autocomplete="new-password">
-            </label>
-            <label>Phrase de passe, une seconde fois
-              <input type="password" id="org-confirmation" required minlength="16" autocomplete="new-password">
-            </label>
+            <div class="deux-champs">
+              <label>Phrase de passe de la clé <span class="indication">16 caractères au moins ; plusieurs mots se retiennent mieux</span>
+                <input type="password" id="org-phrase" required minlength="16" autocomplete="new-password">
+              </label>
+              <label>Phrase de passe, une seconde fois <span class="indication">pour éviter une faute de frappe</span>
+                <input type="password" id="org-confirmation" required minlength="16" autocomplete="new-password">
+              </label>
+            </div>
             <label class="choix"><input type="checkbox" id="org-notee" required>
               J'ai noté la phrase de passe en lieu sûr (coffre, enveloppe scellée) : sans elle, la clé est perdue et il
               faudrait réenrôler toutes les box</label>
-            <p class="discret">Fichiers créés dans <code id="org-dossier"></code>.</p>
-            <div class="actions"><button type="submit" id="org-creer">Créer l'organisation</button></div>
+            <div class="actions"><button type="submit" id="org-creer">Créer l'organisation</button>
+              <span class="discret">Fichiers créés dans <code id="org-dossier"></code></span></div>
           </form>
         </div>
         <div id="organisation-creee" hidden>
@@ -106,37 +113,37 @@
             <dt>Empreinte <span class="info"><button type="button" class="info-bouton" aria-label="À quoi sert l'empreinte ?" aria-describedby="bulle-empreinte-2">?</button><span class="bulle" role="tooltip" id="bulle-empreinte-2">Le relais, l'annuaire et la box ne font pas confiance au fichier de clé publique qu'on leur installe. Ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après vérification de vive voix. Une clé remplacée en chemin, ou celle d'une autre organisation, est refusée dès le démarrage. À communiquer par téléphone ou sur papier, jamais avec le fichier.</span></span></dt><dd><span class="empreinte" id="org-empreinte"></span>
               <button type="button" class="secondaire petit" data-copier="org-empreinte">Copier</button></dd>
             <dt>Clé privée</dt><dd><code id="org-cle-privee"></code> <span class="discret">secrète, protégée par la phrase de passe, ne quitte pas ce poste</span></dd>
-            <dt>Clé publique</dt><dd><code id="org-cle-publique"></code> <span class="discret">à distribuer</span></dd>
+            <dt>Clé publique</dt><dd><code id="org-cle-publique"></code> <button type="button" class="secondaire petit" id="telecharger-cle">Télécharger</button></dd>
           </dl>
-          <p class="attention-texte">Sauvegardez dès maintenant les deux fichiers sur un support séparé (clé USB rangée au
-            coffre, par exemple). La phrase de passe se range ailleurs que la sauvegarde.</p>
-          <div class="actions"><button type="button" class="secondaire" id="telecharger-cle">Télécharger la clé publique (organisation.pub.json)</button></div>
         </div>
       </li>
 
       <li class="etape" id="etape-site">
-        <div class="entete"><h3 id="titre-etape-site">2. Installer la clé publique et l'empreinte sur le site central</h3><span class="badge" id="statut-site"></span></div>
-        <p>L'annuaire et le relais doivent connaître la clé publique de l'organisation, et son empreinte pour la
-          vérifier. Remettez-les à l'exploitant du site central (ou faites-le vous-même) :</p>
-        <div class="tableau">
-          <table aria-labelledby="titre-etape-site">
-            <thead><tr><th scope="col">Quoi</th><th scope="col">Site central (Docker, Linux)</th><th scope="col">Station d'essai Windows</th></tr></thead>
-            <tbody>
-              <tr><td>Clé publique</td>
-                <td>copier le fichier téléchargé à l'étape 1 sous le nom <code>deploy/site-central/config/organisation.pub.json</code></td>
-                <td>lancer <code>deposer.bat</code> : il la copie dans <code>machines\annuaire</code>, <code>relais</code>, <code>box-a</code> et <code>box-b</code></td></tr>
-              <tr><td>Empreinte</td>
-                <td>dans <code>deploy/site-central/.env</code> : <span class="copiable" id="ligne-env-empreinte"></span></td>
-                <td>dans <code>config.bat</code> : <span class="copiable" id="ligne-bat-empreinte"></span></td></tr>
-              <tr><td>Redémarrer</td><td><code>docker compose up -d</code></td><td>relancer <code>dev-annuaire.bat</code> et <code>dev-relais.bat</code></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="discret" id="site-detail"></p>
+        <div class="entete"><h3 id="titre-etape-site">2. Installer la clé publique et l'empreinte sur le site central</h3><span class="etat" id="statut-site"></span></div>
+        <p id="site-detail"></p>
+        <details class="consignes" id="site-consignes">
+          <summary>Consignes pour l'exploitant du site central</summary>
+          <p>L'annuaire et le relais doivent connaître la clé publique de l'organisation, et son empreinte pour la
+            vérifier. Remettez-les à l'exploitant du site central (ou faites-le vous-même) :</p>
+          <div class="tableau">
+            <table aria-labelledby="titre-etape-site">
+              <thead><tr><th scope="col">Quoi</th><th scope="col">Site central (Docker, Linux)</th><th scope="col">Station d'essai Windows</th></tr></thead>
+              <tbody>
+                <tr><td>Clé publique</td>
+                  <td>copier le fichier téléchargé à l'étape 1 sous le nom <code>deploy/site-central/config/organisation.pub.json</code></td>
+                  <td>lancer <code>deposer.bat</code> : il la copie dans <code>machines\annuaire</code>, <code>relais</code>, <code>box-a</code> et <code>box-b</code></td></tr>
+                <tr><td>Empreinte</td>
+                  <td>dans <code>deploy/site-central/.env</code> : <span class="copiable" id="ligne-env-empreinte"></span></td>
+                  <td>dans <code>config.bat</code> : <span class="copiable" id="ligne-bat-empreinte"></span></td></tr>
+                <tr><td>Redémarrer</td><td><code>docker compose up -d</code></td><td>relancer <code>dev-annuaire.bat</code> et <code>dev-relais.bat</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </li>
 
       <li class="etape" id="etape-compte">
-        <div class="entete"><h3>3. Se connecter à l'annuaire</h3><span class="badge" id="statut-compte"></span></div>
+        <div class="entete"><h3>3. Se connecter à l'annuaire</h3><span class="etat" id="statut-compte"></span></div>
         <p>Publier une entrée ou un accord demande le <strong>compte de dépôt</strong> de l'annuaire (utilisateur
           <code>responsable</code> par défaut, mot de passe fixé par l'exploitant dans <code>.env</code> :
           <code>ANNUAIRE_MOT_DE_PASSE</code>). Il n'est gardé qu'en mémoire, le temps de cette session.</p>
@@ -149,24 +156,22 @@
       </li>
 
       <li class="etape" id="etape-fraicheur">
-        <div class="entete"><h3>4. Déléguer la clé de fraîcheur (puis chaque mois)</h3><span class="badge" id="statut-fraicheur"></span></div>
+        <div class="entete"><h3>4. Déléguer la clé de fraîcheur (puis chaque mois)</h3><span class="etat" id="statut-fraicheur"></span></div>
         <p>L'annuaire signe chaque jour un état daté de ce qu'il publie, avec une clé que vous lui déléguez pour 30
           jours. Les box s'en servent pour détecter un annuaire qui cacherait une révocation, ou qui serait figé.</p>
+        <p class="remarque" id="fraicheur-alerte" hidden></p>
         <div class="actions"><button type="button" id="deleguer">Déléguer la clé de fraîcheur pour 30 jours</button>
           <span class="discret" id="fraicheur-detail"></span></div>
-        <p>Puis installer les deux fichiers créés à côté de la clé (<code id="fraicheur-fichiers"></code>) :</p>
-        <ul>
-          <li>site central : les copier dans <code>deploy/site-central/config/fraicheur/</code>, puis
-            <code>docker compose up -d directory</code> ;</li>
-          <li>station d'essai Windows : <code>deposer.bat annuaire</code> les copie dans <code>machines\annuaire\config\fraicheur\</code> ; relancer <code>dev-annuaire.bat</code>.</li>
-        </ul>
+        <p class="discret">Puis installer les deux fichiers créés à côté de la clé (<code id="fraicheur-fichiers"></code>) :
+          site central, dans <code>deploy/site-central/config/fraicheur/</code> puis <code>docker compose up -d directory</code> ;
+          station d'essai Windows, <code>deposer.bat annuaire</code>, puis relancer <code>dev-annuaire.bat</code>.</p>
       </li>
 
       <li class="etape" id="etape-box">
-        <div class="entete"><h3>5. Préparer les box</h3><span class="badge" id="statut-box"></span></div>
-        <p>Pour chaque box à installer : tirez un <strong>code d'enrôlement</strong> (onglet « Codes d'enrôlement »),
-          avec son nom et ses groupes, et transmettez-le à l'installateur par téléphone ou en main propre. Il recopie
-          dans le fichier <code>box.env</code> de la box :</p>
+        <div class="entete"><h3>5. Préparer les box</h3><span class="etat" id="statut-box"></span></div>
+        <p>Pour chaque box à installer : tirez un <strong>code d'enrôlement</strong> avec son nom et ses groupes,
+          transmettez-le à l'installateur par téléphone ou en main propre. Il recopie dans le fichier
+          <code>box.env</code> de la box :</p>
         <pre class="bloc-lignes" id="lignes-box"></pre>
         <div class="actions"><button type="button" class="secondaire" data-copier="lignes-box">Copier ces lignes</button>
           <button type="button" class="secondaire" data-aller="codes">Tirer un code</button></div>
@@ -174,15 +179,14 @@
       </li>
 
       <li class="etape" id="etape-demandes">
-        <div class="entete"><h3>6. Valider les box qui se présentent</h3><span class="badge" id="statut-demandes"></span></div>
-        <p>Au démarrage, chaque box dépose sa demande dans l'annuaire, avec la preuve de son code. Elle apparaît dans
-          l'onglet « Demandes » : un clic sur « Valider » la signe et la publie. La box est active quelques
-          minutes après.</p>
+        <div class="entete"><h3>6. Valider les box qui se présentent</h3><span class="etat" id="statut-demandes"></span></div>
+        <p>Au démarrage, chaque box dépose sa demande dans l'annuaire, avec la preuve de son code. Un clic sur
+          « Valider » la signe et la publie ; la box est active quelques minutes après.</p>
         <div class="actions"><button type="button" class="secondaire" data-aller="demandes">Voir les demandes</button></div>
       </li>
 
-      <li class="etape" id="etape-entretien">
-        <div class="entete"><h3>7. Au fil du temps</h3></div>
+      <li class="etape sans-numero" id="etape-entretien">
+        <div class="entete"><h3>Au fil du temps</h3></div>
         <ul>
           <li><strong>Chaque semaine</strong> : onglet « Box », renouveler les entrées qui expirent bientôt (elles sont cochées d'office).</li>
           <li><strong>Chaque mois</strong> : étape 4, renouveler la délégation de fraîcheur.</li>
@@ -191,27 +195,50 @@
         </ul>
       </li>
     </ol>
+    <section class="carte" id="ensuite" aria-labelledby="titre-ensuite" hidden>
+      <div>
+        <h3 id="titre-ensuite">Ensuite</h3>
+        <p class="discret">Ces étapes s'ouvrent une fois l'organisation créée. Elles sont expliquées dans l'Aide.</p>
+      </div>
+      <ol class="a-venir">
+        <li><span class="titre">Installer la clé publique et l'empreinte sur le site central</span><span class="discret" id="ensuite-site"></span></li>
+        <li><span class="titre">Se connecter à l'annuaire</span><span class="discret">Avec le compte de dépôt fixé par l'exploitant du site central.</span></li>
+        <li><span class="titre">Déléguer la clé de fraîcheur</span><span class="discret">Un clic, puis deux fichiers à installer sur le site central.</span></li>
+        <li><span class="titre">Préparer les box</span><span class="discret">Un code d'enrôlement par box, et cinq lignes à recopier dans son box.env.</span></li>
+        <li><span class="titre">Valider les box qui se présentent</span><span class="discret">Dans « Demandes », dès que les box démarrent.</span></li>
+      </ol>
+    </section>
   </section>
 
-  <section id="onglet-aide" aria-labelledby="titre-aide" hidden>
-    <h2 id="titre-aide" tabindex="-1">Aide</h2>
+  <section id="onglet-aide" class="page" aria-labelledby="titre-aide" hidden>
+    <div>
+      <h2 id="titre-aide" tabindex="-1">Aide</h2>
+      <p class="aide">Ce qu'il faut comprendre pour faire vivre l'organisation : les fichiers, les clés, l'enrôlement,
+        la fraîcheur et les partenaires.</p>
+    </div>
+    <div class="aide-disposition">
     <nav class="sommaire" aria-label="Sommaire de l'aide">
-      <a href="#aide-principe">Le principe</a> · <a href="#aide-fichiers">Les fichiers</a> ·
-      <a href="#aide-empreinte">L'empreinte</a> · <a href="#aide-phrase">La phrase de passe</a> ·
-      <a href="#aide-groupes">Les groupes</a> · <a href="#aide-enrolement">L'enrôlement</a> ·
-      <a href="#aide-fraicheur">La fraîcheur</a> · <a href="#aide-configuration">La configuration des box</a> · <a href="#aide-partenaires">Les partenaires</a> ·
-      <a href="#aide-incidents">En cas de problème</a> · <a href="#aide-mots">Les mots</a>
+      <ol>
+        <li><a href="#aide-principe">Le principe</a></li><li><a href="#aide-fichiers">Les fichiers</a></li>
+        <li><a href="#aide-empreinte">L'empreinte</a></li><li><a href="#aide-phrase">La phrase de passe</a></li>
+        <li><a href="#aide-groupes">Les groupes</a></li><li><a href="#aide-enrolement">L'enrôlement</a></li>
+        <li><a href="#aide-fraicheur">La fraîcheur</a></li><li><a href="#aide-configuration">La configuration des box</a></li>
+        <li><a href="#aide-partenaires">Les partenaires</a></li><li><a href="#aide-incidents">En cas de problème</a></li>
+        <li><a href="#aide-mots">Les mots</a></li>
+      </ol>
     </nav>
-
+    <div class="aide-contenu">
+      <section class="carte" aria-labelledby="aide-principe">
     <h3 id="aide-principe">Le principe</h3>
     <p>ImagUnity échange des examens d'imagerie entre <strong>box</strong> installées dans les établissements. Les
       examens sont chiffrés de box à box et passent par un <strong>relais</strong> qui ne peut pas les lire. Pour qu'une
       box sache à qui elle parle, chaque box est inscrite dans l'<strong>annuaire</strong> de l'organisation, par une
       <strong>entrée signée</strong> par vous, le responsable. Les box et le relais ne croient que ce qui porte votre
       signature : un annuaire piraté ne peut pas ajouter de fausse box.</p>
-    <p>Vous signez sur ce poste, hors du site central : c'est le seul endroit où se trouve votre clé privée.
+    <p class="encadre">Vous signez sur ce poste, hors du site central : c'est le seul endroit où se trouve votre clé privée.
       L'annuaire ne fait que publier ce que vous avez signé.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-fichiers">
     <h3 id="aide-fichiers">Les fichiers et leur raison d'être</h3>
     <div class="tableau">
       <table aria-labelledby="aide-fichiers">
@@ -242,7 +269,8 @@
         </tbody>
       </table>
     </div>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-empreinte">
     <h3 id="aide-empreinte">L'empreinte</h3>
     <p>L'empreinte (24 caractères, par exemple <code>QZYY-WDJT-LDE4-GY7V-5GPV-5RQW</code>) est un résumé de la clé
       publique. Un fichier peut être remplacé en chemin ; l'empreinte, lue de vive voix, ne peut pas l'être. Chaque
@@ -251,15 +279,17 @@
       le relais et l'annuaire refusent de démarrer : ils ne font pas confiance au fichier de clé publique qu'on leur
       installe, ils recalculent son empreinte et la comparent à celle recopiée dans leur configuration après
       vérification de vive voix. Communiquez-la par un autre canal que le fichier (téléphone, papier).</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-phrase">
     <h3 id="aide-phrase">La phrase de passe</h3>
     <p>Elle chiffre la clé privée sur le disque. Un voleur du fichier sans la phrase ne peut rien en faire. Choisissez
       une phrase de plusieurs mots (16 caractères au moins), notez-la et rangez-la à part. Elle n'est jamais envoyée sur
       le réseau : la page la transmet à l'outil qui tourne sur ce poste, qui signe. Vous pouvez garder la clé
       déverrouillée 15 minutes pour enchaîner plusieurs signatures.</p>
-    <p><strong>Perte de la phrase ou de la clé</strong> : il n'y a pas de récupération. Il faut créer une nouvelle
+    <p class="remarque refus"><strong>Perte de la phrase ou de la clé</strong> : il n'y a pas de récupération. Il faut créer une nouvelle
       organisation, réinstaller la clé publique partout et réenrôler toutes les box. D'où la sauvegarde.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-groupes">
     <h3 id="aide-groupes">Les groupes</h3>
     <p>Un groupe est une <strong>étiquette</strong> que vous posez sur une box quand vous l'enrôlez (au tirage du
       code) : <code>imagerie-nord</code>, <code>urgences</code>, <code>neurochirurgie</code>… Minuscules, chiffres et
@@ -275,7 +305,8 @@
     </ul>
     <p>Conseil : des noms de service ou de site, stables, décidés avant d'enrôler. Pour changer les groupes d'une box,
       il faut réémettre son entrée.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-enrolement">
     <h3 id="aide-enrolement">L'enrôlement d'une box</h3>
     <ol>
       <li>Vous tirez un code (nom et groupes de la box), à usage unique, valable 30 jours.</li>
@@ -284,14 +315,16 @@
       <li>Vous validez : l'entrée est signée ici, publiée, et la box devient active.</li>
     </ol>
     <p>Sans code, la demande se valide après avoir comparé par téléphone l'empreinte de la box, lue dans sa console.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-fraicheur">
     <h3 id="aide-fraicheur">La clé de fraîcheur</h3>
     <p>Une entrée signée dit ce qui était vrai au moment de la signature, pas qu'elle est la dernière. Un annuaire
       piraté pourrait resservir l'entrée d'une box d'avant sa révocation. La preuve de fraîcheur l'en empêche : l'annuaire
       signe régulièrement « voici le dernier numéro de chaque entrée », avec la clé que vous lui avez déléguée. Une box
       qui reçoit une entrée plus ancienne que l'annoncée ne s'en sert pas, et une box qui ne voit plus de preuve récente
       (48 h) arrête les échanges. D'où le renouvellement mensuel : une délégation expirée arrête tout au bout de 48 h.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-configuration">
     <h3 id="aide-configuration">La configuration des box</h3>
     <p>L'onglet « Configuration des box » décrit, pour chaque box, les appareils DICOM de son site et ses routes, sans
       se déplacer sur place :</p>
@@ -306,12 +339,14 @@
     <p>La première route qui correspond s'applique. Le document est signé ici et vise une seule box ; elle l'applique
       sans redémarrage et le refuse en entier s'il contient une erreur. Son adresse d'écoute et son compte DICOMweb
       restent dans son fichier <code>box.env</code>.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-partenaires">
     <h3 id="aide-partenaires">Les organisations partenaires</h3>
     <p>Pour échanger avec un autre établissement, chaque responsable reconnaît l'autre : il colle la clé publique du
       partenaire, compare l'empreinte avec lui au téléphone, indique son annuaire, ses relais et les groupes autorisés,
       puis signe. L'échange ne marche que dans le sens où les deux ont signé.</p>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-incidents">
     <h3 id="aide-incidents">En cas de problème</h3>
     <dl>
       <dt>« Annuaire injoignable »</dt><dd>L'adresse de l'annuaire (en haut de page) est fausse, ou le service est arrêté. Relancer l'interface avec la bonne adresse, ou demander à l'exploitant.</dd>
@@ -320,7 +355,8 @@
       <dt>Une box ne devient pas active</dt><dd>Vérifier sa demande dans « Demandes » ; une box lit l'annuaire toutes les 5 minutes.</dd>
       <dt>Ce poste est perdu ou en panne</dt><dd>Restaurer la sauvegarde des fichiers sur un autre poste, puis relancer l'interface avec <code>interface-responsable.bat</code>.</dd>
     </dl>
-
+      </section>
+      <section class="carte" aria-labelledby="aide-mots">
     <h3 id="aide-mots">Les mots</h3>
     <dl>
       <dt>Organisation</dt><dd>L'ensemble des box sous la responsabilité d'un même responsable, avec son annuaire et son relais.</dd>
@@ -330,63 +366,81 @@
       <dt>Entrée</dt><dd>La fiche signée d'une box : son nom, ses clés, ses adresses, ses groupes, sa validité (90 jours).</dd>
       <dt>Révocation</dt><dd>Une nouvelle entrée signée qui retire la box du réseau, définitivement.</dd>
     </dl>
-  </section>
-
-  <section id="onglet-demandes" aria-labelledby="titre-demandes" hidden>
-    <h2 id="titre-demandes" tabindex="-1">Demandes en attente</h2>
-    <p class="aide">Chaque box non enrôlée dépose sa demande dans l'annuaire. Valider signe son entrée ici, sur ce
-      poste, avec la clé de l'organisation, puis la publie. Une demande sans code d'enrôlement ne se valide
-      qu'après avoir comparé son empreinte avec celle que l'installateur lit sur la box.</p>
-    <div id="demandes"><p class="discret">Chargement…</p></div>
-  </section>
-
-  <section id="onglet-box" aria-labelledby="titre-box" hidden>
-    <h2 id="titre-box" tabindex="-1">Box de l'organisation</h2>
-    <p class="aide">Les entrées publiées dans l'annuaire, revérifiées avec la clé de l'organisation. Une entrée
-      expirée rend la box injoignable : renouvelez-la avant. Les entrées qui expirent bientôt sont cochées
-      d'office.</p>
-    <div class="tableau">
-      <table aria-labelledby="titre-box">
-        <thead><tr><th scope="col"><span class="visuellement-cache">Renouveler</span></th><th scope="col">Box</th><th scope="col">Statut</th><th scope="col">Groupes</th><th scope="col">Valide jusqu'au</th><th scope="col">N°</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
-        <tbody id="box"></tbody>
-      </table>
+      </section>
     </div>
-    <div class="actions bloc">
-      <button type="button" id="renouveler" disabled>Renouveler la sélection</button>
-      <span class="discret" id="selection"></span>
     </div>
   </section>
 
-  <section id="onglet-codes" aria-labelledby="titre-codes" hidden>
-    <h2 id="titre-codes" tabindex="-1">Tirer un code d'enrôlement</h2>
-    <p class="aide">Un code par box à venir, à transmettre hors bande (téléphone, courrier, en personne) à son
-      installateur, qui le recopie dans la configuration de la box. La box est alors enrôlée avec le nom et les
-      groupes fixés ici. Usage unique.</p>
-    <form id="formulaire-code" class="grille-code">
-      <label>Nom de la box dans l'annuaire (obligatoire)
-        <input type="text" id="code-nom" maxlength="256" required placeholder="CHU Exemple — imagerie Nord">
-      </label>
-      <label>Groupes (séparés par des virgules, facultatif)
-        <input type="text" id="code-groupes" placeholder="imagerie-nord, urgences">
-      </label>
-      <label>Valable (jours, obligatoire)
-        <input type="number" id="code-jours" min="1" max="365" value="30" required>
-      </label>
-      <div class="actions"><button type="submit">Tirer le code</button></div>
-    </form>
-    <div class="nouveau-code" id="nouveau-code" hidden>
-      <p>Code de la box « <strong id="nouveau-nom"></strong> », valable jusqu'au <span id="nouveau-expire"></span> :</p>
-      <p class="code-grand" id="nouveau-valeur"></p>
-      <p class="discret">Ligne à recopier dans <code>box.env</code> :</p>
-      <div class="actions"><code id="nouveau-ligne"></code><button type="button" class="secondaire" id="copier">Copier</button></div>
+  <section id="onglet-demandes" class="page" aria-labelledby="titre-demandes" hidden>
+    <div>
+      <h2 id="titre-demandes" tabindex="-1">Demandes d'enrôlement</h2>
+      <p class="aide"><span id="demandes-resume"></span>Valider signe l'entrée de la box ici, sur ce poste, avec la clé
+        de l'organisation, puis la publie. Une demande sans code ne se valide qu'après avoir comparé son empreinte avec
+        l'installateur de la box.</p>
     </div>
-    <h2 class="bloc" id="titre-codes-tires">Codes tirés</h2>
-    <div class="tableau">
-      <table aria-labelledby="titre-codes-tires">
-        <thead><tr><th scope="col">Box prévue</th><th scope="col">Groupes</th><th scope="col">Statut</th><th scope="col">Code</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
-        <tbody id="codes"></tbody>
-      </table>
+    <div id="demandes" class="liste-cartes"><p class="discret">Chargement…</p></div>
+  </section>
+
+  <section id="onglet-box" class="page" aria-labelledby="titre-box" hidden>
+    <div>
+      <h2 id="titre-box" tabindex="-1">Box de l'organisation</h2>
+      <p class="aide">Les entrées publiées dans l'annuaire, revérifiées avec la clé de l'organisation. Une entrée
+        expirée rend la box injoignable : renouvelez-la avant. Les entrées qui expirent bientôt sont cochées
+        d'office.</p>
     </div>
+    <ul class="indicateurs" id="box-indicateurs" aria-label="Box par état"></ul>
+    <section class="carte" aria-labelledby="titre-box-liste">
+      <h3 id="titre-box-liste" class="visuellement-cache">Liste des box</h3>
+      <div class="tableau">
+        <table aria-labelledby="titre-box">
+          <thead><tr><th scope="col"><span class="visuellement-cache">Renouveler</span></th><th scope="col">Box</th><th scope="col">État</th><th scope="col">Groupes</th><th scope="col">Valide jusqu'au</th><th scope="col">N°</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
+          <tbody id="box"></tbody>
+        </table>
+      </div>
+      <div class="actions pied-carte">
+        <button type="button" id="renouveler" disabled>Renouveler la sélection</button>
+        <span class="discret" id="selection"></span>
+      </div>
+    </section>
+  </section>
+
+  <section id="onglet-codes" class="page" aria-labelledby="titre-codes" hidden>
+    <div>
+      <h2 id="titre-codes" tabindex="-1">Codes d'enrôlement</h2>
+      <p class="aide">Un code par box à venir, transmis hors bande (téléphone, courrier, en personne) à son
+        installateur, qui le recopie dans la configuration de la box. Elle est alors enrôlée avec le nom et les groupes
+        fixés ici. Usage unique.</p>
+    </div>
+    <section class="carte" aria-labelledby="titre-tirer">
+      <h3 id="titre-tirer">Tirer un code</h3>
+      <form id="formulaire-code" class="grille-code">
+        <label>Nom de la box dans l'annuaire <span class="indication">obligatoire</span>
+          <input type="text" id="code-nom" maxlength="256" required placeholder="CHU Exemple — imagerie Nord">
+        </label>
+        <label>Groupes <span class="indication">séparés par des virgules, facultatif</span>
+          <input type="text" id="code-groupes" placeholder="imagerie-nord, urgences">
+        </label>
+        <label>Valable (jours) <span class="indication">obligatoire</span>
+          <input type="number" id="code-jours" min="1" max="365" value="30" required>
+        </label>
+        <div class="actions"><button type="submit">Tirer le code</button></div>
+      </form>
+      <div class="nouveau-code" id="nouveau-code" hidden>
+        <p>Code de la box « <strong id="nouveau-nom"></strong> », valable jusqu'au <span id="nouveau-expire"></span> :</p>
+        <p class="code-grand" id="nouveau-valeur"></p>
+        <div class="actions"><span class="discret">Ligne à recopier dans <code>box.env</code> :</span><code id="nouveau-ligne"></code><button type="button" class="secondaire" id="copier">Copier</button></div>
+        <p class="attention-texte">Le code ne sera plus affiché : transmettez-le maintenant à l'installateur, sans le joindre au fichier de clé publique.</p>
+      </div>
+    </section>
+    <section class="carte" aria-labelledby="titre-codes-tires">
+      <h3 id="titre-codes-tires">Codes tirés</h3>
+      <div class="tableau">
+        <table aria-labelledby="titre-codes-tires">
+          <thead><tr><th scope="col">Box prévue</th><th scope="col">Groupes</th><th scope="col">État</th><th scope="col">Code</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
+          <tbody id="codes"></tbody>
+        </table>
+      </div>
+    </section>
   </section>
   <section id="onglet-configuration" aria-labelledby="titre-configuration" hidden>
     <h2 id="titre-configuration" tabindex="-1">Configuration des box</h2>
@@ -469,40 +523,61 @@
     </div>
   </section>
 
-  <section id="onglet-partenaires" aria-labelledby="titre-partenaires" hidden>
-    <h2 id="titre-partenaires" tabindex="-1">Organisations partenaires</h2>
-    <p class="aide">Pour échanger avec les box d'une autre organisation, chaque responsable reconnaît l'autre : il
-      signe un accord qui fixe la clé du partenaire, ses relais autorisés et les groupes qui peuvent échanger. Un
-      échange ne marche que lorsque les deux responsables ont signé. Sans groupes désignés, aucun échange.</p>
-    <div class="tableau">
-      <table aria-labelledby="titre-partenaires">
-        <thead><tr><th scope="col">Organisation</th><th scope="col">Accord</th><th scope="col">Périmètre</th><th scope="col">Relais autorisés</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
-        <tbody id="partenaires"></tbody>
-      </table>
+  <section id="onglet-partenaires" class="page" aria-labelledby="titre-partenaires" hidden>
+    <div>
+      <h2 id="titre-partenaires" tabindex="-1">Organisations partenaires</h2>
+      <p class="aide">Pour échanger avec les box d'une autre organisation, chaque responsable reconnaît l'autre : il
+        signe un accord qui fixe la clé du partenaire, ses relais autorisés et les groupes qui peuvent échanger. Un
+        échange ne marche que lorsque les deux responsables ont signé.</p>
     </div>
-    <h2 class="bloc">Reconnaître une organisation</h2>
-    <form id="formulaire-partenaire" class="formulaire-partenaire">
-      <label>Clé publique du partenaire (obligatoire) : contenu de son fichier <code>organisation.json.pub.json</code>
-        <textarea id="partenaire-cle" rows="4" required spellcheck="false" placeholder='{"suite":"IU1","organization":"…","signingKeys":{…}}'></textarea>
-      </label>
-      <div class="actions"><button type="button" class="secondaire" id="partenaire-lire">Lire la clé</button>
-        <span id="partenaire-empreinte" class="discret"></span></div>
-      <label>Adresse de l'annuaire du partenaire (obligatoire)
-        <input type="text" id="partenaire-annuaire" required placeholder="https://annuaire.partenaire.example">
-      </label>
-      <label>Relais autorisés du partenaire (obligatoire, séparés par des virgules)
-        <input type="text" id="partenaire-relais" required placeholder="https://relais.partenaire.example">
-      </label>
-      <label>Groupes locaux autorisés à échanger avec lui (* : tous ; vide : aucun)
-        <input type="text" id="partenaire-locaux" placeholder="imagerie-nord, urgences">
-      </label>
-      <label>Groupes du partenaire acceptés (* : tous ; vide : aucun)
-        <input type="text" id="partenaire-distants" placeholder="neurochirurgie">
-      </label>
-      <label class="choix"><input type="checkbox" id="partenaire-verifiee" disabled>
-        J'ai comparé l'empreinte ci-dessus avec le responsable partenaire, hors bande : elle est identique</label>
-      <div class="actions"><button type="submit" id="partenaire-signer" disabled>Signer et publier</button></div>
-    </form>
+    <section class="carte" aria-labelledby="titre-accords">
+      <h3 id="titre-accords">Accords signés</h3>
+      <ul class="grille-cartes" id="partenaires"></ul>
+    </section>
+    <section class="carte" aria-labelledby="titre-reconnaitre">
+      <div>
+        <h3 id="titre-reconnaitre">Reconnaître une organisation</h3>
+        <p class="discret">Champs obligatoires, sauf les groupes. Sans groupes désignés, aucun échange.</p>
+      </div>
+      <form id="formulaire-partenaire" class="formulaire-partenaire">
+        <fieldset class="sous-etape">
+          <legend>1. Sa clé publique</legend>
+          <label><span>Contenu de son fichier <code>organisation.json.pub.json</code></span> <span class="indication">obligatoire</span>
+            <textarea id="partenaire-cle" rows="3" required spellcheck="false" placeholder='{"suite":"IU1","organization":"…","signingKeys":{…}}'></textarea>
+          </label>
+          <div class="actions"><button type="button" class="secondaire" id="partenaire-lire">Lire la clé</button>
+            <span id="partenaire-empreinte" class="discret"></span></div>
+        </fieldset>
+        <fieldset class="sous-etape">
+          <legend>2. Son annuaire et ses relais</legend>
+          <div class="deux-champs">
+            <label>Adresse de son annuaire <span class="indication">obligatoire</span>
+              <input type="text" id="partenaire-annuaire" required placeholder="https://annuaire.partenaire.example">
+            </label>
+            <label>Relais autorisés <span class="indication">obligatoire, séparés par des virgules</span>
+              <input type="text" id="partenaire-relais" required placeholder="https://relais.partenaire.example">
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="sous-etape">
+          <legend>3. Qui échange avec qui</legend>
+          <div class="deux-champs">
+            <label>Vos groupes autorisés à échanger avec lui <span class="indication">* : tous ; vide : aucun</span>
+              <input type="text" id="partenaire-locaux" placeholder="imagerie-nord, urgences">
+            </label>
+            <label>Ses groupes acceptés <span class="indication">* : tous ; vide : aucun</span>
+              <input type="text" id="partenaire-distants" placeholder="neurochirurgie">
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="sous-etape verifier">
+          <legend>4. Vérifier et signer</legend>
+          <label class="choix"><input type="checkbox" id="partenaire-verifiee" disabled>
+            J'ai comparé l'empreinte ci-dessus avec le responsable partenaire, hors bande : elle est identique</label>
+          <div class="actions"><button type="submit" id="partenaire-signer" disabled>Signer et publier</button></div>
+        </fieldset>
+      </form>
+    </section>
   </section>
 </main>
 </div>
@@ -512,14 +587,14 @@
     <h2 id="signer-titre">Signer</h2>
     <p id="signer-resume"></p>
     <div id="signer-extra"></div>
-    <label id="bloc-phrase">Phrase de passe de la clé du responsable
+    <label id="bloc-phrase">Phrase de passe de la clé de l'organisation
       <input type="password" id="phrase" autocomplete="off">
     </label>
     <label class="choix" id="bloc-garder"><input type="checkbox" id="garder">
       Garder la clé déverrouillée pendant cette session (oubliée après 15 minutes sans usage)</label>
-    <div class="actions">
-      <button type="submit" id="confirmer-signer">Signer</button>
+    <div class="actions fin">
       <button type="button" class="secondaire" id="annuler-signer">Annuler</button>
+      <button type="submit" id="confirmer-signer">Signer</button>
     </div>
   </form>
 </dialog>
@@ -529,9 +604,9 @@
     <h2 id="confirmer-titre">Confirmer</h2>
     <p id="confirmer-resume"></p>
     <p class="discret" id="confirmer-detail"></p>
-    <div class="actions">
-      <button type="button" class="danger" id="confirmer-oui">Confirmer</button>
+    <div class="actions fin">
       <button type="button" class="secondaire" id="confirmer-non">Annuler</button>
+      <button type="button" class="danger" id="confirmer-oui">Confirmer</button>
     </div>
   </div>
 </dialog>

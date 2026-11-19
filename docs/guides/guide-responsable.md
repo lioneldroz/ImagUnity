@@ -219,7 +219,7 @@ C'est la page d'accueil. En haut, **« À faire »** : ce qui attend une action,
 
 Au premier lancement, sans clé d'organisation dans le dossier, seuls les onglets « Démarrage » et « Aide » sont ouverts :
 
-![Onglet Démarrage avant la création de l'organisation : formulaire de l'étape 1, puis les étapes suivantes](../images/guide-responsable/19-demarrage-creer.png)
+![Premier démarrage : formulaire de création de l'organisation, puis la liste des étapes qui suivront](../images/guide-responsable/19-demarrage-creer.png)
 
 Les étapes, chacune vérifiée à l'instant (coche verte quand c'est fait) :
 
@@ -231,7 +231,7 @@ Les étapes, chacune vérifiée à l'instant (coche verte quand c'est fait) :
 6. **Valider les box** qui se présentent.
 7. **Au fil du temps** : renouvellements, révocations, partenaires.
 
-![Onglet Démarrage une fois l'organisation installée : étapes 1 à 4 au vert](../images/guide-responsable/20-demarrage.png)
+![Onglet Démarrage une fois l'organisation installée : barre d'avancement, étapes faites résumées, délégation de fraîcheur à renouveler encadrée](../images/guide-responsable/20-demarrage.png)
 
 L'onglet « Aide » explique le principe, chaque fichier et sa raison d'être, l'empreinte, la phrase de passe, les groupes, l'enrôlement, la fraîcheur, les partenaires, et que faire en cas de problème.
 
@@ -269,7 +269,7 @@ Pour une **demande sans code**, le bouton « Valider » ne s'active qu'une fois 
 
 Les entrées publiées dans l'annuaire, revérifiées avec la clé de l'organisation (une entrée signée par une autre clé n'est pas montrée) : nom, identifiant et empreinte de chaque box, statut, groupes, date de fin de validité, numéro de l'entrée.
 
-![Onglet Box de l'organisation : deux box actives qui expirent bientôt, cochées pour le renouvellement](../images/guide-responsable/15-interface-box.png)
+![Onglet Box de l'organisation : compteurs par état ; une box qui expire bientôt, cochée pour le renouvellement, une box expirée et une box révoquée](../images/guide-responsable/15-interface-box.png)
 
 - **Renouveler la sélection** : les entrées actives qui expirent dans les 15 jours, et les entrées expirées, sont cochées d'office ; décochez ou cochez à votre gré. Après la phrase de passe, l'outil relit chaque entrée dans l'annuaire, signe une entrée de numéro suivant (mêmes clés, adresses et groupes, valable `--validite-jours` à partir d'aujourd'hui) et la publie. C'est l'équivalent de `renouveler` (§ 2.6), box par box.
 - **Révoquer** : demande un motif, publié dans l'annuaire, et le **nom de la box recopié exactement**, pour éviter de révoquer la mauvaise box d'un clic. C'est l'équivalent de `revoquer` puis `publier` (§ 2.8), sans fichier à manipuler.
