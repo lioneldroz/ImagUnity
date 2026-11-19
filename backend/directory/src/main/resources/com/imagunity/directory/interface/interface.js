@@ -256,6 +256,13 @@ const STATUTS = {
   "illisible": ["Demande illisible ou mal signée", "refus"],
 };
 
+/** Pastille d'état : point de couleur et texte ; genre : "" (fait), "cours", "neutre", "attention", "refus". */
+function pastille(texte, genre) {
+  return element("span", "etat" + (genre ? " " + genre : ""), texte);
+}
+
+const GENRE_PASTILLE = { ok: "", attention: "attention", refus: "refus" };
+
 function ligne(dl, terme, valeur, classe) {
   dl.append(element("dt", null, terme));
   const dd = element("dd", classe);
@@ -265,19 +272,25 @@ function ligne(dl, terme, valeur, classe) {
 
 function carte(d) {
   const [libelle, genre] = STATUTS[d.statut] || [d.statut, "refus"];
-  const c = element("article", "demande");
+  const c = element("article", "carte demande" + (genre === "ok" ? "" : " " + genre));
   const entete = element("div", "entete");
-  entete.append(element("h3", null, d.nom || d.nomPropose || "Box " + d.boxId), element("span", "badge " + genre, libelle));
+  entete.append(element("h3", null, d.nom || d.nomPropose || "Box " + d.boxId), pastille(libelle, GENRE_PASTILLE[genre]));
   c.append(entete);
 
+  const corpsDemande = element("div", "demande-corps");
   const dl = element("dl");
-  if (d.nom && d.nomPropose && d.nom !== d.nomPropose) ligne(dl, "Nom proposé par la box", d.nomPropose);
-  ligne(dl, "Box", d.boxId, "mono");
-  if (d.empreinte) ligne(dl, "Empreinte", element("span", "empreinte", d.empreinte));
+  if (d.nom && d.nomPropose && d.nom !== d.nomPropose) ligne(dl, "Nom proposé", d.nomPropose);
+  ligne(dl, "Identifiant", d.boxId, "mono");
   if (d.groupes) ligne(dl, "Groupes", d.groupes.length ? d.groupes.join(", ") : "aucun");
-  if (d.recueLe) ligne(dl, "Reçue le", new Date(d.recueLe).toLocaleString("fr-FR"));
+  if (d.recueLe) ligne(dl, "Reçue", quand(d.recueLe));
   if (genre !== "ok") ligne(dl, "Détail", d.detail);
-  c.append(dl);
+  corpsDemande.append(dl);
+  if (d.empreinte) {
+    const bloc = element("div", "empreinte-bloc");
+    bloc.append(element("span", "discret", "Empreinte de la box"), element("span", "empreinte grande", d.empreinte));
+    corpsDemande.append(bloc);
+  }
+  c.append(corpsDemande);
 
   const choix = {};
   const valider = bouton("Valider", null, () => validerDemande(d, choix), "demande:" + d.boxId + ":valider");
@@ -286,12 +299,15 @@ function carte(d) {
   if (d.statut === "sans-code") {
     const v = element("div", "verification");
     const nom = champ("Nom de la box dans l'annuaire", d.nomPropose, { maxLength: 256 });
-    const groupes = champ("Groupes (séparés par des virgules, facultatif)", "", { placeholder: "imagerie-nord, urgences" });
+    const groupes = champ("Groupes", "", { placeholder: "imagerie-nord, urgences" });
+    groupes.label.insertBefore(element("span", "indication", "séparés par des virgules, facultatif"), groupes.input);
+    const deux = element("div", "deux-champs");
+    deux.append(nom.label, groupes.label);
     const verifiee = element("input");
     verifiee.type = "checkbox";
     const lcase = element("label", "choix");
     lcase.append(verifiee, document.createTextNode("J'ai comparé cette empreinte avec l'installateur de la box : elle est identique"));
-    v.append(lcase, nom.label, groupes.label);
+    v.append(lcase, deux);
     c.append(v);
     valider.disabled = true;
     verifiee.addEventListener("change", () => { valider.disabled = !verifiee.checked; });
@@ -307,12 +323,17 @@ function carte(d) {
 function validerDemande(d, choix) {
   const nom = choix.nom ? choix.nom.value.trim() || d.nomPropose : d.nom;
   const groupes = choix.groupes ? listeGroupes(choix.groupes.value) : d.groupes;
+  const details = element("dl");
+  ligne(details, "Nom", nom);
+  ligne(details, "Groupes", groupes.length ? groupes.join(", ") : "aucun");
+  ligne(details, "Empreinte", d.empreinte, "mono");
+  ligne(details, "Code", d.statut === "code-verifie" ? "vérifié" : "aucun : empreinte comparée avec l'installateur");
   signer({
     titre: "Valider la demande",
-    resume: "Signer l'entrée de la box « " + nom + " » (empreinte " + d.empreinte + ", groupes "
-      + (groupes.length ? groupes.join(", ") : "aucun") + ", " + etat.validiteJours
-      + " jours) avec la clé de l'organisation, puis la publier dans l'annuaire.",
+    resume: "Signer et publier l'entrée de la box « " + nom + " » (" + d.boxId + "), valable " + etat.validiteJours
+      + " jours, avec la clé de l'organisation.",
     libelle: "Signer et publier",
+    extra: details,
     action: (phrase, garder) => {
       const corps = { boxId: d.boxId, empreinte: d.empreinte, phrase, garder };
       if (choix.verifiee) Object.assign(corps, { empreinteVerifiee: choix.verifiee.checked, nom, groupes });
@@ -335,9 +356,11 @@ function refuserDemande(d) {
 function afficherDemandes(demandes) {
   const zone = $("demandes");
   zone.replaceChildren();
-  if (!demandes.length) zone.append(element("p", "discret", "Aucune demande en attente."));
+  if (!demandes.length) zone.append(element("p", "carte discret", "Aucune demande en attente."));
   demandes.forEach((d) => zone.append(carte(d)));
-  $("compte-demandes").textContent = demandes.length ? "(" + demandes.length + ")" : "";
+  $("demandes-resume").textContent = demandes.length
+    ? demandes.length + " demande" + (demandes.length > 1 ? "s" : "") + " en attente. " : "Aucune demande en attente. ";
+  $("compte-demandes").textContent = demandes.length ? String(demandes.length) : "";
 }
 
 // --- Box de l'organisation ---
@@ -347,7 +370,29 @@ const STATUTS_BOX = { ACTIVE: "active", EXPIRED: "expirée", REVOKED: "révoqué
 function majSelection() {
   const choisies = document.querySelectorAll("#box input[type=checkbox]:checked").length;
   $("renouveler").disabled = choisies === 0;
-  $("selection").textContent = choisies ? choisies + " box choisie(s), renouvelée(s) pour " + etat.validiteJours + " jours" : "";
+  $("renouveler").textContent = "Renouveler la sélection" + (choisies ? " (" + choisies + ")" : "");
+  $("selection").textContent = "Les box choisies sont renouvelées pour " + etat.validiteJours + " jours, avec une seule signature.";
+}
+
+/** Jours restants avant une date (arrondis au jour supérieur). */
+const joursAvant = (iso) => Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+
+const GENRES_BOX = { ACTIVE: "", EXPIRED: "refus", REVOKED: "neutre", NOT_YET_VALID: "attention" };
+
+function indicateursBox(boites) {
+  const n = (f) => boites.filter(f).length;
+  const tuiles = [
+    ["Actives", n((b) => b.statut === "ACTIVE"), "", ""],
+    ["Expirent bientôt", n((b) => b.statut === "ACTIVE" && b.aRenouveler), "cochées pour renouvellement", "attention"],
+    ["Expirées", n((b) => b.statut === "EXPIRED"), "injoignables jusqu'au renouvellement", "refus"],
+    ["Révoquées", n((b) => b.statut === "REVOKED"), "", ""],
+  ];
+  $("box-indicateurs").replaceChildren(...tuiles.map(([libelle, valeur, note, genre]) => {
+    const li = element("li", "indicateur");
+    li.append(element("div", "discret", libelle), element("div", "valeur", String(valeur)));
+    if (note && valeur) li.append(element("div", "note " + genre, note));
+    return li;
+  }));
 }
 
 function afficherBox(boites) {
@@ -374,13 +419,18 @@ function afficherBox(boites) {
       c.addEventListener("change", majSelection);
       choix.append(c);
     }
+    if (b.statut === "EXPIRED") tr.className = "ligne-echec";
     const nom = element("td");
-    nom.append(element("strong", null, b.nom), element("span", "discret mono", b.boxId),
-      element("span", "discret", "empreinte " + b.empreinte));
-    const statut = element("td", "statut-" + b.statut, STATUTS_BOX[b.statut] || b.statut);
+    nom.append(element("strong", null, b.nom), element("span", "discret mono", b.boxId + " · " + b.empreinte));
+    const statut = element("td");
+    statut.append(pastille(STATUTS_BOX[b.statut] || b.statut, GENRES_BOX[b.statut]));
     if (b.statut === "REVOKED") statut.append(element("span", "discret", "le " + jour(b.revoqueeLe) + " : " + b.motif));
-    const fin = element("td", b.aRenouveler && b.statut === "ACTIVE" ? "bientot" : null, jour(b.valideJusquau));
-    if (b.aRenouveler && b.statut === "ACTIVE") fin.append(element("span", "discret", "expire bientôt"));
+    if (b.statut === "EXPIRED") statut.append(element("span", "discret", "injoignable : à renouveler"));
+    const fin = element("td", null, jour(b.valideJusquau));
+    if (b.aRenouveler && b.statut === "ACTIVE") {
+      const j = joursAvant(b.valideJusquau);
+      fin.append(element("span", "note-bientot", j > 1 ? "expire dans " + j + " jours" : "expire bientôt"));
+    }
     const action = element("td");
     if (b.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquer(b), "box:" + b.boxId + ":revoquer"));
     tr.append(choix, nom, statut, element("td", null, b.groupes.length ? b.groupes.join(", ") : "—"), fin,
@@ -388,7 +438,8 @@ function afficherBox(boites) {
     corps.append(tr);
   }
   const actives = boites.filter((b) => b.statut === "ACTIVE").length;
-  $("compte-box").textContent = boites.length ? "(" + actives + " active" + (actives > 1 ? "s" : "") + ")" : "";
+  $("compte-box").textContent = boites.length ? actives + " active" + (actives > 1 ? "s" : "") : "";
+  indicateursBox(boites);
   majSelection();
 }
 
@@ -404,15 +455,15 @@ function renouveler() {
 }
 
 function revoquer(b) {
-  const bloc = element("div", "verification");
-  const motif = champ("Motif (publié dans l'annuaire)", "", { maxLength: 500, placeholder: "box remplacée, clé compromise…" });
+  const bloc = element("div", "champs-dialogue");
+  const motif = champ("Motif, publié dans l'annuaire", "", { maxLength: 500, placeholder: "box remplacée, clé compromise…" });
   const nom = champ("Pour confirmer, recopiez le nom de la box : " + b.nom, "", { maxLength: 256 });
-  bloc.append(motif.label, nom.label);
+  bloc.append(element("p", "remarque refus", "Définitif : pour la réintégrer, il faudra l'enrôler de nouveau, avec d'autres clés."),
+    motif.label, nom.label);
   signer({
     titre: "Révoquer la box",
     resume: "Révoquer « " + b.nom + " » (" + b.boxId + ") : les autres box cesseront d'échanger avec elle à leur "
-      + "prochaine lecture de l'annuaire. Définitif : pour la réintégrer, il faudra l'enrôler de nouveau avec "
-      + "d'autres clés.",
+      + "prochaine lecture de l'annuaire.",
     libelle: "Révoquer",
     danger: true,
     extra: bloc,
@@ -424,7 +475,7 @@ function revoquer(b) {
 
 // --- Codes d'enrôlement ---
 
-const STATUTS_CODE = { libre: ["libre", "statut-ACTIVE"], utilise: ["utilisé", ""], expire: ["expiré", "statut-EXPIRED"] };
+const STATUTS_CODE = { libre: ["libre", "cours"], utilise: ["utilisé", ""], expire: ["expiré", "refus"] };
 
 function afficherCodes(codes) {
   const corps = $("codes");
@@ -437,19 +488,20 @@ function afficherCodes(codes) {
     corps.append(vide);
   }
   for (const c of codes) {
-    const [libelle, classe] = STATUTS_CODE[c.statut];
-    const statut = element("td", classe, libelle);
+    const [libelle, genre] = STATUTS_CODE[c.statut];
+    const statut = element("td");
+    statut.append(pastille(libelle, genre));
     statut.append(element("span", "discret", c.statut === "utilise"
       ? "le " + jour(c.utiliseLe) + ", box " + c.boxId : (c.statut === "libre" ? "jusqu'au " : "le ") + jour(c.expireLe)));
     const action = element("td");
     if (c.statut !== "utilise") action.append(bouton("Retirer", "secondaire petit", () => retirerCode(c), "code:" + c.id + ":retirer"));
     const tr = element("tr");
-    tr.append(element("td", null, c.nom), element("td", null, c.groupes.length ? c.groupes.join(", ") : "—"), statut,
+    tr.append(element("td", "fort", c.nom), element("td", null, c.groupes.length ? c.groupes.join(", ") : "—"), statut,
       element("td", "mono", c.code || ""), action);
     corps.append(tr);
   }
   const libres = codes.filter((c) => c.statut === "libre").length;
-  $("compte-codes").textContent = libres ? "(" + libres + " libre" + (libres > 1 ? "s" : "") + ")" : "";
+  $("compte-codes").textContent = libres ? libres + " libre" + (libres > 1 ? "s" : "") : "";
 }
 
 async function tirerCode(evenement) {
@@ -491,34 +543,30 @@ function portee(groupes) {
 }
 
 function afficherPartenaires(partenaires) {
-  const corps = $("partenaires");
-  corps.replaceChildren();
-  if (!partenaires.length) {
-    const td = element("td", "discret", "Aucune organisation reconnue.");
-    td.colSpan = 5;
-    const vide = element("tr");
-    vide.append(td);
-    corps.append(vide);
-  }
+  const liste = $("partenaires");
+  liste.replaceChildren();
+  if (!partenaires.length) liste.append(element("li", "discret", "Aucune organisation reconnue."));
   for (const p of partenaires) {
-    const tr = element("tr");
-    const nom = element("td");
-    nom.append(element("strong", null, p.organisation), element("span", "discret mono", p.empreinteCourte),
-      element("span", "discret", p.annuaire));
-    const accord = element("td", "statut-" + p.statut, STATUTS_BOX[p.statut] || p.statut);
-    accord.append(element("span", "discret", p.statut === "REVOKED" ? "le " + jour(p.revoqueeLe) + " : " + p.motif
-      : "jusqu'au " + jour(p.valideJusquau) + ", n° " + p.serie));
-    const perimetre = element("td");
-    perimetre.append(element("span", null, "locaux : " + portee(p.groupesLocaux)),
-      element("span", "discret", "partenaire : " + portee(p.groupesPartenaire)));
-    const action = element("td");
+    const revoque = p.statut === "REVOKED";
+    const li = element("li", "carte-element" + (revoque || p.statut === "EXPIRED" ? " en-echec" : ""));
+    const tete = element("div", "entete");
+    const accord = { ACTIVE: ["accord en vigueur", ""], EXPIRED: ["accord expiré", "refus"], REVOKED: ["accord révoqué", "refus"],
+      NOT_YET_VALID: ["accord pas encore en vigueur", "attention"] }[p.statut] || [p.statut, "neutre"];
+    tete.append(element("h4", null, p.organisation), pastille(accord[0], accord[1]));
+    const dl = element("dl");
+    ligne(dl, "Groupes locaux", portee(p.groupesLocaux));
+    ligne(dl, "Groupes du partenaire", portee(p.groupesPartenaire));
+    ligne(dl, "Relais", p.relais.join(", "));
+    const action = element("div", "actions");
     action.append(bouton("Renouveler", "secondaire petit", () => renouvelerAccord(p), "partenaire:" + p.empreinte + ":renouveler"));
-    if (p.statut !== "REVOKED") action.append(bouton("Révoquer", "refuser petit", () => revoquerAccord(p), "partenaire:" + p.empreinte + ":revoquer"));
-    tr.append(nom, accord, perimetre, element("td", "small", p.relais.join(", ")), action);
-    corps.append(tr);
+    if (!revoque) action.append(bouton("Révoquer", "refuser petit", () => revoquerAccord(p), "partenaire:" + p.empreinte + ":revoquer"));
+    li.append(tete, element("span", "discret mono", p.empreinteCourte + " · " + p.annuaire),
+      element("span", "discret", revoque ? "le " + jour(p.revoqueeLe) + " : " + p.motif
+        : "jusqu'au " + jour(p.valideJusquau) + " · accord n° " + p.serie), dl, action);
+    liste.append(li);
   }
   const actifs = partenaires.filter((p) => p.statut === "ACTIVE").length;
-  $("compte-partenaires").textContent = partenaires.length ? "(" + actifs + " actif" + (actifs > 1 ? "s" : "") + ")" : "";
+  $("compte-partenaires").textContent = partenaires.length ? actifs + " actif" + (actifs > 1 ? "s" : "") : "";
 }
 
 async function lireCle() {
@@ -574,8 +622,8 @@ function renouvelerAccord(p) {
 }
 
 function revoquerAccord(p) {
-  const bloc = element("div", "verification");
-  const motif = champ("Motif (publié dans l'annuaire)", "", { maxLength: 500, placeholder: "fin du partenariat…" });
+  const bloc = element("div", "champs-dialogue");
+  const motif = champ("Motif, publié dans l'annuaire", "", { maxLength: 500, placeholder: "fin du partenariat…" });
   const nom = champ("Pour confirmer, recopiez le nom de l'organisation : " + p.organisation, "", { maxLength: 64 });
   bloc.append(motif.label, nom.label);
   signer({
@@ -597,10 +645,14 @@ function revoquerAccord(p) {
 
 function statut(id, fait, texteFait, texteAFaire, genre) {
   const b = $("statut-" + id);
+  const g = fait ? "" : genre || "attention";
   b.textContent = fait ? texteFait : texteAFaire;
-  b.className = "badge " + (fait ? "ok" : genre || "attention");
+  b.className = "etat" + (g ? " " + g : "");
   const etape = b.closest(".etape");
-  if (etape) etape.classList.toggle("faite", Boolean(fait));
+  if (etape) {
+    etape.classList.toggle("faite", Boolean(fait));
+    etape.classList.toggle("a-faire", !fait && g === "attention");
+  }
   return fait ? 1 : 0;
 }
 
@@ -628,6 +680,10 @@ function afficherDemarrage(d, extras) {
   pastille.textContent = a.joignable ? "Annuaire joignable" : "Annuaire injoignable";
   pastille.className = "pastille" + (a.joignable ? "" : " refus");
   let faites = 0;
+  // Premier démarrage : seule la création de l'organisation est proposée, les étapes suivantes sont annoncées.
+  $("onglet-demarrage").classList.toggle("premier", !e.initialisee);
+  $("ensuite").hidden = e.initialisee;
+  $("titre-demarrage").textContent = e.initialisee ? "Démarrage" : "Bienvenue";
   $("org-dossier").textContent = e.dossier;
   $("organisation-a-creer").hidden = e.initialisee;
   $("organisation-creee").hidden = !e.initialisee;
@@ -645,6 +701,7 @@ function afficherDemarrage(d, extras) {
     faites += statut("site", false, "", "annuaire injoignable", "refus");
     $("site-detail").textContent = "Annuaire " + e.annuaire + " injoignable" + (a.detail ? " (" + a.detail + ")" : "")
       + " : normal tant que le site central n'est pas installé.";
+    $("ensuite-site").textContent = $("site-detail").textContent;
   } else if (!e.initialisee || !a.memeCle) {
     faites += statut("site", false, "", e.initialisee ? "clé différente" : "en attente de l'étape 1", e.initialisee ? "refus" : "attention");
     $("site-detail").textContent = "L'annuaire publie l'organisation « " + a.organisation + " », empreinte " + a.empreinte
@@ -653,6 +710,8 @@ function afficherDemarrage(d, extras) {
     faites += statut("site", true, "annuaire installé avec votre clé", "");
     $("site-detail").textContent = "L'annuaire " + e.annuaire + " publie bien « " + a.organisation + " » avec l'empreinte " + a.empreinte + ".";
   }
+  $("ensuite-site").textContent = $("site-detail").textContent;
+  $("site-consignes").open = !$("etape-site").classList.contains("faite");
   $("formulaire-compte").hidden = e.compte !== "requis";
   faites += statut("compte", e.compte !== "requis", e.compte === "saisi" ? "connecté pour cette session" : "compte fourni au lancement", "à saisir");
   const f = d.fraicheur || {};
@@ -663,16 +722,34 @@ function afficherDemarrage(d, extras) {
     + (a.fraicheurPubliee ? " ; l'annuaire publie sa preuve" : " ; pas encore installée sur l'annuaire") : "Pas encore déléguée.");
   faites += statut("fraicheur", f.numero && !f.expireBientot && a.fraicheurPubliee, "publiée",
     f.expireBientot ? "à renouveler" : f.numero ? "à installer" : "à faire");
+  const alerte = $("fraicheur-alerte");
+  alerte.hidden = !(f.numero && f.expireBientot);
+  if (!alerte.hidden) {
+    const j = joursAvant(f.jusquAu);
+    alerte.textContent = "Délégation n° " + f.numero + " jusqu'au " + jour(f.jusquAu)
+      + (j > 0 ? ", dans " + j + " jour" + (j > 1 ? "s" : "") : ", expirée") + ". Sans renouvellement, les échanges s'arrêtent 48 h après la fin.";
+  }
   $("lignes-box").textContent = ["IMAGUNITY_DIRECTORY_ENABLED=true",
     "IMAGUNITY_DIRECTORY_URL=" + e.annuaire,
     "IMAGUNITY_DIRECTORY_ORGANIZATION_KEY=/etc/imagunity/organisation.pub.json",
     "IMAGUNITY_DIRECTORY_ORGANIZATION_CODE=" + empreinte,
     "IMAGUNITY_DIRECTORY_ENROLLMENT_CODE=<code tiré pour cette box>"].join("\n");
   const boites = extras ? extras.boites.length : 0;
-  faites += statut("box", boites > 0, boites + " box enrôlée(s)", extras ? (extras.codes.length ? extras.codes.length + " code(s) tiré(s)" : "aucun code tiré") : "après l'étape 1");
+  faites += statut("box", boites > 0, boites + " box enrôlée" + (boites > 1 ? "s" : ""), extras ? (extras.codes.length ? extras.codes.length + " code(s) tiré(s)" : "aucun code tiré") : "après l'étape 1");
   const demandes = extras ? extras.demandes.length : 0;
   statut("demandes", extras && demandes === 0 && boites > 0, "rien en attente", demandes ? demandes + " en attente" : "aucune demande");
   $("compte-demarrage").textContent = faites + "/5";
+  $("demarrage-barre").style.width = (faites * 20) + "%";
+  $("demarrage-progression").setAttribute("aria-label", faites + " étapes sur 5 faites");
+  const reste = [];
+  if (!$("etape-site").classList.contains("faite")) reste.push("installer la clé sur le site central");
+  if (!$("etape-compte").classList.contains("faite")) reste.push("vous connecter à l'annuaire");
+  if (!$("etape-fraicheur").classList.contains("faite")) reste.push(f.expireBientot ? "renouveler la délégation de fraîcheur, comme chaque mois" : "déléguer la clé de fraîcheur");
+  if (!$("etape-box").classList.contains("faite")) reste.push("préparer les box");
+  $("demarrage-resume").textContent = !e.initialisee
+    ? "Aucune organisation sur ce poste pour l'instant. Commencez par créer l'organisation et sa clé : elle signe tout ce que publie l'organisation et ne quitte jamais ce poste."
+    : faites + " étape" + (faites > 1 ? "s" : "") + " sur 5 " + (faites > 1 ? "sont faites" : "est faite") + "."
+      + (reste.length ? " Il reste à " + reste.join(", ") + "." : "") + " Chaque étape est vérifiée à l'instant ; les explications détaillées sont dans l'Aide.";
 }
 
 async function creerOrganisation(evenement) {
