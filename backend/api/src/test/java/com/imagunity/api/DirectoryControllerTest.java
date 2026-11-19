@@ -231,11 +231,19 @@ class DirectoryControllerTest {
                         Map.of("iu", relay + "/iu/v1/queues/e"), NOW), NOW, Duration.ofDays(30), 1),
                 partnerOrg.enroll(EnrollmentRequest.create(HybridKeyPair.generate(), partner.boxId(), "Usurpatrice",
                         Map.of("iu", relay + "/iu/v1/queues/u"), NOW), NOW, Duration.ofDays(30), 1)));
+        EnrollmentProgress progress = new EnrollmentProgress("chu-exemple", "F4KL", "https://annuaire", false);
+        progress.failed(NOW, "annuaire injoignable");
         DirectoryController controller = new DirectoryController(Providers.of(BoxIdentity.class, me),
                 Providers.of(LocalDirectory.class, directory), new BoxProperties("box-a"), clock, transport,
-                new PairingService(peers, transport, clock, Duration.ofHours(1)), peers);
+                new PairingService(peers, transport, clock, Duration.ofHours(1)), peers,
+                Providers.of(EnrollmentProgress.class, progress));
 
         DirectoryController.DirectoryView view = controller.directory();
+        assertThat(view.setup().organization()).isEqualTo("chu-exemple");
+        assertThat(view.setup().directoryUrl()).isEqualTo("https://annuaire");
+        assertThat(view.setup().error()).isEqualTo("annuaire injoignable");
+        assertThat(view.setup().attemptAt()).isEqualTo(NOW);
+        assertThat(view.setup().submittedAt()).isNull();
         assertThat(view.boxes()).extracting(DirectoryController.BoxView::displayName).as("box locales d'abord")
                 .containsExactly("Site A", "Site B", "Site C", "Site D", "Site E");
         DirectoryController.BoxView e = view.boxes().getLast();

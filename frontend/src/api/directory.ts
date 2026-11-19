@@ -61,6 +61,17 @@ export interface IdentifierCollision {
   at: string
 }
 
+/** Mise en service : organisation épinglée, annuaire, demande d'enrôlement. */
+export interface EnrollmentSetup {
+  organization: string
+  organizationShortCode: string
+  directoryUrl: string
+  codeProvided: boolean
+  submittedAt: string | null
+  attemptAt: string | null
+  error: string | null
+}
+
 /** GET /api/v1/directory. */
 export interface DirectoryView {
   enabled: boolean
@@ -71,6 +82,7 @@ export interface DirectoryView {
   partners: PartnerOrganization[]
   collisions: IdentifierCollision[]
   freshness: Freshness | null
+  setup?: EnrollmentSetup | null
 }
 
 export const fetchDirectory = () => getJson<DirectoryView>('/api/v1/directory')

@@ -63,10 +63,18 @@ class AutomaticEnrollmentTest {
         server.start();
         DirectoryClient client = new DirectoryClient(URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                 Duration.ofSeconds(5));
+        com.imagunity.api.EnrollmentProgress progress = new com.imagunity.api.EnrollmentProgress("chu-exemple",
+                ORG_KEYS.publicKey().shortCode(), "http://annuaire", true);
         AutomaticEnrollment enrollment = new AutomaticEnrollment(directory, client, me, new DisabledTransport(),
-                "CHU Exemple — imagerie Nord", code.toLowerCase(), clock);
+                "CHU Exemple — imagerie Nord", code.toLowerCase(), clock, progress);
         try {
+            assertThat(progress.view().submittedAt()).as("pas encore envoyée").isNull();
             assertThat(enrollment.submitIfNeeded()).isTrue();
+            java.time.Instant first = progress.view().submittedAt();
+            assertThat(first).isNotNull();
+            assertThat(progress.view().error()).isNull();
+            assertThat(progress.view().organization()).isEqualTo("chu-exemple");
+            assertThat(progress.view().codeProvided()).isTrue();
             EnrollmentSubmission sent = EnrollmentSubmission.fromJson(received.getFirst());
             assertThat(sent.provenBy(code)).as("preuve du code jointe").isTrue();
             EnrollmentRequest request = EnrollmentRequest.verify(sent.request());
@@ -76,8 +84,12 @@ class AutomaticEnrollmentTest {
 
             status[0] = 409;
             assertThat(enrollment.submitIfNeeded()).isFalse();
+            assertThat(progress.view().error()).contains("écartée par l'annuaire");
             status[0] = 503;
             assertThat(enrollment.submitIfNeeded()).isFalse();
+            assertThat(progress.view().error()).isNotNull();
+            assertThat(progress.view().submittedAt()).as("dernier envoi réussi gardé").isNotNull()
+                    .isAfterOrEqualTo(first);
             assertThat(enrollment.submitIfNeeded()).as("avertissement une seule fois").isFalse();
 
             // Entrée publiée et lue : plus rien n'est envoyé.
@@ -115,7 +127,16 @@ class AutomaticEnrollmentTest {
         assertThatThrownBy(() -> new DirectoryConfiguration().automaticEnrollment(directory, client, me,
                 new DisabledTransport(), new com.imagunity.api.BoxProperties("Box"),
                 new DirectoryProperties(true, null, null, null, null, Duration.ofMinutes(5), null, null, false, null,
-                        "ABCD-1234"), clock))
+                        "ABCD-1234"), clock, null))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("IMAGUNITY_DIRECTORY_ENROLLMENT_CODE");
+        java.nio.file.Path keyFile = java.nio.file.Files.createTempDirectory("box").resolve("organisation.pub.json");
+        com.imagunity.directory.KeyFiles.writeOrganizationPublic(keyFile, "chu-exemple", ORG_KEYS.publicKey());
+        com.imagunity.api.EnrollmentProgress progress = new DirectoryConfiguration().enrollmentProgress(
+                com.imagunity.directory.KeyFiles.readOrganizationPublic(keyFile),
+                new DirectoryProperties(true, java.net.URI.create("https://annuaire.example"), null, null, null,
+                        Duration.ofMinutes(5), null, null, false, null, " "));
+        assertThat(progress.view().codeProvided()).as("code vide : aucun").isFalse();
+        assertThat(progress.view().directoryUrl()).isEqualTo("https://annuaire.example");
+        assertThat(progress.view().organizationShortCode()).isEqualTo(ORG_KEYS.publicKey().shortCode());
     }
 }

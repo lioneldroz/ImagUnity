@@ -236,29 +236,32 @@ Tant que la box n'est pas enrôlée, son journal affiche des refus `401` du rela
 
 ## 9. Enrôler, puis appairer, depuis la console
 
-La **console** de la box s'ouvre dans un navigateur du poste d'exploitation, à l'adresse `http://192.168.1.78:8080/`, avec le compte opérateur. Elle est servie par la box elle-même. On y suit en direct :
-- les transferts envoyés et reçus ;
-- les partenaires ;
-- l'annuaire ;
-- la configuration centralisée ;
-- les règles de priorité.
+La **console** de la box s'ouvre dans un navigateur du poste d'exploitation, à l'adresse `http://192.168.1.78:8080/`, avec le compte opérateur. Elle est servie par la box elle-même. Le bandeau donne le nom de la box, son organisation, sa version (signée ou non vérifiée), l'état du flux en direct et celui de l'annuaire ; un message en tête de page dit ce qui ne va pas (annuaire injoignable, échanges suspendus, configuration refusée, box révoquée…) et quoi faire. Le menu ouvre cinq pages :
+- **Activité** : les points à surveiller (envois et réceptions en échec, accusés en retard, appareils qui ne répondent pas, configuration refusée), les indicateurs et les derniers transferts ;
+- **Envois** et **Réceptions** : les 100 derniers, filtrés par état ou cherchés par étude ; chaque étude se déplie sur son parcours et, pour un envoi, ses paquets ;
+- **Partenaires** : les box appairées, les box de l'annuaire (avec l'appairage) et les organisations partenaires ;
+- **Configuration** : la configuration centrale appliquée, l'état de chaque appareil DICOM vu par la box (dernier C-ECHO, envois reçus), les routes, les règles de priorité et l'identité de la box.
+
+![Console de la box, page Activité (données fictives)](../images/console-box-activite.png)
+
+Tant que la box n'est pas enrôlée, la console n'ouvre que la page **Mise en service** : étapes de l'enrôlement, empreinte à lire au responsable, demande d'enrôlement à télécharger.
 
 Le compte circule en HTTP sur le réseau du site : à réserver au poste d'exploitation (pare-feu, § 6) ou à placer derrière un proxy TLS.
 
-**Enrôlement : automatique avec le code d'enrôlement.** Le responsable vous a donné un code pour cette box, recopié dans `box.env` (`IMAGUNITY_DIRECTORY_ENROLLMENT_CODE`, § 6). Au démarrage, la box envoie seule sa demande d'enrôlement à l'annuaire, avec la preuve de ce code ; son journal affiche « Demande d'enrôlement transmise à l'annuaire (avec la preuve du code d'enrôlement) ». Il n'y a rien d'autre à faire : le responsable enrôle la box depuis son poste ([guide du responsable, § 2.3](guide-responsable.md#23-enrôler-les-box-en-attente)). Dans les 5 minutes qui suivent la publication, la carte « Annuaire de l'organisation » affiche la box comme active, et le journal affiche « File de réception IU-T créée ».
+**Enrôlement : automatique avec le code d'enrôlement.** Le responsable vous a donné un code pour cette box, recopié dans `box.env` (`IMAGUNITY_DIRECTORY_ENROLLMENT_CODE`, § 6). Au démarrage, la box envoie seule sa demande d'enrôlement à l'annuaire, avec la preuve de ce code ; son journal affiche « Demande d'enrôlement transmise à l'annuaire (avec la preuve du code d'enrôlement) ». Il n'y a rien d'autre à faire : le responsable enrôle la box depuis son poste ([guide du responsable, § 2.3](guide-responsable.md#23-enrôler-les-box-en-attente)). La page « Mise en service » suit l'avancement ; dans les 5 minutes qui suivent la publication, la console ouvre ses autres pages, et le journal affiche « File de réception IU-T créée ».
 
 Un code mal recopié empêche la box de démarrer, avec un message qui le dit. Un code expiré ou déjà utilisé est refusé par le responsable : il vous en donne un autre.
 
-**Enrôlement sans code**, à la main. Dans la carte « Annuaire de l'organisation » :
+**Enrôlement sans code**, à la main. Dans la page « Mise en service » :
 1. relever l'**empreinte** de la box ;
 2. cliquer sur **« Télécharger la demande d'enrôlement »** ;
 3. envoyer le fichier au responsable ;
 4. lui dicter l'empreinte quand il la demande.
 
-**Appairage** avec chaque partenaire. La même carte liste les box de l'annuaire. Pour chaque partenaire :
+**Appairage** avec chaque partenaire. La page « Partenaires » liste les box de l'annuaire. Pour chaque partenaire :
 1. saisir le nom utilisé par la route DICOM (par exemple `box-b`) ;
 2. cliquer sur **« Appairer »** ;
-3. vérifier que le partenaire apparaît dans la carte « Partenaires ».
+3. vérifier que le partenaire apparaît dans « Partenaires appairés ».
 
 Sans navigateur, les mêmes opérations se font par l'API :
 

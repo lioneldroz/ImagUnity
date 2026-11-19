@@ -110,7 +110,7 @@ Ces contrôles automatiques tournent à chaque modification du code, dans l'int�
 
 ### Écrans ayant fait l'objet de la vérification de conformité
 
-1. **Console de la box** : page unique, avec le détail des paquets d'un envoi ouvert et un appairage refusé.
+1. **Console de la box** : pages Activité, Envois (détail d'un envoi ouvert), Réceptions (détail d'une réception ouvert), Partenaires (appairage refusé), Configuration (détail d'un appareil en échec ouvert) et Mise en service.
 2. **Interface d'administration de l'annuaire** : page unique, chargée, avec un document préparé, des règles essayées, un annuaire vide et un brouillon refusé.
 3. **Interface locale du responsable** :
    - premier démarrage, sans organisation ;

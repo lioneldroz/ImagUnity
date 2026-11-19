@@ -24,6 +24,9 @@ import java.util.Objects;
 public record NodeCheck(String node, Instant echoAt, String echoError, Instant receivedAt, Instant refusedAt,
                         String refusedFrom, Instant echoOkAt) {
 
+    /** Intervalle entre deux essais de connexion d'une même destination inchangée. */
+    public static final java.time.Duration ECHO_EVERY = java.time.Duration.ofMinutes(30);
+
     public NodeCheck {
         Objects.requireNonNull(node, "node");
         echoError = cut(echoError);
