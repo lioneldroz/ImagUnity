@@ -52,7 +52,14 @@ async function ouvrir(page, { etat = ETAT, demandes = DEMANDES, brouillonRefuse 
   await expect(page.locator('#organisation')).toHaveText(etat.organization);
 }
 
+/** Ouvre un onglet de la page (box, brouillon, versions). */
+async function onglet(page, nom) {
+  await page.click(`[data-onglet="${nom}"]`);
+  await expect(page.locator('#onglet-' + nom)).toBeVisible();
+}
+
 async function preparerEtEssayer(page) {
+  await onglet(page, 'brouillon');
   await page.click('#preparer');
   await expect(page.locator('#prepare')).toBeVisible();
   await page.click('#essayer');
@@ -63,6 +70,9 @@ test.describe('axe-core (critères RGAA détectables automatiquement)', () => {
   test('page chargée, document préparé, règles essayées', async ({ page }, testInfo) => {
     await ouvrir(page);
     await axe(page, testInfo, 'page chargée');
+    await onglet(page, 'versions');
+    await axe(page, testInfo, 'publier et versions');
+    await onglet(page, 'brouillon');
     await page.click('#preparer');
     await expect(page.locator('#prepare')).toBeVisible();
     await axe(page, testInfo, 'document préparé');
@@ -73,6 +83,8 @@ test.describe('axe-core (critères RGAA détectables automatiquement)', () => {
 
   test('annuaire vide et brouillon refusé', async ({ page }, testInfo) => {
     await ouvrir(page, { etat: { ...ETAT, boxes: [], groups: [], documents: [] }, demandes: [], brouillonRefuse: true });
+    await axe(page, testInfo, 'annuaire vide');
+    await onglet(page, 'brouillon');
     await page.click('#preparer');
     await expect(page.locator('#message')).toContainText('Brouillon refusé');
     await axe(page, testInfo, 'annuaire vide, brouillon refusé');
@@ -114,6 +126,7 @@ test('7.5 : messages de statut annoncés, y compris un message répété', async
   };
   await toujoursPresentes('au chargement');
 
+  await onglet(page, 'brouillon');
   // Même erreur deux fois : la région doit être vidée puis remplie de nouveau pour être annoncée la seconde fois.
   await page.evaluate(() => {
     window.textesMessage = [];
@@ -157,7 +170,8 @@ test('10.7 et 12.7 : lien d\'évitement en premier, focus toujours visible', asy
   await page.keyboard.press('Enter');
   await expect(page.locator('#contenu'), '12.7 : le lien mène au contenu principal').toBeFocused();
 
-  // 10.7 : chaque élément atteint au clavier garde un indicateur de focus.
+  // 10.7 : chaque élément atteint au clavier garde un indicateur de focus, dans l'onglet le plus riche.
+  await onglet(page, 'brouillon');
   const vus = new Set();
   for (let i = 0; i < 60; i++) {
     await page.keyboard.press('Tab');
@@ -180,7 +194,31 @@ test.describe('thème clair seulement', () => {
   test("système réglé en sombre : l'interface d'administration de l'annuaire reste claire", async ({ page }) => {
     await ouvrir(page);
     expect(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(246, 247, 249)');
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(230, 242, 239)');
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light only');
   });
+});
+
+test('12.2 et 12.6 : onglets, page courante signalée, focus sur le titre, adresse retenue', async ({ page }) => {
+  await ouvrir(page);
+  const menu = page.getByRole('navigation', { name: 'Sections' });
+  await expect(menu.getByRole('button', { name: /^Box et demandes/ })).toHaveAttribute('aria-current', 'page');
+  await expect(menu.getByRole('button', { name: /^Box et demandes/ })).toHaveAccessibleName('Box et demandes 2 demandes');
+  await menu.getByRole('button', { name: /^Publier et versions/ }).click();
+  await expect(page.locator('#titre-versions')).toBeFocused();
+  await expect(page).toHaveURL(/#versions$/);
+  await expect(page.locator('#onglet-box')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('#onglet-versions'), 'onglet retenu par l\'adresse').toBeVisible();
+});
+
+test('recherche dans les box et reprise d\'une version comme brouillon', async ({ page }) => {
+  await ouvrir(page);
+  await page.getByRole('searchbox', { name: 'Rechercher' }).fill('urgences');
+  await expect(page.locator('#box tr:visible')).toHaveCount(1);
+  await onglet(page, 'versions');
+  await page.getByRole('button', { name: 'Reprendre comme brouillon la version n° 3' }).click();
+  await expect(page.locator('#onglet-brouillon')).toBeVisible();
+  await expect(page.locator('#priorite')).toBeFocused();
+  await expect(page.locator('#priorite')).toHaveValue(/thorax/);
 });

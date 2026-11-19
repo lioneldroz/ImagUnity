@@ -501,6 +501,8 @@ L'interface est à l'adresse **`https://<annuaire>/admin/`**, par exemple `https
 
 L'interface montre les **demandes d'enrôlement en attente** et les **box** de l'annuaire, et sert à la **configuration centralisée** : préparer les règles communes, les essayer, publier une version signée. Elle **ne signe rien** : enrôlement et signature des règles se font avec l'outil du responsable, sur son poste (§ 2).
 
+Elle a trois onglets, dans le menu à gauche : **Box et demandes** (§ 3.3, § 3.4), **Brouillon et essai** (§ 3.5, § 3.7) et **Publier et versions** (§ 3.8, § 3.9). L'onglet ouvert est retenu dans l'adresse (`…/admin/#brouillon`).
+
 ### 3.2 L'en-tête
 
 ![En-tête de l'interface : organisation et prochaine version](../images/guide-responsable/02-en-tete.png)
@@ -513,16 +515,18 @@ L'interface montre les **demandes d'enrôlement en attente** et les **box** de l
 
 ### 3.3 Les demandes d'enrôlement en attente
 
-![Demandes d'enrôlement en attente : nom proposé, empreinte, code d'enrôlement joint, date de réception](../images/guide-responsable/10-demandes.png)
+![Demandes d'enrôlement en attente : une carte par demande, avec le nom proposé, l'identifiant, la date de réception, l'empreinte et l'état du code](../images/guide-responsable/10-demandes.png)
 
 Les box pas encore enrôlées qui ont envoyé leur demande. Elles se traitent avec `enroler-attente` (§ 2.3) ou depuis l'interface locale du responsable (§ 2.4) ; cette page de l'annuaire ne fait que les montrer, car la clé de l'organisation n'est jamais confiée à l'annuaire.
 
-| Colonne | Signification |
+Chaque demande est une carte :
+
+| Élément | Signification |
 |---|---|
-| **Box** | Le nom proposé par la box (son nom local), et son identifiant. Le nom publié sera celui du code d'enrôlement. |
+| **Titre** | Le nom proposé par la box (son nom local). Le nom publié sera celui du code d'enrôlement. |
+| **Identifiant et date** | L'identifiant de la box, et la date de la dernière demande ; une box la renvoie tant qu'elle n'est pas enrôlée |
 | **Empreinte** | L'empreinte de la box, la même que dans sa console |
-| **Code d'enrôlement** | « joint » : la box a envoyé la preuve d'un code, que l'outil du responsable vérifiera. « aucun » : la box n'a pas de code ; à valider dans l'interface locale ou à enrôler à la main, après comparaison de l'empreinte, ou en lui donnant un code (§ 2.4, § 2.5). |
-| **Reçue le** | La date de la dernière demande ; une box la renvoie tant qu'elle n'est pas enrôlée |
+| **Pastille** | « code d'enrôlement joint » : la box a envoyé la preuve d'un code, que l'outil du responsable vérifiera. « sans code : comparer l'empreinte » (carte encadrée en orange) : la box n'a pas de code ; à valider dans l'interface locale ou à enrôler à la main, après comparaison de l'empreinte, ou en lui donnant un code (§ 2.4, § 2.5). |
 
 Une demande disparaît dès que l'entrée de la box est publiée, ou qu'elle est refusée depuis l'interface locale (les envois de la box sont alors ignorés 30 jours). Une demande sans suite est effacée au bout de 14 jours ; la box la renvoie si elle tourne toujours.
 
@@ -530,20 +534,22 @@ L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe q
 
 ### 3.4 La liste des box
 
-![Liste des box de l'annuaire, avec leurs groupes, leur statut, la version appliquée et le dernier refus](../images/guide-responsable/03-liste-des-box.png)
+![Liste des box de l'annuaire, avec leurs groupes, leur état, la version appliquée et le dernier refus](../images/guide-responsable/03-liste-des-box.png)
+
+Au-dessus de la liste, quatre indicateurs résument la situation : box actives, configuration en vigueur (et nombre de box qui l'appliquent), refus, demandes en attente. Le champ **Rechercher** filtre la liste par nom, identifiant ou groupe ; une box qui a refusé une version a sa ligne en rouge.
 
 | Colonne | Signification |
 |---|---|
 | **Box** | Le nom de la box, et son identifiant en dessous |
 | **Groupes** | Les groupes fixés dans son entrée (§ 2.2, § 2.7) ; « — » si elle n'en a pas |
-| **Statut** | L'état de son entrée, ci-dessous |
+| **État** | L'état de son entrée, ci-dessous |
 | **Version appliquée** | Ce que la box applique, d'après son dernier compte rendu, ci-dessous |
 | **Dernier refus** | La dernière version que la box a refusée, et pourquoi ; « — » s'il n'y en a pas |
 | **Compte rendu** | La date du dernier compte rendu reçu de la box |
 
-**Statut**
+**État**
 
-| Statut | Signification | Que faire |
+| État | Signification | Que faire |
 |---|---|---|
 | **active** | Entrée valide : la box échange normalement | — |
 | **pas encore valide** | La date de début de l'entrée n'est pas atteinte | Attendre, ou vérifier l'heure du poste qui a signé |
@@ -554,7 +560,7 @@ L'annuaire ne peut pas vérifier les codes : il ne les connaît pas. N'importe q
 
 | Affichage | Signification |
 |---|---|
-| **n° 2 (date)** | La box applique la version 2 des règles communes, depuis cette date |
+| **n° 2** (date en dessous) | La box applique la version 2 des règles communes, depuis cette date |
 | **configuration locale** | Aucune version ne vise la box (ou elle est verrouillée sur sa configuration locale) : elle applique ses propres règles |
 | **pas de compte rendu** | La box n'a encore jamais rendu compte : elle vient d'être enrôlée, n'a pas encore démarré, ou ne joint pas l'annuaire |
 
@@ -564,7 +570,7 @@ Dans l'exemple ci-dessus, la « Clinique Exemple des Lilas » applique la versio
 
 ### 3.5 Préparer un brouillon de règles
 
-![Partie Brouillon : box visées, audit, règles de priorité et de routage](../images/guide-responsable/04-brouillon.png)
+![Onglet Brouillon et essai : box visées, audit, règles de priorité et de routage](../images/guide-responsable/04-brouillon.png)
 
 **Box visées**
 
@@ -628,7 +634,7 @@ Le bouton vérifie les règles exactement comme le feront les box, puis prépare
 
 ![Brouillon prêt à signer : numéro du document, commandes à lancer, bouton de téléchargement](../images/guide-responsable/05-brouillon-pret.png)
 
-Cliquez sur **Télécharger le brouillon** (fichier `brouillon-3.json`), puis passez à la signature, sur votre poste.
+Cliquez sur **Télécharger le brouillon** (fichier `brouillon-3.json`), puis passez à la signature, sur votre poste. **Copier les commandes** met les deux commandes affichées dans le presse-papiers.
 
 ### 3.6 Signer le document, hors ligne
 
@@ -650,7 +656,7 @@ Avant de signer, on peut essayer le brouillon sur un exemple :
 
 - écrire un **en-tête DICOM fictif**, un champ par ligne (`Modality=CT`), plusieurs valeurs séparées par `\` ;
 - cliquer sur **Essayer le brouillon** ;
-- le résultat indique la priorité obtenue et la règle qui l'a donnée, et le destinataire choisi par le routage, ou qu'aucune règle ne correspond.
+- le résultat indique la priorité obtenue et la règle qui l'a donnée, et le ou les destinataires choisis par le routage (en étiquettes), ou qu'aucune règle ne correspond.
 
 **N'y mettez jamais de données de patient** : un en-tête inventé suffit.
 
