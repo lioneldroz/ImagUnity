@@ -1,6 +1,7 @@
 {
   "name": "imagunity-console",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.15.0-SNAPSHOT",
   "type": "module",
   "scripts": {

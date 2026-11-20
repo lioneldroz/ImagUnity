@@ -17,6 +17,14 @@
     <packaging>pom</packaging>
     <name>ImagUnity</name>
     <description>Box de transport d'examens DICOM via des relais aveugles</description>
+    <!-- Logiciel propriétaire (voir LICENSE) : remplace la licence Apache héritée du parent Spring Boot. -->
+    <licenses>
+        <license>
+            <name>Propriétaire : tous droits réservés</name>
+            <url>LICENSE</url>
+            <distribution>manual</distribution>
+        </license>
+    </licenses>
 
     <modules>
         <module>domain</module>

@@ -93,6 +93,32 @@ jobs:
           path: accessibilite/playwright-report
           retention-days: 14
 
+  licences:
+    name: Licences des composants
+    runs-on: ubuntu-latest
+    # ImagUnity est propriétaire : chaque composant livré doit avoir une licence permissive ou à copyleft faible
+    # (deploy/licences/politique.json, docs/reference/licences.md), et NOTICE.md doit lister les composants livrés.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Nomenclature du backend (CycloneDX)
+        working-directory: backend
+        run: >
+          sh ./mvnw -B -ntp org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+          -DoutputFormat=json -DoutputName=sbom.cdx
+      - name: Contrôle des licences et de NOTICE.md
+        run: >
+          python3 deploy/licences/verifier-licences.py
+          --sbom backend/target/sbom.cdx.json
+          --npm frontend/package-lock.json
+          --npm-outil accessibilite/package-lock.json
+          --pip-outil deploy/banc-essai/campagne/requirements.txt
+          --verifier-notice NOTICE.md
+
   compose:
     name: Docker Compose (validation)
     runs-on: ubuntu-latest

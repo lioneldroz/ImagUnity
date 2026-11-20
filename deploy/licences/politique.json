@@ -1,0 +1,25 @@
+{
+  "_lisez-moi": "Politique de licences des composants tiers d'ImagUnity (logiciel propriétaire). Voir docs/reference/licences.md.",
+  "permissives": ["Apache-2.0", "MIT", "MIT-0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "0BSD", "CC0-1.0", "Unlicense",
+    "BlueOak-1.0.0", "Zlib", "Python-2.0", "PostgreSQL", "Bouncy-Castle"],
+  "copyleft_faible": ["MPL-1.1", "MPL-2.0", "EPL-1.0", "EPL-2.0", "CDDL-1.0", "CDDL-1.1", "GPL-2.0-with-classpath-exception"],
+  "noms": {
+    "Mozilla Public License Version 1.1 or later": "MPL-1.1",
+    "EPL 1.0": "EPL-1.0",
+    "EPL 2.0": "EPL-2.0",
+    "LGPL-2.1+": "LGPL-2.1-or-later",
+    "Apache License, Version 2.0": "Apache-2.0",
+    "The Apache Software License, Version 2.0": "Apache-2.0",
+    "Apache 2.0": "Apache-2.0",
+    "The MIT License": "MIT",
+    "MIT License": "MIT",
+    "BSD License": "BSD-3-Clause",
+    "Bouncy Castle Licence": "Bouncy-Castle",
+    "GPL2 w/ CPE": "GPL-2.0-with-classpath-exception",
+    "GNU General Public License, version 2 with the GNU Classpath Exception": "GPL-2.0-with-classpath-exception"
+  },
+  "declarees": {
+    "_lisez-moi": "Composants dont le paquet ne déclare pas sa licence : licence vérifiée à la main, avec sa source.",
+    "pypi:pydicom": { "licence": "MIT", "source": "https://github.com/pydicom/pydicom/blob/main/LICENSE" }
+  }
+}

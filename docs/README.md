@@ -23,6 +23,7 @@
 | [Configuration centralisée](reference/configuration-centralisee.md) | règles signées par le responsable, appliquées sans redémarrage |
 | [Priorité des séries](reference/priorite-dicom.md) | séries utiles au diagnostic envoyées et restituées d'abord |
 | [Routage par champ DICOM](reference/routage-dicom.md) | choix du destinataire d'après le contenu de l'examen |
+| [Licences des composants](reference/licences.md) | logiciel propriétaire, licences autorisées, contrôle en CI, NOTICE.md |
 | [Réception DICOMweb STOW-RS](reference/stow-rs.md) | dépôt des examens par HTTP |
 | [Fédération entre organisations](reference/federation-organisations.md) | conception : échanges entre box de régions ou de pays différents, reconnaissance mutuelle signée ; étape 1 arrêtée |
 | [Films explicatifs](films/README.md) | six courtes vidéos animées : vue d'ensemble, organisation, enrôlement d'une box, voyage d'un examen, incidents, fédération ([plan](films/plan.md)) |
