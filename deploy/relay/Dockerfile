@@ -6,7 +6,7 @@ RUN sh ./mvnw -B -ntp -DskipTests -pl relay -am package
 
 # Java d'exécution : celui d'Ubuntu 24.04, corrigé pour CVE-2026-114938 (« java4shell ») depuis 25.0.5.1, quand
 # l'image eclipse-temurin:25-jre ne l'est pas encore. La construction échoue si le Java installé est plus ancien.
-FROM ubuntu:24.04
+FROM ubuntu:24.10
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-25-jre-headless \
     && rm -rf /var/lib/apt/lists/* \
