@@ -6,9 +6,17 @@
 # le NOTICE.md régénéré (artefact « notice ») à committer sur la branche (docs/reference/vulnerabilites.md).
 version: 2
 
+# Dépôts Maven autres que Maven Central, déclarés pour que le proxy de Dependabot les laisse joindre (le même que
+# dans backend/pom.xml). Public : aucun identifiant.
+registries:
+  dcm4che:
+    type: maven-repository
+    url: https://www.dcm4che.org/maven2
+
 updates:
   - package-ecosystem: maven
     directory: /backend
+    registries: [dcm4che]
     schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
     cooldown: { default-days: 7 }
     open-pull-requests-limit: 5
