@@ -35,8 +35,10 @@ jobs:
     name: Dépendances (OSV-Scanner)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '25'
@@ -78,7 +80,9 @@ jobs:
     # distributions. Bloquant sur une faille « High » ou « Critical » corrigible dans les images que nous construisons ;
     # le système d'une box est seulement rapporté. Exceptions : .grype.yaml.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
 
       - name: Images du site central (relais, annuaire)
         run: |
@@ -115,3 +119,33 @@ jobs:
           cat bilan.md
           cat bilan.md >> "$GITHUB_STEP_SUMMARY"
           exit $code
+
+  alerte:
+    name: Alerte (issue GitHub)
+    # Le contrôle hebdomadaire n'est déclenché par personne : s'il échoue, une issue le signale (une seule, mise à jour
+    # à chaque nouvel échec, tant qu'elle reste ouverte). Délais de correction : SECURITY.md.
+    needs: [osv, grype]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Ouvrir ou compléter l'issue « vulnérabilité »
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create vulnerabilite --color B60205 \
+            --description "Vulnérabilité connue trouvée par le contrôle hebdomadaire" 2>/dev/null || true
+          corps="Le contrôle hebdomadaire des vulnérabilités a échoué le $(date -u +%d/%m/%Y) : $RUN_URL
+
+          Qualifier la faille (corrigible ? atteignable dans ImagUnity ?), puis la corriger dans le délai de SECURITY.md
+          (Critique : 7 jours, Haute : 30 jours, Moyenne : 90 jours). Procédure : docs/reference/vulnerabilites.md."
+          numero=$(gh issue list --label vulnerabilite --state open --json number --jq '.[0].number // empty')
+          if [ -n "$numero" ]; then
+            gh issue comment "$numero" --body "$corps"
+          else
+            gh issue create --label vulnerabilite --title "Vulnérabilité connue trouvée par le contrôle hebdomadaire" \
+              --body "$corps"
+          fi

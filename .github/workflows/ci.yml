@@ -23,13 +23,15 @@ jobs:
       run:
         working-directory: backend  # Toutes les commandes `run` s'exécutent dans ./backend
     steps:
-      - uses: actions/checkout@v7   # Récupère le code du dépôt sur la machine
-      - uses: actions/setup-java@v6 # Installe le JDK
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  — Récupère le code du dépôt sur la machine
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0  — Installe le JDK
         with:
           distribution: temurin     # JDK Eclipse Temurin (build OpenJDK)
           java-version: '25'
           cache: maven               # Met en cache ~/.m2 pour accélérer les builds suivants
-      - uses: actions/setup-node@v7 # La console React est construite et embarquée dans le jar de la box
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0  — La console React est construite et embarquée dans le jar de la box
         with:
           node-version: '24'
           cache: npm
@@ -48,8 +50,10 @@ jobs:
       run:
         working-directory: frontend # Commandes exécutées dans ./frontend
     steps:
-      - uses: actions/checkout@v7   # Récupère le code du dépôt sur la machine
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  — Récupère le code du dépôt sur la machine
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm                # Cache des dépendances npm
@@ -70,8 +74,10 @@ jobs:
       run:
         working-directory: accessibilite
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
           cache: npm
@@ -86,7 +92,7 @@ jobs:
       - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright (thème clair ; système sombre vérifié)
         env:
           CI: 'true'
-      - uses: actions/upload-artifact@v4   # Rapport détaillé (résultats axe-core joints à chaque test)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2  — Rapport détaillé (résultats axe-core joints à chaque test)
         if: ${{ !cancelled() }}
         with:
           name: rapport-accessibilite
@@ -99,8 +105,10 @@ jobs:
     # ImagUnity est propriétaire : chaque composant livré doit avoir une licence permissive ou à copyleft faible
     # (deploy/licences/politique.json, docs/reference/licences.md), et NOTICE.md doit lister les composants livrés.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '25'
@@ -118,6 +126,60 @@ jobs:
           --npm-outil accessibilite/package-lock.json
           --pip-outil deploy/banc-essai/campagne/requirements.txt
           --verifier-notice NOTICE.md
+      - name: NOTICE.md régénéré (en cas d'écart, par exemple sur une pull request de Dependabot)
+        if: failure()
+        run: >
+          python3 deploy/licences/verifier-licences.py
+          --sbom backend/target/sbom.cdx.json
+          --npm frontend/package-lock.json
+          --npm-outil accessibilite/package-lock.json
+          --pip-outil deploy/banc-essai/campagne/requirements.txt
+          --notice NOTICE.md || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: notice
+          path: NOTICE.md
+          retention-days: 14
+
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    # Cherche des secrets (clés, jetons, mots de passe) dans tout l'historique du dépôt. Exceptions : faux positifs
+    # vérifiés seulement (.gitleaks.toml). Un vrai secret trouvé se révoque et se remplace (SECURITY.md).
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # Empreinte publiée avec la version (gitleaks_<version>_checksums.txt) : l'archive téléchargée est vérifiée.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0               # tout l'historique : un secret retiré depuis reste dans les anciens commits
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - name: Installation de gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Recherche de secrets dans l'historique
+        run: '"$RUNNER_TEMP/gitleaks" git --no-banner --redact --verbose .'
+
+  workflows:
+    name: Workflows GitHub (zizmor)
+    runs-on: ubuntu-latest
+    # Audit de sécurité des workflows et de la configuration Dependabot : actions épinglées par empreinte, jeton
+    # non conservé, injections dans les scripts, caches dans la livraison, droits du jeton…
+    env:
+      ZIZMOR_VERSION: 1.32.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - run: pipx install "zizmor==${ZIZMOR_VERSION}"
+      - name: Audit des workflows
+        run: zizmor --offline --format=github .github
 
   images:
     name: Images du site central (relais, annuaire)
@@ -125,7 +187,9 @@ jobs:
     # Construit les images comme la livraison : la construction échoue si le Java de l'image est vulnérable
     # (CVE-2026-114938, contrôle dans les Dockerfile).
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
       - run: docker build -q -t imagunity/relay:ci -f deploy/relay/Dockerfile backend
       - run: docker build -q -t imagunity/directory:ci -f deploy/directory/Dockerfile backend
       - name: Java des images
@@ -138,7 +202,9 @@ jobs:
     name: Docker Compose (validation)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
       - run: docker compose -f deploy/banc-essai/docker-compose.yml config --quiet
         env:
           # Empreinte du responsable : exigée par le Compose (vérifiée hors bande en vrai), factice ici.
@@ -149,8 +215,10 @@ jobs:
     name: Installations (site central, box sur Rocky Linux 10)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # le jeton GitHub ne reste pas dans le dépôt cloné
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: '25'

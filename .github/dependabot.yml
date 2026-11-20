@@ -1,0 +1,55 @@
+# Mises à jour des dépendances (Dependabot) : une pull request par écosystème et par semaine, mises à jour mineures
+# et correctives groupées ; les versions majeures arrivent une par une, pour être relues.
+# Délai de 7 jours avant de proposer une version qui vient de paraître (« cooldown ») : une version piégée est
+# souvent retirée dans ce délai. Les correctifs de sécurité ne l'attendent pas.
+# Une mise à jour Maven ou npm peut changer NOTICE.md : le job « Licences des composants » échoue alors et fournit
+# le NOTICE.md régénéré (artefact « notice ») à committer sur la branche (docs/reference/vulnerabilites.md).
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /backend
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 5
+    groups:
+      maven-mineures:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directories: [/frontend, /accessibilite]
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    cooldown: { default-days: 7 }
+    open-pull-requests-limit: 5
+    groups:
+      npm-mineures:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    cooldown: { default-days: 7 }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: [/deploy/relay, /deploy/directory, /deploy/banc-essai/box]
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    cooldown: { default-days: 7 }
+    ignore:
+      # Les images d'exécution restent sur Ubuntu 24.04 LTS (Java corrigé par Ubuntu) : pas de saut de version
+      # majeure automatique.
+      - dependency-name: ubuntu
+        update-types: [version-update:semver-major]
+    groups:
+      images:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /deploy/banc-essai/campagne
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
+    cooldown: { default-days: 7 }
+    groups:
+      pip:
+        patterns: ["*"]
