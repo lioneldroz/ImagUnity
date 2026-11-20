@@ -51,7 +51,8 @@ produit, avec sa justification et une date d'expiration (passée cette date, la 
   composants » échoue alors et dépose le `NOTICE.md` régénéré dans l'artefact **`notice`** de l'exécution. Vérifier
   la licence des composants nouveaux (le job échoue aussi pour une licence refusée), puis committer ce fichier sur la
   branche de la pull request.
-- Les images d'exécution restent sur **Ubuntu 24.04 LTS** : pas de passage automatique à une version majeure suivante.
+- Les images d'exécution restent sur **Ubuntu 24.04 LTS** : Dependabot ne propose pas les versions intermédiaires
+  (24.10, 25.04…) ; le passage à la LTS suivante se fait à la main.
 
 ## 5. Déclarations VEX
 
