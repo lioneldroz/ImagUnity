@@ -1,0 +1,12 @@
+# Configuration de gitleaks (recherche de secrets dans le dépôt et son historique, job « Secrets » de la CI).
+# Règles par défaut de gitleaks, plus les seules exceptions ci-dessous : des faux positifs vérifiés.
+# Ne jamais ajouter ici un vrai secret : un secret publié se révoque et se remplace, il ne s'ignore pas.
+title = "ImagUnity"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Identifiants factices du banc d'essai (operateur:essai, operateur:essai-synthetique), documentés comme tels"
+regexTarget = "match"
+regexes = ['''-u operateur:essai(-synthetique)?\b''']

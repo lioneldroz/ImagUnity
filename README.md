@@ -95,6 +95,8 @@ Le job **Accessibilité (RGAA 4.1.2)** de la CI contrôle l'interface d'administ
 
 ### Vulnérabilités des dépendances
 
+Politique, délais de correction et signalement : [SECURITY.md](SECURITY.md) ; ensemble des contrôles (Grype, Dependabot, gitleaks, zizmor) : [suivi des vulnérabilités](docs/reference/vulnerabilites.md).
+
 Le workflow **Vulnérabilités (CVE)** (`.github/workflows/vulnerabilites.yml`) passe les dépendances au crible de la base [OSV](https://osv.dev) avec OSV-Scanner :
 - **backend** : nomenclature CycloneDX produite par Maven, avec les versions réellement résolues, transitives comprises (hors dépendances de test) ;
 - **frontend** : `frontend/package-lock.json` ;
