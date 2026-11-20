@@ -52,6 +52,7 @@ jobs:
         run: |
           D="imagunity-$VERSION"
           mkdir -p "$D/box" "$D/site-central"
+          cp LICENSE NOTICE.md "$D/"   # licence d'ImagUnity et composants tiers livrés
           cp backend/app/target/imagunity-box.jar backend/release/target/imagunity-release.jar "$D/box/"
           unzip -p "$D/box/imagunity-box.jar" META-INF/MANIFEST.MF | grep -q "Implementation-Version: $VERSION"
 

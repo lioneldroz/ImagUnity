@@ -1,6 +1,7 @@
 {
   "name": "imagunity-accessibilite",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Contrôles automatiques d'accessibilité (RGAA 4.1.2) des interfaces web d'ImagUnity",
   "scripts": {
     "test": "npm run html && playwright test",
