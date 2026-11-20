@@ -92,7 +92,7 @@ jobs:
       - run: npm test       # Validation HTML (html-validate) puis contrôles Playwright (thème clair ; système sombre vérifié)
         env:
           CI: 'true'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2  — Rapport détaillé (résultats axe-core joints à chaque test)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.6.2  — Rapport détaillé (résultats axe-core joints à chaque test)
         if: ${{ !cancelled() }}
         with:
           name: rapport-accessibilite
@@ -135,7 +135,7 @@ jobs:
           --npm-outil accessibilite/package-lock.json
           --pip-outil deploy/banc-essai/campagne/requirements.txt
           --notice NOTICE.md || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: notice
