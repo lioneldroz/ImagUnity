@@ -101,7 +101,7 @@ systemctl enable --now chronyd
 
 ## 2. Installer Java 25
 
-Rocky Linux 10 le fournit (vérifié par la CI, version 25.0.5 LTS) :
+Rocky Linux 10 le fournit (vérifié par la CI ; version corrigée 25.0.5.1 disponible) :
 
 ```bash
 dnf -y install java-25-openjdk-headless
@@ -121,7 +121,7 @@ EOF
 dnf -y install temurin-25-jre
 ```
 
-Dans les deux cas, vérifier avec `java -version`, qui doit afficher **`version "25.0.5.1"` ou plus récent**. Les versions antérieures de Java 25 ont une faille critique (CVE-2026-114938, « java4shell ») : l'installateur prévient, et la box l'écrit dans son journal à chaque démarrage tant que Java n'est pas à jour. Pour mettre à jour :
+Dans les deux cas, vérifier avec `java -version`, qui doit afficher **`version "25.0.5.1"` ou plus récent**. Les versions antérieures de Java 25 ont une faille critique (CVE-2026-114938, « java4shell ») : l'installateur refuse de continuer, et une box déjà installée l'écrit dans son journal à chaque démarrage tant que Java n'est pas à jour. Le dépôt d'Adoptium (Temurin) ne propose pas encore la version corrigée : sur Rocky, préférer le paquet du système. Pour mettre à jour :
 
 ```bash
 dnf -y upgrade java-25-openjdk-headless    # ou temurin-25-jre

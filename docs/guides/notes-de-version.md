@@ -5,7 +5,7 @@
 ## Version suivante (en préparation)
 
 - **Sécurité, à faire sans attendre : Java 25.0.5.1 ou plus récent partout (CVE-2026-114938, « java4shell »)**. Une faille du compilateur de Java (JIT), publiée le 17/11/2026, permet une prise de contrôle à distance (CVSS 8,1 ; CISA demande une correction immédiate). Toutes les versions de Java 25 antérieures à 25.0.5.1 sont touchées. ImagUnity n'y peut rien par lui-même : Java est celui du système ou de l'image. **À faire** :
-  - **box** : `dnf -y upgrade java-25-openjdk-headless` (ou `temurin-25-jre`), puis `systemctl restart imagunity-box`. Vérifier avec `java -version`. Sans mise à jour, la box écrit une erreur dans son journal à chaque démarrage, et l'installateur prévient ;
+  - **box** : `dnf -y upgrade java-25-openjdk-headless` (ou `temurin-25-jre`), puis `systemctl restart imagunity-box`. Vérifier avec `java -version`. Rocky Linux 10 publie la version corrigée (25.0.5.1.2). Sans mise à jour, la box écrit une erreur dans son journal à chaque démarrage, et l'installateur refuse de continuer ;
   - **site central** : reconstruire et redéployer les images du relais et de l'annuaire. Elles s'exécutent désormais sur le Java d'Ubuntu 24.04, déjà corrigé, car l'image `eclipse-temurin:25-jre` ne l'est pas encore. Leur construction échoue si le Java installé est vulnérable ;
   - **poste du responsable** : mettre à jour Java ; l'outil le signale au démarrage.
   Le contrôle « Vulnérabilités (CVE) » de la CI ne voit pas ce genre de faille : il porte sur les bibliothèques, pas sur Java lui-même. Un nouveau job, « Images du site central », construit les images à chaque push et vérifie leur Java.
