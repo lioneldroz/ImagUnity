@@ -73,6 +73,7 @@ public final class DirectoryAdmin {
     }
 
     public static void main(String[] args) {
+        JavaRuntimeCheck.warnIfVulnerable();
         java.io.Console console = System.console();
         Prompt prompt = console == null ? label -> null : new Prompt() {
             @Override

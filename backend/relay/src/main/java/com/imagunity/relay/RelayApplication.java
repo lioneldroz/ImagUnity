@@ -17,5 +17,6 @@ public class RelayApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(RelayApplication.class, args);
+        com.imagunity.directory.JavaRuntimeCheck.warnIfVulnerable();
     }
 }
