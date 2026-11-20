@@ -1,0 +1,13 @@
+# Analyse Grype des images du site central et du système d'une box (.github/workflows/vulnerabilites.yml),
+# en complément d'OSV-Scanner : paquets du système (Ubuntu, Rocky), Java lui-même et bibliothèques des jar,
+# d'après NVD, les avis GitHub et les avis de sécurité des distributions.
+#
+# Exceptions : à n'utiliser que si la faille ne concerne pas ImagUnity (fonction non utilisée, composant présent
+# mais jamais exécuté…). Chaque exception porte, en commentaire, sa justification et sa date de réexamen.
+#
+# ignore:
+#   # Fonction vulnérable non utilisée (…) ; à réexaminer le 2027-01-31.
+#   - vulnerability: CVE-xxxx-xxxxx
+#     package:
+#       name: nom-du-paquet
+ignore: []
