@@ -48,11 +48,11 @@
     <properties>
         <java.version>25</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <dcm4che.version>5.35.2</dcm4che.version>
+        <dcm4che.version>5.36.0</dcm4che.version>
         <zstd-jni.version>1.5.7-26</zstd-jni.version>
         <commons-compress.version>1.28.0</commons-compress.version>
         <jacoco.version>0.8.16</jacoco.version>
-        <awssdk.version>2.57.7</awssdk.version>
+        <awssdk.version>2.59.0</awssdk.version>
         <!-- Minimum coverage thresholds checked by "mvn verify" (see jacoco-maven-plugin),
              applied to each module (BUNDLE). Measured on 2026-11-11: 98.5 % of lines,
              96.3 % of branches (lowest module: dicom, 97.4 % / 93.9 %). Can be overridden on the
