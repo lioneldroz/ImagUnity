@@ -88,12 +88,12 @@ autour d'ImagUnity, sans passer par elles ; leurs licences ont été vérifiées
 
 | Composant | Où | Licence | Usage commercial |
 |---|---|---|---|
-| Eclipse Temurin (OpenJDK 25) | Images du relais et de l'annuaire, box | GPL-2.0 avec exception Classpath | Oui : l'exception couvre les applications qui l'utilisent |
+| OpenJDK 25 (Ubuntu 24.04 dans les images du relais et de l'annuaire ; Rocky ou Temurin sur les box ; Temurin pour construire) | Images du site central, box | GPL-2.0 avec exception Classpath | Oui : l'exception couvre les applications qui l'utilisent |
 | PostgreSQL 17 | Site central (Compose) | PostgreSQL (permissive) | Oui |
 | Caddy 2 | Site central (Compose) | Apache-2.0 | Oui |
 | Traefik 3 | Banc d'essai à deux relais | MIT | Oui |
 | SeaweedFS | Stockage S3 du banc d'essai | Apache-2.0 | Oui |
-| Rocky Linux 10, Ubuntu | Système des box et des images | Diverses (GPL pour le noyau et les outils) | Oui : ImagUnity s'exécute dessus sans les modifier ni s'y lier |
+| Rocky Linux 10, Ubuntu 24.04 | Système des box et des images | Diverses (GPL pour le noyau et les outils) | Oui : ImagUnity s'exécute dessus sans les modifier ni s'y lier |
 | swtpm | Banc d'essai (TPM logiciel) | BSD-3-Clause | Oui |
 | **Orthanc** | **Banc d'essai uniquement** (PACS de test) | **GPL-3.0** | **Ne jamais l'intégrer à un produit livré** |
 

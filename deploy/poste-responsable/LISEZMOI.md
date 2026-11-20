@@ -6,7 +6,7 @@ depuis une page de son navigateur, sans taper de commande.
 ## Ce qu'il faut
 
 - Un poste Windows 10 ou 11 (ou Linux, macOS), de préférence réservé à cet usage et sans accès inutile.
-- **Java 25** (par exemple Eclipse Temurin 25). Vérifier dans une invite de commandes : `java -version`.
+- **Java 25, en version 25.0.5.1 ou plus récente** (par exemple Eclipse Temurin 25). Vérifier dans une invite de commandes : `java -version`. Les versions antérieures ont une faille critique (CVE-2026-114938) ; l'outil le signale au démarrage.
 - Ce dossier, avec `imagunity-directory.jar` (fourni dans la livraison, dossier `poste-responsable`).
 - L'**adresse de l'annuaire** et le **mot de passe du compte de dépôt**, donnés par l'exploitant du site central.
   Pour un premier essai, sans site central, l'interface fonctionne aussi : elle signale seulement l'annuaire

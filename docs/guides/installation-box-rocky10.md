@@ -121,7 +121,14 @@ EOF
 dnf -y install temurin-25-jre
 ```
 
-Dans les deux cas, vérifier avec `java -version`, qui doit afficher `version "25…"`. Java se met ensuite à jour avec le système (§ 10).
+Dans les deux cas, vérifier avec `java -version`, qui doit afficher **`version "25.0.5.1"` ou plus récent**. Les versions antérieures de Java 25 ont une faille critique (CVE-2026-114938, « java4shell ») : l'installateur prévient, et la box l'écrit dans son journal à chaque démarrage tant que Java n'est pas à jour. Pour mettre à jour :
+
+```bash
+dnf -y upgrade java-25-openjdk-headless    # ou temurin-25-jre
+systemctl restart imagunity-box
+```
+
+Java se met ensuite à jour avec le système (§ 10).
 
 ## 3. Installer la box
 

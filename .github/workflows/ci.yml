@@ -119,6 +119,21 @@ jobs:
           --pip-outil deploy/banc-essai/campagne/requirements.txt
           --verifier-notice NOTICE.md
 
+  images:
+    name: Images du site central (relais, annuaire)
+    runs-on: ubuntu-latest
+    # Construit les images comme la livraison : la construction échoue si le Java de l'image est vulnérable
+    # (CVE-2026-114938, contrôle dans les Dockerfile).
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -q -t imagunity/relay:ci -f deploy/relay/Dockerfile backend
+      - run: docker build -q -t imagunity/directory:ci -f deploy/directory/Dockerfile backend
+      - name: Java des images
+        run: |
+          for i in relay directory; do
+            docker run --rm --entrypoint java "imagunity/$i:ci" -version 2>&1 | head -n 1
+          done
+
   compose:
     name: Docker Compose (validation)
     runs-on: ubuntu-latest

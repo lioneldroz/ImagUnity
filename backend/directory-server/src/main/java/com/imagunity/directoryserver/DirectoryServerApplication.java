@@ -11,5 +11,6 @@ public class DirectoryServerApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(DirectoryServerApplication.class, args);
+        com.imagunity.directory.JavaRuntimeCheck.warnIfVulnerable();
     }
 }

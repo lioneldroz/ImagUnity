@@ -9,6 +9,16 @@ if ! "$JAVA" -version 2>&1 | grep -qE 'version "(2[5-9]|[3-9][0-9])'; then
     echo "Java 25 ou plus récent est requis (voir le guide, § Java)" >&2
     exit 1
 fi
+# CVE-2026-114938 (« java4shell ») : Java 25 antérieur à 25.0.5.1 permet une prise de contrôle à distance. La box le
+# signale aussi à chaque démarrage, dans son journal.
+VJAVA=$("$JAVA" -XshowSettings:properties -version 2>&1 | sed -n 's/.*java\.runtime\.version = \([0-9.]*\).*/\1/p')
+case "$VJAVA" in
+    25|25.*)
+        if [ "$(printf '%s\n' 25.0.5.1 "$VJAVA" | sort -V | head -n 1)" != 25.0.5.1 ]; then
+            echo "ATTENTION : Java $VJAVA est vulnérable (CVE-2026-114938). Le mettre à jour dès que possible :" >&2
+            echo "  dnf upgrade java-25-openjdk-headless   (25.0.5.1 ou plus récent), puis redémarrer la box" >&2
+        fi ;;
+esac
 for f in imagunity-release.jar imagunity-box.jar imagunity-box.jar.manifeste.json; do
     [ -f "$ICI/$f" ] || { echo "Fichier absent de l'archive : $f" >&2; exit 1; }
 done
