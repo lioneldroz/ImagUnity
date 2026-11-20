@@ -84,11 +84,15 @@ jobs:
           docker build -q -t imagunity/relay:grype -f deploy/relay/Dockerfile backend
           docker build -q -t imagunity/directory:grype -f deploy/directory/Dockerfile backend
 
-      - name: Système d'une box (Rocky Linux 10, Java et paquets requis par l'installation)
+      - name: Système d'une box (Rocky Linux 10 à jour, Java et paquets requis par l'installation)
+        # À jour comme une box en service (dnf-automatic, guide d'installation § 10) : une faille déjà corrigée par
+        # Rocky mais pas encore dans l'image de base n'est pas une faille de la box.
         run: |
           docker build -q -t imagunity/box-systeme:grype - <<'EOF'
           FROM rockylinux/rockylinux:10
-          RUN dnf -y -q install java-25-openjdk-headless polkit tar util-linux findutils curl-minimal && dnf clean all
+          RUN dnf -y -q upgrade \
+              && dnf -y -q install java-25-openjdk-headless polkit tar util-linux findutils curl-minimal \
+              && dnf clean all
           EOF
 
       - name: Installation de Grype
