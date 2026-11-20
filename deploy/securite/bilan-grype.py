@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Bilan des analyses Grype (images du site central, système d'une box) : rapport Markdown et décision.
 
-Usage : bilan-grype.py NOM=rapport.json [NOM=rapport.json …]
+Usage : bilan-grype.py [--rapport-seul NOM …] NOM=rapport.json [NOM=rapport.json …]
 
-Bloquant : une faille « High » ou « Critical » qui a un correctif publié (mettre à jour l'image ou le paquet suffit).
-Signalé sans bloquer : les failles « High » ou « Critical » sans correctif encore publié, et les exceptions
-appliquées (.grype.yaml). Les rapports sont ceux de `grype … -o json`.
+Bloquant : une faille « High » ou « Critical » qui a un correctif publié, dans une cible que nous construisons
+(images du site central) : reconstruire l'image suffit à la corriger.
+Signalé sans bloquer :
+  - les cibles en rapport seul (--rapport-seul), comme le système d'une box : il dépend des mises à jour de la
+    distribution, que la box installe d'elle-même ; un correctif publié en amont (Red Hat) peut ne pas l'être encore
+    par Rocky ;
+  - les failles « High » ou « Critical » sans correctif publié ;
+  - les exceptions appliquées (.grype.yaml).
+Les rapports sont ceux de `grype … -o json`.
 """
 import json, sys
 
@@ -19,7 +25,11 @@ def ligne(cible, m):
 
 
 def main(args):
-    bloquants, sans_correctif, ignores = [], [], []
+    bloquants, a_suivre, sans_correctif, ignores = [], [], [], []
+    rapport_seul = set()
+    while args and args[0] == "--rapport-seul":
+        rapport_seul.add(args[1])
+        args = args[2:]
     for arg in args:
         cible, _, chemin = arg.partition("=")
         rapport = json.load(open(chemin, encoding="utf-8"))
@@ -27,7 +37,10 @@ def main(args):
             v = m["vulnerability"]
             if v.get("severity") not in GRAVES:
                 continue
-            (bloquants if v.get("fix", {}).get("state") == "fixed" else sans_correctif).append(ligne(cible, m))
+            if v.get("fix", {}).get("state") != "fixed":
+                sans_correctif.append(ligne(cible, m))
+            else:
+                (a_suivre if cible in rapport_seul else bloquants).append(ligne(cible, m))
         for m in rapport.get("ignoredMatches", []):
             ignores.append(ligne(cible, m))
     entete = ["| Cible | Faille | Gravité | Composant | Type | Corrigée en |", "|---|---|---|---|---|---|"]
@@ -36,6 +49,11 @@ def main(args):
         sortie += ["### À corriger : correctif publié", ""] + entete + sorted(set(bloquants)) + [""]
     else:
         sortie += ["Aucune faille « High » ou « Critical » corrigible.", ""]
+    if a_suivre:
+        sortie += ["### Correctif publié en amont, cibles en rapport seul (non bloquant)", "",
+                   "Mises à jour de la distribution : la box les installe d'elle-même dès qu'elles sont publiées "
+                   "(dnf-automatic) ; un correctif de Red Hat peut ne pas l'être encore par Rocky.", ""]
+        sortie += entete + sorted(set(a_suivre)) + [""]
     if sans_correctif:
         sortie += ["### Sans correctif publié (non bloquant, à suivre)", ""] + entete + sorted(set(sans_correctif)) + [""]
     if ignores:

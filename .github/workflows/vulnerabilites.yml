@@ -75,7 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     # Complète OSV-Scanner, qui ne voit que les bibliothèques : Grype analyse ce qui est réellement livré ou installé
     # (paquets du système, Java lui-même, bibliothèques des jar), d'après NVD, les avis GitHub et ceux des
-    # distributions. Bloquant sur une faille « High » ou « Critical » qui a un correctif publié ; exceptions : .grype.yaml.
+    # distributions. Bloquant sur une faille « High » ou « Critical » corrigible dans les images que nous construisons ;
+    # le système d'une box est seulement rapporté. Exceptions : .grype.yaml.
     steps:
       - uses: actions/checkout@v7
 
@@ -108,8 +109,9 @@ jobs:
             ./grype "docker:imagunity/${cible}:grype" --config .grype.yaml -o json --file "grype-${cible}.json"
           done
           code=0
-          python3 deploy/securite/bilan-grype.py relais=grype-relay.json annuaire=grype-directory.json \
-            box=grype-box-systeme.json > bilan.md || code=$?
+          # Le système d'une box dépend des mises à jour de Rocky, que la box installe d'elle-même : rapport seul.
+          python3 deploy/securite/bilan-grype.py --rapport-seul box relais=grype-relay.json \
+            annuaire=grype-directory.json box=grype-box-systeme.json > bilan.md || code=$?
           cat bilan.md
           cat bilan.md >> "$GITHUB_STEP_SUMMARY"
           exit $code
