@@ -46,10 +46,11 @@ updates:
     schedule: { interval: weekly, day: monday, time: "06:00", timezone: Europe/Paris }
     cooldown: { default-days: 7 }
     ignore:
-      # Les images d'exécution restent sur Ubuntu 24.04 LTS (Java corrigé par Ubuntu) : pas de saut de version
-      # majeure automatique.
+      # Les images d'exécution restent sur Ubuntu 24.04 LTS (Java corrigé par Ubuntu) : Dependabot ne propose pas
+      # les versions intermédiaires (24.10, 25.04…), maintenues 9 mois seulement. Le passage à la LTS suivante
+      # (26.04) se fait à la main.
       - dependency-name: ubuntu
-        update-types: [version-update:semver-major]
+        update-types: [version-update:semver-major, version-update:semver-minor]
     groups:
       images:
         patterns: ["*"]
